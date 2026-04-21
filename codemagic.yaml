@@ -7,20 +7,25 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      # 🔥 ГЛОБАЛЬНЫЙ ФИКС: Принудительно отключаем подпись для всего Workspace (включая плагины)
-      vars:
-        CODE_SIGNING_ALLOWED: "NO"
-        CODE_SIGNING_REQUIRED: "NO"
-        CODE_SIGN_IDENTITY: ""
     scripts:
       - name: Получение зависимостей Flutter
         script: |
           flutter packages pub get
           
-      - name: Фикс Bundle ID (Apple блокирует com.example)
+      - name: Жесткое отключение проверки сертификатов и Apple Team
         script: |
-          # Автоматически меняем дефолтный айдишник на рабочий, чтобы Xcode не ругался
+          # 1. Меняем дефолтный Bundle ID, так как Apple ненавидит com.example
           find ios -type f -name "project.pbxproj" -exec sed -i '' 's/com.example.animix/app.animix.ios/g' {} +
+          
+          # 2. Вырезаем любые требования Development Team прямо из файла проекта Xcode
+          find ios -type f -name "project.pbxproj" -exec sed -i '' '/DevelopmentTeam/d' {} +
+          find ios -type f -name "project.pbxproj" -exec sed -i '' '/DEVELOPMENT_TEAM/d' {} +
+          
+          # 3. Вписываем железные правила сборки без сертификата в конфиг Flutter
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
           
       - name: Установка CocoaPods
         script: |
@@ -41,7 +46,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - mr.hilaev.fu@gmail.com # ⚠️ Не забудь вписать сюда свою почту перед коммитом!
+          - mr.hilaev.fu@gmail.com
         notify:
           success: true
           failure: true
