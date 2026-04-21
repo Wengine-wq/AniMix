@@ -1,11 +1,11 @@
-name: Build iOS Unsigned IPA
+name: Build iOS Unsigned ipa
 
 # 🔥 Бронебойный триггер: позволяет запускать сборку вручную по кнопке на сайте GitHub
 on: [workflow_dispatch]
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-latest
     
     steps:
       - name: 📥 Скачивание кода твоего проекта
@@ -19,6 +19,23 @@ jobs:
 
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
+
+      - name: 🕵️ Магия обхода блокировки Flutter (Fake Security)
+        run: |
+          # Flutter жестко блокирует сборку (даже --config-only) до запуска Xcode, 
+          # если в системе физически нет сертификата. Создаем фейк!
+          mkdir -p $HOME/fake_bin
+          cat << 'EOF' > $HOME/fake_bin/security
+          #!/bin/bash
+          if [[ "$*" == *"find-identity"* ]]; then
+            echo "  1) 1234567890ABCDEF1234567890ABCDEF12345678 \"Apple Development: Fake\""
+            echo "     1 valid identities found"
+            exit 0
+          fi
+          exec /usr/bin/security "$@"
+          EOF
+          chmod +x $HOME/fake_bin/security
+          echo "$HOME/fake_bin" >> $GITHUB_PATH
 
       - name: 🍎 Отключение подписи во Xcode (Надежный Ruby Xcodeproj)
         run: |
