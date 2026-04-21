@@ -1,0 +1,62 @@
+name: Build iOS Unsigned IPA
+
+# Этот триггер позволяет запускать сборку вручную по кнопке на сайте GitHub
+on: [workflow_dispatch]
+
+jobs:
+  build-ios:
+    # Запрашиваем бесплатный Mac-сервер (используем стабильную 14-ю версию macOS, чтобы избежать багов Xcode 16)
+    runs-on: macos-14
+    
+    steps:
+      - name: 📥 Скачивание кода твоего проекта
+        uses: actions/checkout@v4
+
+      - name: 🐦 Установка Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: 📦 Установка зависимостей пакетов
+        run: flutter pub get
+
+      - name: 🍎 Отключение проверки сертификатов во Flutter (Часть 1)
+        run: |
+          # Меняем com.example на нормальный, так как Apple блокирует example
+          find ios -type f -name "project.pbxproj" -exec sed -i '' 's/com.example.animix/app.animix.ios/g' {} +
+          
+          # Заставляем Flutter сгенерировать недостающие iOS-файлы (включая Podfile), которых нет на Windows
+          flutter build ios --config-only
+          
+          # Дописываем железные правила в конфиг Flutter
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
+
+      - name: 🍏 Авто-патч Podfile и установка CocoaPods (Часть 2)
+        run: |
+          cd ios
+          # Внедряем фикс сертификатов прямо в сгенерированный Podfile с помощью скрипта (чтобы не делать это руками)
+          awk '/flutter_additional_ios_build_settings\(target\)/ { print; print "    target.build_configurations.each do |config|\n      config.build_settings[\x27CODE_SIGNING_ALLOWED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGNING_REQUIRED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGN_IDENTITY\x27] = \x27-\x27\n      config.build_settings[\x27EXPANDED_CODE_SIGN_IDENTITY\x27] = \x27-\x27\n    end"; next }1' Podfile > Podfile.tmp && mv Podfile.tmp Podfile
+          
+          # Устанавливаем плагины
+          pod install --repo-update
+
+      - name: 🔨 Сборка iOS приложения без подписи
+        run: flutter build ios --release --no-codesign
+
+      - name: 📦 Упаковка в файл .ipa
+        run: |
+          cd build/ios/iphoneos/
+          mkdir -p Payload
+          mv Runner.app Payload/
+          zip -qq -r Animix.ipa Payload
+
+      - name: 🚀 Загрузка готового файла
+        uses: actions/upload-artifact@v4
+        with:
+          name: Animix_iOS_App
+          path: build/ios/iphoneos/Animix.ipa
+          retention-days: 7
