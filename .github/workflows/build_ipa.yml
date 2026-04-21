@@ -1,11 +1,8 @@
-name: Build iOS Unsigned IPA
-
-# Этот триггер позволяет запускать сборку вручную по кнопке на сайте GitHub
+# 🔥 Бронебойный триггер: позволяет запускать сборку вручную по кнопке на сайте GitHub
 on: [workflow_dispatch]
 
 jobs:
   build-ios:
-    # Запрашиваем бесплатный Mac-сервер (используем стабильную 14-ю версию macOS, чтобы избежать багов Xcode 16)
     runs-on: macos-14
     
     steps:
@@ -21,24 +18,45 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
-      - name: 🍎 Отключение проверки сертификатов во Flutter (Часть 1)
+      - name: 🕵️ Магия обхода блокировки Flutter (Fake Security)
+        run: |
+          # Flutter жестко блокирует сборку до запуска Xcode, если в системе физически нет сертификата.
+          # Создаем фейковую системную команду, чтобы обмануть Flutter!
+          mkdir -p $HOME/fake_bin
+          cat << 'EOF' > $HOME/fake_bin/security
+          #!/bin/bash
+          if [[ "$*" == *"find-identity"* ]]; then
+            echo "  1) 1234567890ABCDEF1234567890ABCDEF12345678 \"Apple Development: Fake\""
+            echo "     1 valid identities found"
+            exit 0
+          fi
+          exec /usr/bin/security "$@"
+          EOF
+          chmod +x $HOME/fake_bin/security
+          echo "$HOME/fake_bin" >> $GITHUB_PATH
+
+      - name: 🍎 Отключение проверки сертификатов во Xcode (Часть 1)
         run: |
           # Меняем com.example на нормальный, так как Apple блокирует example
           find ios -type f -name "project.pbxproj" -exec sed -i '' 's/com.example.animix/app.animix.ios/g' {} +
           
-          # Заставляем Flutter сгенерировать недостающие iOS-файлы (включая Podfile), которых нет на Windows
+          # Заставляем Flutter сгенерировать недостающие iOS-файлы
           flutter build ios --config-only
+          
+          # Жестко вырезаем все упоминания сертификатов из файла проекта Xcode
+          find ios -type f -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*";/CODE_SIGN_IDENTITY = "";/g' {} +
+          find ios -type f -name "project.pbxproj" -exec sed -i '' '/DEVELOPMENT_TEAM/d' {} +
           
           # Дописываем железные правила в конфиг Flutter
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
-          echo "EXPANDED_CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
       - name: 🍏 Авто-патч Podfile и установка CocoaPods (Часть 2)
         run: |
           cd ios
-          # Внедряем фикс сертификатов прямо в сгенерированный Podfile с помощью скрипта (чтобы не делать это руками)
+          # Внедряем фикс сертификатов прямо в сгенерированный Podfile
           awk '/flutter_additional_ios_build_settings\(target\)/ { print; print "    target.build_configurations.each do |config|\n      config.build_settings[\x27CODE_SIGNING_ALLOWED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGNING_REQUIRED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGN_IDENTITY\x27] = \x27-\x27\n      config.build_settings[\x27EXPANDED_CODE_SIGN_IDENTITY\x27] = \x27-\x27\n    end"; next }1' Podfile > Podfile.tmp && mv Podfile.tmp Podfile
           
           # Устанавливаем плагины
