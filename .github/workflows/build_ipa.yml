@@ -1,3 +1,5 @@
+name: Build iOS Unsigned IPA
+
 # 🔥 Бронебойный триггер: позволяет запускать сборку вручную по кнопке на сайте GitHub
 on: [workflow_dispatch]
 
@@ -56,8 +58,14 @@ jobs:
       - name: 🍏 Авто-патч Podfile и установка CocoaPods (Часть 2)
         run: |
           cd ios
-          # Внедряем фикс сертификатов прямо в сгенерированный Podfile
-          awk '/flutter_additional_ios_build_settings\(target\)/ { print; print "    target.build_configurations.each do |config|\n      config.build_settings[\x27CODE_SIGNING_ALLOWED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGNING_REQUIRED\x27] = \x27NO\x27\n      config.build_settings[\x27CODE_SIGN_IDENTITY\x27] = \x27-\x27\n      config.build_settings[\x27EXPANDED_CODE_SIGN_IDENTITY\x27] = \x27-\x27\n    end"; next }1' Podfile > Podfile.tmp && mv Podfile.tmp Podfile
+          # Внедряем фикс сертификатов с помощью надежного скрипта на Ruby
+          cat << 'EOF' > patch_podfile.rb
+          text = File.read('Podfile')
+          text = text.gsub(/flutter_additional_ios_build_settings\(target\)/, "flutter_additional_ios_build_settings(target)\n    target.build_configurations.each do |config|\n      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\n      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'\n      config.build_settings['CODE_SIGN_IDENTITY'] = '-'\n      config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = '-'\n    end")
+          File.write('Podfile', text)
+          EOF
+          ruby patch_podfile.rb
+          rm patch_podfile.rb
           
           # Устанавливаем плагины
           pod install --repo-update
