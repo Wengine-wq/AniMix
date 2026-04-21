@@ -45,6 +45,10 @@ jobs:
           # Заставляем Flutter сгенерировать недостающие iOS-файлы
           flutter build ios --config-only
           
+          # 🔥 ГЛАВНЫЙ ФИКС ДЛЯ XCODE: Отключаем автоматическую подпись, из-за которой падал билд!
+          find ios -type f -name "project.pbxproj" -exec sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' {} +
+          find ios -type f -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
+          
           # Жестко вырезаем все упоминания сертификатов из файла проекта Xcode
           find ios -type f -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*";/CODE_SIGN_IDENTITY = "";/g' {} +
           find ios -type f -name "project.pbxproj" -exec sed -i '' '/DEVELOPMENT_TEAM/d' {} +
@@ -52,8 +56,8 @@ jobs:
           # Дописываем железные правила в конфиг Flutter
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
-          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=-" >> ios/Flutter/Release.xcconfig
 
       - name: 🍏 Авто-патч Podfile и установка CocoaPods (Часть 2)
         run: |
