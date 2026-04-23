@@ -1,4 +1,4 @@
-name: Build iOS Unsigned IPA (Clean Build)
+name: Build iOS Unsigned IPA (Raw Xcodebuild)
 
 on: [workflow_dispatch]
 
@@ -21,10 +21,12 @@ jobs:
 
       - name: 📝 Восстановление .env из загруженного файла
         run: |
+          # Ищем env_file именно в корне проекта и делаем из него скрытый .env
           if [ -f "env_file" ]; then
             mv env_file .env
-            echo "✅ Файл env_file переименован в .env"
+            echo "✅ Файл env_file найден в корне и переименован в .env"
           else
+            echo "⚠️ Файл env_file не найден в корне! Создаем пустую заглушку."
             touch .env
           fi
 
@@ -44,6 +46,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             SYMROOT="$(PWD)/../build/ios" \
+            PRODUCT_BUNDLE_IDENTIFIER="app.animix.ios" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED="NO" \
             CODE_SIGNING_ALLOWED="NO" \
