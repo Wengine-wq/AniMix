@@ -1,4 +1,4 @@
-name: Build iOS Unsigned IPA (Ad-Hoc Fix)
+name: Build iOS Unsigned IPA (Raw Xcodebuild)
 
 on: [workflow_dispatch]
 
@@ -19,73 +19,38 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
-      - name: 🍎 Отключение подписи во Xcode (Ad-Hoc Заглушка)
+      - name: 🍏 Фикс Bundle ID в ядре Flutter
         run: |
-          # Заставляем Flutter сгенерировать iOS-файлы
-          flutter build ios --config-only
-          
-          gem install xcodeproj
-          
-          cat << 'EOF' > patch_xcode.rb
-          require 'xcodeproj'
-          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
-          
-          project.targets.each do |target|
-            target.build_configurations.each do |config|
-              config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-              config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-              
-              # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Используем '-', а не пустоту
-              config.build_settings['CODE_SIGN_IDENTITY'] = '-'
-              config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = '-'
-              config.build_settings['DEVELOPMENT_TEAM'] = ''
-              config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
-              
-              if config.build_settings['PRODUCT_BUNDLE_IDENTIFIER']&.include?('com.example')
-                config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'app.animix.ios'
-              end
-            end
-          end
-          
-          if project.root_object.attributes['TargetAttributes']
-            project.root_object.attributes['TargetAttributes'].each do |_, attributes|
-              attributes['ProvisioningStyle'] = 'Manual'
-            end
-          end
-          
-          project.save
-          EOF
-          ruby patch_xcode.rb
+          # Жестко меняем com.example на нормальный ID прямо в исходнике конфигурации
+          sed -i '' 's/com.example.animix/app.animix.ios/g' ios/Flutter/AppInfo.xcconfig
 
-      - name: 🍏 Авто-патч Podfile и установка CocoaPods
+      - name: ⚙️ Генерация файлов Xcode (без попытки сборки)
+        run: flutter build ios --config-only
+
+      - name: 🍏 Установка CocoaPods
         run: |
           cd ios
-          # Обновляем патч для плагинов (Pods), чтобы они тоже использовали заглушку '-'
-          cat << 'EOF' > patch_podfile.rb
-          text = File.read('Podfile')
-          replacement = <<~RUBY
-          flutter_additional_ios_build_settings(target)
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-                config.build_settings['CODE_SIGN_IDENTITY'] = '-'
-                config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = '-'
-                config.build_settings['DEVELOPMENT_TEAM'] = ''
-              end
-          RUBY
-          text = text.gsub(/flutter_additional_ios_build_settings\(target\)/, replacement.strip)
-          File.write('Podfile', text)
-          EOF
-          ruby patch_podfile.rb
-          
           pod install --repo-update
 
-      - name: 🔨 Сборка iOS приложения (No Codesign)
-        run: flutter build ios --release --no-codesign
+      - name: 🔨 Прямая сборка через xcodebuild (Обход Flutter CLI)
+        run: |
+          cd ios
+          # Вызываем нативный компилятор Apple и передаем ему флаги напрямую
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$(PWD)/../build/ios" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED="NO" \
+            CODE_SIGNING_ALLOWED="NO" \
+            DEVELOPMENT_TEAM="" \
+            build
 
       - name: 📦 Упаковка в файл .ipa
         run: |
-          cd build/ios/iphoneos/
+          # Путь изменился, так как xcodebuild кладет файлы немного иначе
+          cd build/ios/Release-iphoneos/
           mkdir -p Payload
           mv Runner.app Payload/
           zip -qq -r Animix.ipa Payload
@@ -94,5 +59,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Animix_iOS_App
-          path: build/ios/iphoneos/Animix.ipa
+          path: build/ios/Release-iphoneos/Animix.ipa
           retention-days: 7
