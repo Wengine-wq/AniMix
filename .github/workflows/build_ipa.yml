@@ -21,15 +21,14 @@ jobs:
 
       - name: 📝 Восстановление .env из загруженного файла
         run: |
+          # Ищем env_file именно в корне проекта и делаем из него скрытый .env
           if [ -f "env_file" ]; then
             mv env_file .env
-            echo "✅ Файл env_file найден и успешно переименован в .env"
+            echo "✅ Файл env_file найден в корне и переименован в .env"
           else
-            echo "⚠️ Файл env_file не найден! Создаем пустую заглушку."
+            echo "⚠️ Файл env_file не найден в корне! Создаем пустую заглушку."
             touch .env
           fi
-          mkdir -p assets
-          cp .env assets/.env
 
       - name: ⚙️ Генерация файлов Xcode
         run: flutter build ios --config-only --no-codesign
