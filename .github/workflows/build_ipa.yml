@@ -19,13 +19,9 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
-      - name: 🍏 Фикс Bundle ID в ядре Flutter
-        run: |
-          # Жестко меняем com.example на нормальный ID прямо в исходнике конфигурации
-          sed -i '' 's/com.example.animix/app.animix.ios/g' ios/Flutter/AppInfo.xcconfig
-
       - name: ⚙️ Генерация файлов Xcode (без попытки сборки)
-        run: flutter build ios --config-only
+        # Добавил --no-codesign сюда тоже, чтобы Flutter не паниковал заранее
+        run: flutter build ios --config-only --no-codesign
 
       - name: 🍏 Установка CocoaPods
         run: |
@@ -35,12 +31,13 @@ jobs:
       - name: 🔨 Прямая сборка через xcodebuild (Обход Flutter CLI)
         run: |
           cd ios
-          # Вызываем нативный компилятор Apple и передаем ему флаги напрямую
+          # Передаем PRODUCT_BUNDLE_IDENTIFIER напрямую компилятору
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -sdk iphoneos \
             SYMROOT="$(PWD)/../build/ios" \
+            PRODUCT_BUNDLE_IDENTIFIER="app.animix.ios" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED="NO" \
             CODE_SIGNING_ALLOWED="NO" \
@@ -49,7 +46,6 @@ jobs:
 
       - name: 📦 Упаковка в файл .ipa
         run: |
-          # Путь изменился, так как xcodebuild кладет файлы немного иначе
           cd build/ios/Release-iphoneos/
           mkdir -p Payload
           mv Runner.app Payload/
