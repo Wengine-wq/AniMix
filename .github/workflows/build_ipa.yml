@@ -19,8 +19,15 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
+      - name: 📝 Создание .env файла (Фикс для ассетов)
+        run: |
+          # Создаем файл .env в корне проекта, чтобы Flutter не паниковал.
+          # Если твоему приложению для работы нужны реальные ключи, впиши их сюда:
+          SHIKIMORI_CLIENT_ID=NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
+          SHIKIMORI_CLIENT_SECRET=y42YisbQoCYmHKtLUTS_XkLzOr5tnLAiEuTNHiyh71k
+          SHIKIMORI_REDIRECT_URI=urn:ietf:wg:oauth:2.0:oob
+
       - name: ⚙️ Генерация файлов Xcode (без попытки сборки)
-        # Добавил --no-codesign сюда тоже, чтобы Flutter не паниковал заранее
         run: flutter build ios --config-only --no-codesign
 
       - name: 🍏 Установка CocoaPods
@@ -31,7 +38,6 @@ jobs:
       - name: 🔨 Прямая сборка через xcodebuild (Обход Flutter CLI)
         run: |
           cd ios
-          # Передаем PRODUCT_BUNDLE_IDENTIFIER напрямую компилятору
           xcodebuild -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
