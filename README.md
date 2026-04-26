@@ -31,7 +31,7 @@
   <img width="1179" height="2556" alt="4" src="https://github.com/user-attachments/assets/79023787-cb7c-40c7-92e3-a7d8dac6a5f4" />
 </p>
 
-> ⚠️ Replace image paths with your actual screenshots.
+> ⚠️ Screenshots are provided for review, the content may look different depending on the version
 
 ---
 
@@ -107,7 +107,7 @@ The developer is not responsible for content provided by third-party sources.
   Находяться выше
 </p>
 
-> ⚠️ Замените пути к изображениям на реальные.
+> ⚠️ Скриншоты предоставлены для ознакомления, содержимое может выглядеть иначе в зависимости от версии.
 
 ---
 
