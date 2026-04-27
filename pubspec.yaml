@@ -35,10 +35,7 @@ dependencies:
   shared_preferences: ^2.3.0        
   path_provider: ^2.1.4    
   webview_flutter: ^4.9.0  
-  video_player_win: ^3.2.2       
-
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
+  video_player_win: ^3.2.2
   cupertino_icons: ^1.0.8
   flutter_web_auth_2: ^5.0.2
   flutter_secure_storage: ^10.0.0
@@ -50,11 +47,17 @@ dependencies:
   url_launcher: ^6.3.2
   cached_network_image: ^3.4.1
   flutter_svg: ^2.2.4
+  liquid_glass_widgets: ^0.9.0
+  webview_windows: ^0.4.0
+
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: ^0.13.1
+
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

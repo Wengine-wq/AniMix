@@ -1,5 +1,6 @@
 class ShikimoriComment {
   final int id;
+  final int? userId; // 🔥 Нужен для того, чтобы правильно отвечать на комментарий
   final String body;
   final String createdAt;
   final String? userNickname;
@@ -7,7 +8,9 @@ class ShikimoriComment {
 
   ShikimoriComment.fromJson(Map<String, dynamic> json)
       : id = json['id'],
-        body = json['body_html'] ?? json['body'] ?? '',
+        userId = json['user']?['id'],
+        // 🔥 Приоритет отдаем 'body' (чистым BB-кодам), чтобы наш парсер мог с ними работать
+        body = json['body'] ?? json['body_html'] ?? '',
         createdAt = json['created_at'] ?? '',
         userNickname = json['user']?['nickname'],
         userAvatar = _normalizeUrl(json['user']?['image']?['x160']);

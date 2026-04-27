@@ -1,14 +1,84 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../anime_detail/anime_detail_screen.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/user_provider.dart';
 
+// Цветовая палитра "Premium Violet"
+const Color _accentColor = Color(0xFF8B5CF6);
+const Color _accentLight = Color(0xFFA78BFA);
+const Color _bgColor = Color(0xFF09090B); // Глубокий темный фон
+
+// =====================================================================
+// УМНАЯ ОБЕРТКА ДЛЯ ЛИКВИДНОГО СТЕКЛА С ЗАТЕМНЕНИЕМ (TINT)
+// =====================================================================
+class _GlassUI extends StatelessWidget {
+  final Widget child;
+  final BorderRadius? borderRadius;
+  final BoxBorder? border;
+  final GlassQuality quality;
+  final EdgeInsetsGeometry? padding;
+  final Color? tintColor; // 🔥 Новый параметр для затемнения светлых участков
+
+  const _GlassUI({
+    required this.child,
+    this.borderRadius,
+    this.border,
+    this.quality = GlassQuality.standard,
+    this.padding,
+    this.tintColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Внутренний слой заливки поверх блюра (для читаемости текста)
+    Widget content = Container(
+      padding: padding ?? EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: tintColor ?? Colors.transparent,
+      ),
+      child: child,
+    );
+
+    // Само стекло
+    content = GlassContainer(
+      quality: quality,
+      child: content,
+    );
+
+    // Отрезаем углы
+    if (borderRadius != null) {
+      content = ClipRRect(
+        borderRadius: borderRadius!,
+        child: content,
+      );
+    }
+
+    // Рамка ПОВЕРХ стекла
+    if (border != null) {
+      content = Container(
+        foregroundDecoration: BoxDecoration(
+          borderRadius: borderRadius,
+          border: border,
+        ),
+        child: content,
+      );
+    }
+
+    return content;
+  }
+}
+
+// =====================================================================
+// ГЛАВНЫЙ ЭКРАН
+// =====================================================================
 class HomeScreen extends StatefulHookConsumerWidget {
   const HomeScreen({super.key});
 
@@ -16,31 +86,34 @@ class HomeScreen extends StatefulHookConsumerWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
-  Timer? _debounce; // Умная задержка для поиска
+  Timer? _debounce;
+  late AnimationController _bgAnimController;
 
   final List<ShikimoriAnime> _animes = [];
   int _page = 1;
   bool _isLoading = false;
   bool _hasMore = true;
 
-  // ==================== СОСТОЯНИЕ ФИЛЬТРОВ ====================
   String _searchQuery = '';
-  String _kind = '';        // '' = все, 'tv', 'movie', 'ova', 'ona', 'special', 'music'
-  String _status = '';      // '' = все, 'released', 'ongoing', 'anons'
-  
-  // 🔥 ФИКС ОШИБКИ 422: В Shikimori нет 'score', правильный ключ для оценки — это 'ranked'
-  String _order = 'popularity'; // popularity, ranked, name, aired_on
+  String _kind = '';        
+  String _status = '';      
+  String _order = 'popularity'; 
 
   @override
   void initState() {
     super.initState();
     _loadAnimes(reset: true);
     _scrollController.addListener(_onScroll);
+    
+    // Анимация для "дышащего" неонового фона
+    _bgAnimController = AnimationController(
+      vsync: this, 
+      duration: const Duration(seconds: 12),
+    )..repeat(reverse: true);
   }
 
-  // Полная перезагрузка при смене фильтров
   void _applyFilters() {
     setState(() {
       _animes.clear();
@@ -99,8 +172,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 400) {
       _loadAnimes();
     }
   }
@@ -113,12 +185,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   double _getChildAspectRatio(double width) {
-    return width > 900 ? 0.62 : 0.68;
+    return width > 900 ? 0.60 : 0.62; // Сделали карточки чуть выше для эстетики
   }
 
   void _openFilters() {
-    showCupertinoModalPopup(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) => _FilterBottomSheet(
         initialKind: _kind,
         initialStatus: _status,
@@ -135,19 +209,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  String _getOrderName(String order) {
-    switch (order) {
-      case 'popularity': return 'По популярности';
-      case 'ranked': return 'По оценке';
-      case 'name': return 'По алфавиту';
-      case 'aired_on': return 'Новинки';
-      default: return 'Сортировка';
-    }
-  }
-
   @override
   void dispose() {
     _debounce?.cancel();
+    _bgAnimController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -155,123 +220,154 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final bool hasActiveFilters = _kind.isNotEmpty || _status.isNotEmpty;
+    final bool hasActiveFilters = _kind.isNotEmpty || _status.isNotEmpty || _order != 'popularity';
 
-    return CupertinoPageScaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('AniMix', style: TextStyle(fontWeight: FontWeight.w600)),
-        backgroundColor: Color(0xFF1E1E1E),
-      ),
-      child: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          // ==================== ПОИСК И ФИЛЬТРЫ ====================
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Column(
-                children: [
-                  // 🔥 Умный поиск с Debouncer (не спамит API при каждом нажатии клавиши)
-                  CupertinoSearchTextField(
-                    placeholder: 'Поиск аниме...',
-                    onChanged: (value) {
-                      if (_debounce?.isActive ?? false) _debounce!.cancel();
-                      _debounce = Timer(const Duration(milliseconds: 600), () {
-                        _searchQuery = value.trim();
-                        _applyFilters();
-                      });
-                    },
-                    style: const TextStyle(color: CupertinoColors.white),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Кнопки открытия шторки фильтров
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+    return GlassBackdropScope(
+      child: Scaffold(
+        backgroundColor: _bgColor,
+        body: Stack(
+          children: [
+            // Анимированный Ambient-фон (Неоновые фиолетово-синие сферы)
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+                child: AnimatedBuilder(
+                  animation: _bgAnimController,
+                  builder: (context, child) {
+                    final value = _bgAnimController.value;
+                    return Stack(
                       children: [
-                        _buildFilterChip(
-                          label: hasActiveFilters ? 'Фильтры (Активны)' : 'Фильтры',
-                          icon: CupertinoIcons.slider_horizontal_3,
-                          isActive: hasActiveFilters,
-                          onTap: _openFilters,
+                        Positioned(
+                          top: -100 + (40 * value), left: -50 - (20 * value),
+                          child: Container(width: 400, height: 400, decoration: BoxDecoration(color: _accentColor.withOpacity(0.12), shape: BoxShape.circle)),
                         ),
-                        const SizedBox(width: 8),
-                        _buildFilterChip(
-                          label: _getOrderName(_order),
-                          icon: CupertinoIcons.sort_down,
-                          isActive: true,
-                          onTap: _openFilters,
+                        Positioned(
+                          top: 300 - (30 * value), right: -100 + (40 * value),
+                          child: Container(width: 450, height: 450, decoration: BoxDecoration(color: const Color(0xFF3B82F6).withOpacity(0.1), shape: BoxShape.circle)),
+                        ),
+                        Positioned(
+                          bottom: 0, left: 50 + (60 * value),
+                          child: Container(width: 350, height: 350, decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.12), shape: BoxShape.circle)),
+                        ),
+                      ],
+                    );
+                  }
+                ),
+              ),
+            ),
+
+            CustomScrollView(
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 20, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Эстетичный Header в стиле референса
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('AniMix', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1.2)),
+                                SizedBox(height: 2),
+                                Text('Твоя аниме-коллекция', style: TextStyle(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.w500)),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.05),
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: const Icon(CupertinoIcons.person_solid, color: Colors.white, size: 22),
+                            )
+                          ],
+                        ),
+                        const SizedBox(height: 28),
+
+                        // Поиск и кнопка фильтров (Рядом, как в референсе)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _GlassUI(
+                                quality: GlassQuality.standard,
+                                tintColor: Colors.black.withOpacity(0.4), // Темное стекло
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: CupertinoSearchTextField(
+                                  placeholder: 'Поиск тайтлов...',
+                                  backgroundColor: Colors.transparent,
+                                  onChanged: (value) {
+                                    if (_debounce?.isActive ?? false) _debounce!.cancel();
+                                    _debounce = Timer(const Duration(milliseconds: 600), () {
+                                      _searchQuery = value.trim();
+                                      _applyFilters();
+                                    });
+                                  },
+                                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                                  placeholderStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 16),
+                                  prefixIcon: Icon(CupertinoIcons.search, color: Colors.white.withOpacity(0.6), size: 20),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: _openFilters,
+                              child: _GlassUI(
+                                quality: GlassQuality.standard,
+                                tintColor: hasActiveFilters ? _accentColor.withOpacity(0.2) : Colors.black.withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: hasActiveFilters ? _accentColor.withOpacity(0.8) : Colors.white.withOpacity(0.08)),
+                                padding: const EdgeInsets.all(14),
+                                child: Stack(
+                                  children: [
+                                    Icon(CupertinoIcons.slider_horizontal_3, color: hasActiveFilters ? Colors.white : Colors.white.withOpacity(0.8), size: 22),
+                                    if (hasActiveFilters)
+                                      Positioned(
+                                        right: 0, top: 0,
+                                        child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: _accentColor, shape: BoxShape.circle)),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                ),
 
-          // ==================== ГРИД С АНИМЕ ====================
-          SliverPadding(
-            padding: const EdgeInsets.all(12),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _getCrossAxisCount(screenWidth),
-                childAspectRatio: _getChildAspectRatio(screenWidth),
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (index == _animes.length) {
-                    return const Center(child: CupertinoActivityIndicator());
-                  }
-                  final anime = _animes[index];
-                  return _AnimeCard(anime: anime);
-                },
-                childCount: _animes.length + (_isLoading ? 1 : 0),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive
-              ? const Color(0xFFFF5722).withValues(alpha: 0.2)
-              : const Color(0xFF2A2A2A),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: isActive ? const Color(0xFFFF5722) : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: isActive ? const Color(0xFFFF5722) : CupertinoColors.white),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? const Color(0xFFFF5722) : CupertinoColors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: _getCrossAxisCount(screenWidth),
+                      childAspectRatio: _getChildAspectRatio(screenWidth),
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 20,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        if (index == _animes.length) {
+                          return const Center(child: CupertinoActivityIndicator());
+                        }
+                        return _AnimeCard(anime: _animes[index]);
+                      },
+                      childCount: _animes.length + (_isLoading ? 1 : 0),
+                    ),
+                  ),
+                ),
+                
+                const SliverToBoxAdapter(child: SizedBox(height: 120)), 
+              ],
             ),
           ],
         ),
@@ -280,7 +376,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-// ==================== УМНЫЕ ФИЛЬТРЫ (В СТИЛЕ ANIXART) ====================
+// =====================================================================
+// ШТОРКА ФИЛЬТРОВ
+// =====================================================================
 class _FilterBottomSheet extends StatefulWidget {
   final String initialKind;
   final String initialStatus;
@@ -313,141 +411,144 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      margin: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-          // Ползунок (ручка)
-          Center(
-            child: Container(
-              width: 40,
-              height: 5,
-              decoration: BoxDecoration(
-                color: CupertinoColors.systemGrey.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(10),
+    return _GlassUI(
+      quality: GlassQuality.premium,
+      tintColor: _bgColor.withOpacity(0.7), // Темная заливка шторки
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
+      border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 14),
+            Center(
+              child: Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Заголовок
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Фильтры', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () {
-                    setState(() {
-                      _kind = '';
-                      _status = '';
-                      _order = 'popularity';
-                    });
-                  },
-                  child: const Text('Сбросить', style: TextStyle(color: CupertinoColors.systemRed, fontSize: 16)),
-                )
-              ],
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Фильтры', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      setState(() {
+                        _kind = '';
+                        _status = '';
+                        _order = 'popularity';
+                      });
+                    },
+                    child: const Text('Сбросить', style: TextStyle(color: CupertinoColors.systemRed, fontSize: 16)),
+                  )
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: [
-                _buildSectionTitle('Сортировка'),
-                _buildWrap({
-                  'popularity': 'По популярности',
-                  'ranked': 'По оценке (Рейтингу)', // ← Исправлено 422
-                  'name': 'По алфавиту',
-                  'aired_on': 'Сначала новые',
-                }, _order, (v) => setState(() => _order = v)),
-                
-                const SizedBox(height: 30),
-                _buildSectionTitle('Статус'),
-                _buildWrap({
-                  '': 'Любой',
-                  'released': 'Вышло',
-                  'ongoing': 'Онгоинг',
-                  'anons': 'Анонс',
-                }, _status, (v) => setState(() => _status = v)),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                children: [
+                  _buildSectionTitle('Сортировка'),
+                  _buildWrap({
+                    'popularity': 'По популярности',
+                    'ranked': 'По оценке (Рейтингу)', 
+                    'name': 'По алфавиту',
+                    'aired_on': 'Сначала новые',
+                  }, _order, (v) => setState(() => _order = v)),
+                  
+                  const SizedBox(height: 32),
+                  _buildSectionTitle('Статус'),
+                  _buildWrap({
+                    '': 'Любой',
+                    'released': 'Вышло',
+                    'ongoing': 'Онгоинг',
+                    'anons': 'Анонс',
+                  }, _status, (v) => setState(() => _status = v)),
 
-                const SizedBox(height: 30),
-                _buildSectionTitle('Тип'),
-                _buildWrap({
-                  '': 'Все',
-                  'tv': 'TV Сериал',
-                  'movie': 'Фильм',
-                  'ova': 'OVA',
-                  'ona': 'ONA',
-                  'special': 'Спешл',
-                  'music': 'Клип',
-                }, _kind, (v) => setState(() => _kind = v)),
-                
-                const SizedBox(height: 40),
-              ],
+                  const SizedBox(height: 32),
+                  _buildSectionTitle('Тип'),
+                  _buildWrap({
+                    '': 'Все',
+                    'tv': 'TV Сериал',
+                    'movie': 'Фильм',
+                    'ova': 'OVA',
+                    'ona': 'ONA',
+                    'special': 'Спешл',
+                    'music': 'Клип',
+                  }, _kind, (v) => setState(() => _kind = v)),
+                  
+                  const SizedBox(height: 40),
+                ],
+              ),
             ),
-          ),
-          // Кнопка применить
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                child: CupertinoButton.filled(
-                  onPressed: () {
-                    widget.onApply(_kind, _status, _order);
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Применить фильтры', style: TextStyle(fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: GestureDetector(
+                onTap: () {
+                  widget.onApply(_kind, _status, _order);
+                  Navigator.pop(context);
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _accentColor,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: _accentColor.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: const Center(
+                    child: Text('Применить фильтры', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ),
-            ),
-          )
-        ],
+            )
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1.0),
       ),
     );
   }
 
   Widget _buildWrap(Map<String, String> items, String currentValue, Function(String) onSelect) {
     return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+      spacing: 12,
+      runSpacing: 12,
       children: items.entries.map((e) {
         final isActive = e.key == currentValue;
         return GestureDetector(
           onTap: () => onSelect(e.key),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: isActive ? const Color(0xFFFF5722).withValues(alpha: 0.2) : const Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isActive ? const Color(0xFFFF5722) : Colors.transparent, width: 1.5),
+          child: _GlassUI(
+            quality: GlassQuality.minimal, // Оптимизация для множества чипов
+            tintColor: isActive ? _accentColor.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isActive ? _accentColor : Colors.white.withOpacity(0.1), 
+              width: 1.5
             ),
             child: Text(
               e.value,
               style: TextStyle(
-                color: isActive ? const Color(0xFFFF5722) : CupertinoColors.white,
-                fontSize: 14,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                color: isActive ? _accentLight : Colors.white.withOpacity(0.9),
+                fontSize: 15,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ),
@@ -457,7 +558,9 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 }
 
-// ==================== КАРТОЧКА АНИМЕ ====================
+// =====================================================================
+// ПРЕМИАЛЬНАЯ КАРТОЧКА АНИМЕ
+// =====================================================================
 class _AnimeCard extends StatefulWidget {
   final ShikimoriAnime anime;
   const _AnimeCard({required this.anime});
@@ -473,11 +576,8 @@ class _AnimeCardState extends State<_AnimeCard> with SingleTickerProviderStateMi
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 180),
-      vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
+    _controller = AnimationController(duration: const Duration(milliseconds: 200), vsync: this);
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.03).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
   }
@@ -496,11 +596,11 @@ class _AnimeCardState extends State<_AnimeCard> with SingleTickerProviderStateMi
   @override
   Widget build(BuildContext context) {
     final score = widget.anime.score ?? 0.0;
-    final scoreColor = score >= 8.0
-        ? CupertinoColors.systemGreen
-        : score >= 6.0
-            ? CupertinoColors.systemOrange
-            : CupertinoColors.systemRed;
+    
+    // Форматирование статуса (эмуляция "Цены" как в референсе)
+    String displayStatus = 'Анонс';
+    if (widget.anime.status == 'released') displayStatus = 'Вышло';
+    if (widget.anime.status == 'ongoing') displayStatus = 'Онгоинг';
 
     return MouseRegion(
       onEnter: (_) => _onHover(true),
@@ -511,72 +611,51 @@ class _AnimeCardState extends State<_AnimeCard> with SingleTickerProviderStateMi
         onTapCancel: () => _controller.reverse(),
         onTap: () {
           Navigator.of(context).push(
-            CupertinoPageRoute(
-              builder: (_) => AnimeDetailScreen(animeId: widget.anime.id),
-            ),
+            CupertinoPageRoute(builder: (_) => AnimeDetailScreen(animeId: widget.anime.id)),
           );
         },
         child: AnimatedBuilder(
           animation: _scaleAnimation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _scaleAnimation.value,
-              child: child,
-            );
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Stack(
-              children: [
-                CachedNetworkImage(
-                  imageUrl: widget.anime.imageUrl ?? '',
-                  fit: BoxFit.cover,
-                  height: double.infinity,
-                  width: double.infinity,
-                  httpHeaders: const {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-                  },
-                  memCacheWidth: 600,
-                  memCacheHeight: 900,
-                  filterQuality: FilterQuality.high,
-                  placeholder: (context, url) => Container(
-                    color: CupertinoColors.systemGrey6,
-                    child: const Center(child: CupertinoActivityIndicator()),
+          builder: (context, child) => Transform.scale(scale: _scaleAnimation.value, child: child),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24), // Больше радиус скругления
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, 10)),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: widget.anime.imageUrl ?? '',
+                    fit: BoxFit.cover,
+                    memCacheWidth: 600,
+                    memCacheHeight: 900,
+                    placeholder: (_, __) => Container(color: const Color(0xFF1C1C1E)),
+                    errorWidget: (_, __, ___) => Container(color: const Color(0xFF1C1C1E), child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
                   ),
-                  errorWidget: (context, url, error) => Container(
-                    color: CupertinoColors.systemGrey6,
-                    child: const Icon(CupertinoIcons.photo, size: 48, color: CupertinoColors.systemGrey),
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: scoreColor.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: scoreColor.withValues(alpha: 0.4), blurRadius: 10)],
-                    ),
-                    child: Text(
-                      score.toStringAsFixed(1),
-                      style: const TextStyle(color: CupertinoColors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x00000000), Color(0xDD000000)],
+                  
+                  // 🔥 Градиентная подложка снизу, чтобы текст ВСЕГДА читался даже на белых картинках
+                  Positioned(
+                    bottom: 0, left: 0, right: 0,
+                    child: Container(
+                      height: 140,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black87, Colors.black],
+                        ),
                       ),
                     ),
+                  ),
+                    
+                  // Инфо-блок поверх градиента (в стиле Wanderlust)
+                  Positioned(
+                    bottom: 16, left: 16, right: 16,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -584,18 +663,45 @@ class _AnimeCardState extends State<_AnimeCard> with SingleTickerProviderStateMi
                           widget.anime.russian ?? widget.anime.name ?? 'Без названия',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: CupertinoColors.white, fontWeight: FontWeight.w600, fontSize: 15.5),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17, height: 1.1, letterSpacing: -0.3),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.anime.status ?? '',
-                          style: const TextStyle(color: CupertinoColors.systemGrey2, fontSize: 12.5),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            // Рейтинг в темном стекле (читается идеально)
+                            if (score > 0)
+                              _GlassUI(
+                                quality: GlassQuality.minimal, 
+                                tintColor: Colors.black.withOpacity(0.5), // Темный слой внутри стекла
+                                borderRadius: BorderRadius.circular(12),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(CupertinoIcons.star_fill, color: Color(0xFFFBBF24), size: 12), // Золотая звезда
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      score.toStringAsFixed(1),
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            
+                            const Spacer(),
+                            
+                            // Статус
+                            Text(
+                              displayStatus,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

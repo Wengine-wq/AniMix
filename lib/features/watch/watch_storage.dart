@@ -1,33 +1,32 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class WatchStorage {
-  static const _watchedKey = 'watched_episodes_';
-  static const _progressKey = 'progress_';
+  // Используем новые ключи (_v2_), чтобы сбросить старые сломанные типы
+  static const _watchedKey = 'watched_eps_v2_';
+  static const _progressKey = 'progress_v2_';
 
-  static Future<void> markEpisodeWatched(int animeId, int episodeNumber) async {
+  static Future<void> markEpisodeWatched(int animeId, String episodeNumber) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_watchedKey$animeId';
     final list = prefs.getStringList(key) ?? [];
-    if (!list.contains(episodeNumber.toString())) {
-      list.add(episodeNumber.toString());
+    if (!list.contains(episodeNumber)) {
+      list.add(episodeNumber);
       await prefs.setStringList(key, list);
     }
   }
 
-  static Future<List<int>> getWatchedEpisodes(int animeId) async {
+  static Future<List<String>> getWatchedEpisodes(int animeId) async {
     final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('$_watchedKey$animeId') ?? [];
-    return list.map(int.parse).toList()..sort();
+    return prefs.getStringList('$_watchedKey$animeId') ?? [];
   }
 
-  static Future<void> saveProgress(int animeId, int episodeNumber, Duration position) async {
+  static Future<void> saveProgress(int animeId, String episodeNumber, Duration position) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_progressKey${animeId}_$episodeNumber';
     await prefs.setInt(key, position.inSeconds);
   }
 
-  static Future<Duration?> getProgress(int animeId, int episodeNumber) async {
+  static Future<Duration?> getProgress(int animeId, String episodeNumber) async {
     final prefs = await SharedPreferences.getInstance();
     final seconds = prefs.getInt('$_progressKey${animeId}_$episodeNumber');
     return seconds != null ? Duration(seconds: seconds) : null;
