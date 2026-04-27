@@ -2,6 +2,7 @@ import 'shikimori_anime.dart';   // ← ОБЯЗАТЕЛЬНЫЙ ИМПОРТ
 
 class ShikimoriAnimeDetail {
   final int id;
+  final int? topicId; // 🔥 ДОБАВЛЕНО ДЛЯ КОММЕНТАРИЕВ
   final String? name;
   final String? russian;
   final String? english;
@@ -21,6 +22,7 @@ class ShikimoriAnimeDetail {
 
   ShikimoriAnimeDetail.fromJson(Map<String, dynamic> json)
       : id = json['id'] ?? 0,
+        topicId = json['topic_id'], // 🔥 ПАРСИМ TOPIC ID
         name = _safeString(json['name']),
         russian = _safeString(json['russian']),
         english = _safeString(json['english'] is List ? (json['english'] as List).join(', ') : json['english']),
@@ -61,11 +63,22 @@ class ShikimoriAnimeDetail {
   static String? _cleanDescription(dynamic value) {
     if (value == null) return null;
     String text = value.toString();
-    text = text.replaceAll(RegExp(r'\[character=\d+\]'), '');
-    text = text.replaceAll(RegExp(r'\[anime=\d+\]'), '');
-    text = text.replaceAll(RegExp(r'\[user=\d+\]'), '');
-    text = text.replaceAll(RegExp(r'\[/?\w+=\d+\]'), '');
-    return text.trim();
+
+    // 1. Идеально вычищаем весь сырой HTML (заменяем на пробелы, чтобы слова не слиплись)
+    text = text.replaceAll(RegExp(r'<[^>]*>'), ' ');
+
+    // 2. Убираем двойные скобки Шикимори для ссылок, оставляя только текст внутри ( [[Синигами]] -> Синигами )
+    text = text.replaceAllMapped(RegExp(r'\[\[(.*?)\]\]'), (Match m) => m[1] ?? '');
+
+    // 3. Вычищаем ВСЕ системные BB-теги Шикимори (открывающие и закрывающие)
+    // [character=123], [/character], [anime=..], [b], [/b], [spoiler] и т.д.
+    // 🔥 ВАЖНО: Обычные квадратные скобки с текстом или иероглифами (напр. [夜神月]) при этом сохраняются!
+    text = text.replaceAll(RegExp(r'\[/?(character|anime|manga|person|user|b|i|u|s|spoiler|quote|size|url)[^\]]*\]', caseSensitive: false), '');
+
+    // 4. Сжимаем множественные пробелы и переносы, оставшиеся после вырезания тегов
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return text.isEmpty ? null : text;
   }
 
   static String _buildFullImageUrl(String path) {

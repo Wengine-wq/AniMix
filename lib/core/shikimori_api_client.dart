@@ -7,12 +7,12 @@ import '../models/shikimori_anime_detail.dart';
 import '../models/shikimori_comment.dart';
 import '../models/shikimori_user.dart';
 import '../models/shikimori_history.dart';
-import '../providers/auth_provider.dart'; // ← Нужен для isLoggedInProvider
+import '../providers/auth_provider.dart'; 
 import 'secure_storage.dart';
 
 class ShikimoriApiClient {
   late final Dio _dio;
-  final Ref ref; // ← Добавили ссылку на Riverpod
+  final Ref ref;
 
   ShikimoriApiClient(this.ref) {
     _dio = Dio(BaseOptions(
@@ -34,24 +34,16 @@ class ShikimoriApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // 🔥 ГЛОБАЛЬНЫЙ ПЕРЕХВАТ 401 ОШИБКИ (Протухший токен)
         if (error.response?.statusCode == 401) {
-          debugPrint('❌ Ошибка 401: Токен истек. Сбрасываем сессию и выкидываем на экран входа.');
-          
-          // 1. Очищаем старые нерабочие токены
+          debugPrint('❌ Ошибка 401: Токен истек. Сбрасываем сессию.');
           await SecureStorage.clear();
-          
-          // 2. Инвалидируем стейт. AuthChecker в main.dart мгновенно среагирует 
-          // и перерисует приложение на LoginScreen
           ref.invalidate(isLoggedInProvider);
         }
-        
         return handler.next(error);
       },
     ));
   }
 
-  // ==================== СУЩЕСТВУЮЩИЕ МЕТОДЫ ====================
   Future<ShikimoriUser> getCurrentUser() async {
     final whoamiRes = await _dio.get('/api/users/whoami');
     final userId = whoamiRes.data['id'] as int;
@@ -84,11 +76,6 @@ class ShikimoriApiClient {
         })
         .where((url) => url.isNotEmpty)
         .toList();
-  }
-
-  Future<List<ShikimoriComment>> getComments(int animeId, {int page = 1}) async {
-    final res = await _dio.get('/api/animes/$animeId/comments', queryParameters: {'page': page, 'limit': 20});
-    return (res.data as List).map((json) => ShikimoriComment.fromJson(json)).toList();
   }
 
   Future<Map<String, dynamic>?> getUserRate(int animeId, {required int userId}) async {
@@ -131,15 +118,12 @@ class ShikimoriApiClient {
   Future<List<ShikimoriHistory>> getUserHistory(int userId, {int limit = 8}) async {
     try {
       final res = await _dio.get('/api/users/$userId/history', queryParameters: {'limit': limit});
-      return (res.data as List)
-          .map((json) => ShikimoriHistory.fromJson(json))
-          .toList();
+      return (res.data as List).map((json) => ShikimoriHistory.fromJson(json)).toList();
     } catch (e) {
       return [];
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД — Получение франшизы и связанных аниме
   Future<List<Map<String, dynamic>>> getRelatedAnimes(int animeId) async {
     try {
       final res = await _dio.get('/api/animes/$animeId/related');
@@ -147,5 +131,39 @@ class ShikimoriApiClient {
     } catch (e) {
       return [];
     }
+  }
+
+  // =====================================================================
+  // 💬 БЛОК КОММЕНТАРИЕВ (Работают строго с Topic)
+  // =====================================================================
+
+  Future<List<ShikimoriComment>> getComments(int topicId, {int page = 1}) async {
+    try {
+      final res = await _dio.get(
+        '/api/comments',
+        queryParameters: {
+          'commentable_id': topicId,
+          'commentable_type': 'Topic',
+          'limit': 30,
+          'page': page, // 🔥 Включаем поддержку пагинации
+          'desc': 1,    // 1 = сначала новые
+        },
+      );
+      return (res.data as List).map((c) => ShikimoriComment.fromJson(c)).toList();
+    } catch (e) {
+      debugPrint('Ошибка загрузки комментариев: $e');
+      return [];
+    }
+  }
+
+  Future<ShikimoriComment> postComment(int topicId, String text) async {
+    final res = await _dio.post('/api/comments', data: {
+      'comment': {
+        'body': text,
+        'commentable_id': topicId,
+        'commentable_type': 'Topic',
+      }
+    });
+    return ShikimoriComment.fromJson(res.data);
   }
 }

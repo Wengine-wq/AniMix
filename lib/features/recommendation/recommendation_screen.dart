@@ -1,9 +1,10 @@
 import 'dart:ui';
-import 'dart:math' as math; // ← ДОБАВЛЕН ДЛЯ СЛУЧАЙНОЙ ГЕНЕРАЦИИ
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart'; 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../models/shikimori_anime.dart';
 import '../../providers/user_provider.dart';
 import '../anime_detail/anime_detail_screen.dart';
@@ -204,6 +205,24 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
 
     return CupertinoPageScaffold(
       backgroundColor: const Color(0xFF0F0F0F),
+      // Нативная прозрачная навигационная панель с кнопкой фильтров
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Что посмотреть?', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        border: null,
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: _showFilters,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(CupertinoIcons.slider_horizontal_3, color: Colors.white, size: 18),
+          ),
+        ),
+      ),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -227,132 +246,123 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
             ),
           ),
 
-          // ==================== 2. ВЕРХНИЙ БАР ====================
+          // ==================== 2. АДАПТИВНАЯ ВЕРСТКА ====================
           SafeArea(
-            bottom: false,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Что посмотреть?', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: _showFilters,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(CupertinoIcons.slider_horizontal_3, color: Colors.white, size: 20),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+            bottom: false, // Отключаем нижнюю SafeArea для своего отступа
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Адаптация: Определяем, запущен ли апп на широком экране (Windows/iPad)
+                final isDesktop = constraints.maxWidth > 600;
+                // На ПК ограничиваем ширину карточки, чтобы она не была гигантской
+                final cardMaxWidth = isDesktop ? 420.0 : constraints.maxWidth;
 
-          // ==================== 3. СТОПКА КАРТ (АДАПТИВНАЯ) ====================
-          SafeArea(
-            child: Center( // 🔥 АДАПТИВНОСТЬ: Центрируем контейнер
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480), // 🔥 АДАПТИВНОСТЬ: Ограничиваем ширину для ПК
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 60, bottom: 100, left: 16, right: 16),
-                  child: Stack(
-                    children: [
-                      // ЗАДНЯЯ КАРТА (Индекс 1)
-                      if (_queue.length > 1)
-                        Positioned.fill(
-                          child: AnimatedScale(
-                            scale: 0.92,
-                            duration: const Duration(milliseconds: 300),
-                            child: AnimatedOpacity(
-                              opacity: 0.7,
-                              duration: const Duration(milliseconds: 300),
-                              child: _buildAnimeCard(_queue[1], swipeProgress: 0.0),
+                return Column(
+                  children: [
+                    // --- ЗОНА КАРТОЧЕК (Занимает всё оставшееся свободное место) ---
+                    Expanded(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: cardMaxWidth),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            child: Stack(
+                              children: [
+                                // ЗАДНЯЯ КАРТА (Индекс 1)
+                                if (_queue.length > 1)
+                                  Positioned.fill(
+                                    child: AnimatedScale(
+                                      scale: 0.92,
+                                      duration: const Duration(milliseconds: 300),
+                                      child: AnimatedOpacity(
+                                        opacity: 0.7,
+                                        duration: const Duration(milliseconds: 300),
+                                        child: _buildAnimeCard(_queue[1], swipeProgress: 0.0),
+                                      ),
+                                    ),
+                                  ),
+
+                                // ПЕРЕДНЯЯ КАРТА (Интерактивная)
+                                Positioned.fill(
+                                  child: Dismissible(
+                                    key: ValueKey(topAnime.id),
+                                    direction: DismissDirection.horizontal,
+                                    onUpdate: (details) {
+                                      setState(() {
+                                        _swipeProgress = details.direction == DismissDirection.startToEnd
+                                            ? details.progress  // Свайп вправо (Смотрю)
+                                            : -details.progress; // Свайп влево (Пропуск)
+                                      });
+                                    },
+                                    onDismissed: (direction) {
+                                      if (direction == DismissDirection.startToEnd) {
+                                        _onSwipeRight(topAnime);
+                                      } else {
+                                        _onSwipeLeft(topAnime);
+                                      }
+                                    },
+                                    child: AnimatedScale(
+                                      scale: 1.0,
+                                      duration: const Duration(milliseconds: 300),
+                                      child: _buildAnimeCard(topAnime, swipeProgress: _swipeProgress),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                      ),
+                    ),
 
-                      // ПЕРЕДНЯЯ КАРТА (Интерактивная)
-                      Positioned.fill(
-                        child: Dismissible(
-                          key: ValueKey(topAnime.id),
-                          direction: DismissDirection.horizontal,
-                          onUpdate: (details) {
-                            setState(() {
-                              _swipeProgress = details.direction == DismissDirection.startToEnd
-                                  ? details.progress  // Свайп вправо (Смотрю)
-                                  : -details.progress; // Свайп влево (Пропуск)
-                            });
-                          },
-                          onDismissed: (direction) {
-                            if (direction == DismissDirection.startToEnd) {
-                              _onSwipeRight(topAnime);
-                            } else {
-                              _onSwipeLeft(topAnime);
-                            }
-                          },
-                          child: AnimatedScale(
-                            scale: 1.0,
-                            duration: const Duration(milliseconds: 300),
-                            child: _buildAnimeCard(topAnime, swipeProgress: _swipeProgress),
+                    // --- ПАНЕЛЬ УПРАВЛЕНИЯ (Всегда прибита вниз и не уезжает) ---
+                    Container(
+                      width: double.infinity,
+                      // 🔥 КРИТИЧНЫЙ ФИКС: Отступ снизу для обхода LiquidGlassBar
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).padding.bottom + 110,
+                        top: 16,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: cardMaxWidth),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Кнопка СКИП (Крестик)
+                              _buildActionButton(
+                                icon: CupertinoIcons.xmark,
+                                color: CupertinoColors.systemRed,
+                                onTap: () => _onSwipeLeft(topAnime),
+                              ),
+                              const SizedBox(width: 24),
+                              // Кнопка СМОТРЮ (Сердечко)
+                              _buildActionButton(
+                                icon: CupertinoIcons.heart_fill,
+                                color: CupertinoColors.systemGreen,
+                                onTap: () => _onSwipeRight(topAnime),
+                                size: 76,
+                                iconSize: 36,
+                              ),
+                              const SizedBox(width: 24),
+                              // Кнопка ИНФО (Оранжевая)
+                              _buildActionButton(
+                                icon: CupertinoIcons.info,
+                                color: const Color(0xFFFF5722),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    CupertinoPageRoute(builder: (_) => AnimeDetailScreen(animeId: topAnime.id)),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ==================== 4. КНОПКИ УПРАВЛЕНИЯ ====================
-          Positioned(
-            bottom: 30,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Кнопка СКИП (Крестик)
-                    _buildActionButton(
-                      icon: CupertinoIcons.xmark,
-                      color: CupertinoColors.systemRed,
-                      onTap: () => _onSwipeLeft(topAnime),
-                    ),
-                    const SizedBox(width: 24),
-                    // Кнопка СМОТРЮ (Сердечко)
-                    _buildActionButton(
-                      icon: CupertinoIcons.heart_fill,
-                      color: CupertinoColors.systemGreen,
-                      onTap: () => _onSwipeRight(topAnime),
-                      size: 76,
-                      iconSize: 36,
-                    ),
-                    const SizedBox(width: 24),
-                    // Кнопка ИНФО (Оранжевая)
-                    _buildActionButton(
-                      icon: CupertinoIcons.info,
-                      color: const Color(0xFFFF5722),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          CupertinoPageRoute(builder: (_) => AnimeDetailScreen(animeId: topAnime.id)),
-                        );
-                      },
                     ),
                   ],
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
