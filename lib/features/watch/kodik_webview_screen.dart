@@ -32,19 +32,12 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
   bool _isWindowsInitialized = false;
   bool _isPlayerInjected = false;
 
-  // 🔥 Четкое разделение платформ. iOS/Android — в приоритете.
   bool get _isMobile => Platform.isIOS || Platform.isAndroid;
   bool get _isWindows => Platform.isWindows;
 
-  // =====================================================================
-  // СКРИПТЫ: ADBLOCK И ИСТОРИЯ
-  // =====================================================================
   final String _adBlockScript = '''
     var initSafeAdBlock = function() {
-        // Жестко блокируем попытки открыть новые вкладки (кликандеры)
         window.open = function() { console.log("AdBlock: popup blocked safely"); return null; };
-        
-        // Убиваем клики по рекламным ссылкам-переходам
         document.addEventListener('click', function(e) {
             var link = e.target.closest('a');
             if (link && link.target === '_blank') {
@@ -63,56 +56,44 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
             var data = e.data;
             if (typeof data === 'string') data = JSON.parse(data);
             
-            // Видео закончилось
             if (data && data.key === 'kodik_player_video_ended') {
                 if (window.AnimeApp) window.AnimeApp.postMessage('watched');
-                if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage('watched');
             }
             
-            // Сохраняем таймкоды
             if (data && data.key === 'kodik_player_time_update') {
                 if (data.value > maxTime) maxTime = data.value;
                 
                 var currentSec = Math.floor(data.value);
                 if (Math.abs(currentSec - lastTimeMsg) >= 5) {
                     lastTimeMsg = currentSec;
-                    var msg = 'time:' + currentSec;
-                    if (window.AnimeApp) window.AnimeApp.postMessage(msg);
-                    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(msg);
+                    if (window.AnimeApp) window.AnimeApp.postMessage('time:' + currentSec);
                 }
 
-                // 900 сек (15 минут) - достаточно для отметки "Просмотрено"
                 if (maxTime > 900) { 
                     if (window.AnimeApp) window.AnimeApp.postMessage('watched');
-                    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage('watched');
                 }
             }
         } catch(e) {}
     });
   ''';
 
-  // =====================================================================
-  // ИНИЦИАЛИЗАЦИЯ
-  // =====================================================================
   @override
   void initState() {
     super.initState();
-    
     if (_isMobile) {
       _initMobileWebview();
     } else if (_isWindows) {
       _initWindowsWebview();
     } else {
-      // Заглушка для Mac/Linux, чтобы ничего не крашилось
       _launchExternalBrowser();
     }
   }
 
-  // 📱 ЛОГИКА ДЛЯ ИСКОННЫХ ПЛАТФОРМ (iOS / Android)
   void _initMobileWebview() {
     _mobileController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF000000))
+      // Намеренно не меняем UserAgent, чтобы iOS использовал свой нативный плеер
       ..addJavaScriptChannel('AnimeApp', onMessageReceived: (msg) {
         _handlePlayerMessage(msg.message);
       })
@@ -120,7 +101,6 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
         onNavigationRequest: (request) {
           if (request.isMainFrame) {
             final url = request.url.toLowerCase();
-            // Пропускаем только видео, блокируем редиректы на казино
             if (url.contains('casino') || url.contains('bet') || url.contains('promo')) {
               return NavigationDecision.prevent;
             }
@@ -131,58 +111,46 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
           _mobileController!.runJavaScript(_adBlockScript);
           _mobileController!.runJavaScript(_observerScript);
         }
-      ))
-      ..loadRequest(
-        Uri.parse(widget.kodikEmbedUrl),
-        // Обходим блокировку балансера "Контент недоступен"
-        headers: {
-          'Referer': 'https://yani.tv/',
-          'Origin': 'https://yani.tv',
-        },
-      );
+      ));
+
+    // Прямая загрузка с передачей заголовков Referer и Origin для обхода защиты балансера
+    _mobileController!.loadRequest(
+      Uri.parse(widget.kodikEmbedUrl),
+      headers: {
+        'Referer': 'https://yani.tv/',
+        'Origin': 'https://yani.tv',
+      },
+    );
   }
 
-  // 💻 ЛОГИКА ИСКЛЮЧИТЕЛЬНО ДЛЯ WINDOWS
   Future<void> _initWindowsWebview() async {
     try {
       await _windowsController.initialize();
-      
       _windowsController.webMessage.listen((msg) {
         _handlePlayerMessage(msg.toString());
       });
-      
       _windowsController.loadingState.listen((state) async {
         if (state == LoadingState.navigationCompleted && !_isPlayerInjected) {
           _isPlayerInjected = true;
-          
           await _windowsController.executeScript('''
             document.body.style.margin = '0';
-            document.body.style.padding = '0';
             document.body.style.backgroundColor = '#000000';
             document.body.style.overflow = 'hidden';
-            document.body.innerHTML = '<iframe src="${widget.kodikEmbedUrl}" style="position:fixed; top:0; left:0; bottom:0; right:0; width:100%; height:100%; border:none; margin:0; padding:0; z-index:999999;" allowfullscreen></iframe>';
+            document.body.innerHTML = '<iframe src="${widget.kodikEmbedUrl}" style="position:fixed; top:0; left:0; width:100%; height:100%; border:none;" allowfullscreen></iframe>';
           ''');
-          
           await _windowsController.executeScript(_adBlockScript);
           await _windowsController.executeScript(_observerScript);
         }
       });
-
-      // Грузим домен Yani для прохождения защиты от хотлинка
       await _windowsController.loadUrl('https://yani.tv/404'); 
-      
-      if (mounted) {
-        setState(() => _isWindowsInitialized = true);
-      }
+      if (mounted) setState(() => _isWindowsInitialized = true);
     } catch (e) {
-      debugPrint('Ошибка инициализации webview_windows: $e');
+      debugPrint('Ошибка Windows webview: $e');
     }
   }
 
-  // Обработка сообщений от плеера (Таймкод и Глазик)
   void _handlePlayerMessage(String msg) {
     if (widget.animeId == null || widget.episodeNumber == null) return;
-    
     if (msg == 'watched') {
       WatchStorage.markEpisodeWatched(widget.animeId!, widget.episodeNumber!);
     } else if (msg.startsWith('time:')) {
@@ -202,9 +170,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
 
   @override
   void dispose() {
-    if (_isWindows) {
-      _windowsController.dispose();
-    }
+    if (_isWindows) _windowsController.dispose();
     super.dispose();
   }
 
@@ -228,28 +194,22 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
   }
 
   Widget _buildBody() {
-    if (_isMobile) {
-      return WebViewWidget(controller: _mobileController!);
-    } else if (_isWindows) {
-      return _isWindowsInitialized
-          ? Webview(_windowsController)
-          : const Center(child: CupertinoActivityIndicator());
-    } else {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(CupertinoIcons.device_laptop, color: Colors.white, size: 60),
-            const SizedBox(height: 20),
-            const Text('Открыто во внешнем браузере', style: TextStyle(color: Colors.white, fontSize: 16)),
-            const SizedBox(height: 20),
-            CupertinoButton.filled(
-              onPressed: _launchExternalBrowser,
-              child: const Text('Открыть снова'),
-            )
-          ],
-        ),
-      );
-    }
+    if (_isMobile) return WebViewWidget(controller: _mobileController!);
+    if (_isWindows) return _isWindowsInitialized ? Webview(_windowsController) : const Center(child: CupertinoActivityIndicator());
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(CupertinoIcons.device_laptop, color: Colors.white, size: 60),
+          const SizedBox(height: 20),
+          const Text('Открыто во внешнем браузере', style: TextStyle(color: Colors.white, fontSize: 16)),
+          const SizedBox(height: 20),
+          CupertinoButton.filled(
+            onPressed: _launchExternalBrowser, 
+            child: const Text('Открыть')
+          )
+        ],
+      ),
+    );
   }
 }
