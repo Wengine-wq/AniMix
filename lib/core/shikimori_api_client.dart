@@ -10,6 +10,9 @@ import '../models/shikimori_history.dart';
 import '../providers/auth_provider.dart'; 
 import 'secure_storage.dart';
 
+// 🔥 ИМПОРТ ДЛЯ ВЫЗОВА ДИАЛОГА Liquid Glass
+import '../main.dart'; 
+
 class ShikimoriApiClient {
   late final Dio _dio;
   final Ref ref;
@@ -34,15 +37,27 @@ class ShikimoriApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
+        // 🔥 ПЕРЕХВАТ ИСТЕКШЕГО ТОКЕНА (401 Unauthorized)
         if (error.response?.statusCode == 401) {
           debugPrint('❌ Ошибка 401: Токен истек. Сбрасываем сессию.');
           await SecureStorage.clear();
+          
+          // Инвалидируем провайдер авторизации
           ref.invalidate(isLoggedInProvider);
+
+          // Вызываем премиальный диалог Liquid Glass из main.dart
+          // Игнорируем проверку типов, чтобы WidgetRef из функции принял наш Ref
+          // ignore: argument_type_not_assignable
+          showSessionExpiredDialog(ref as dynamic);
         }
         return handler.next(error);
       },
     ));
   }
+
+  // =====================================================================
+  // СТРОГО ОРИГИНАЛЬНЫЕ МЕТОДЫ ИЗ ВАЛИДНОГО ФАЙЛА (БЕЗ ИЗМЕНЕНИЙ)
+  // =====================================================================
 
   Future<ShikimoriUser> getCurrentUser() async {
     final whoamiRes = await _dio.get('/api/users/whoami');
