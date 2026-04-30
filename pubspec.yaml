@@ -83,13 +83,12 @@ flutter:
   assets:
     - .env
     - assets/icon/
-flutter_launcher_icons:
+    
+flutter_icons:
   android: "launcher_icon"
   ios: true
-  windows:
-    generate: true
-    image_path: "assets/icon/app_icon.png"
   image_path: "assets/icon/app_icon.png"
+  remove_alpha_ios: true # Важно для App Store
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
