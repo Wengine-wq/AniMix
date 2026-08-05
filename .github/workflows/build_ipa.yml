@@ -19,14 +19,10 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
-      - name: 📝 Восстановление .env из загруженного файла
+      - name: 🔐 Проверка конфигурации приложения
         run: |
-          if [ -f "env_file" ]; then
-            mv env_file .env
-            echo "✅ Файл env_file переименован в .env"
-          else
-            touch .env
-          fi
+          test -f .env
+          echo "✅ .env найден в checkout"
 
       - name: ⚙️ Генерация файлов Xcode
         run: flutter build ios --config-only --no-codesign
@@ -34,7 +30,9 @@ jobs:
       - name: 🍏 Установка CocoaPods
         run: |
           cd ios
-          pod install --repo-update
+          pod install --repo-update --clean-install
+          test -f Pods/Manifest.lock
+          echo "✅ CocoaPods Manifest.lock создан"
 
       - name: 🔨 Прямая сборка через xcodebuild
         run: |
