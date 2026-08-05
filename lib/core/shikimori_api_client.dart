@@ -7,15 +7,18 @@ import '../models/shikimori_anime_detail.dart';
 import '../models/shikimori_comment.dart';
 import '../models/shikimori_user.dart';
 import '../models/shikimori_history.dart';
-import '../providers/auth_provider.dart'; 
+import '../providers/auth_provider.dart';
 import 'secure_storage.dart';
 
 // 🔥 ИМПОРТ ДЛЯ ВЫЗОВА ДИАЛОГА Liquid Glass
-import '../main.dart'; 
+import '../main.dart';
 
 class ShikimoriApiClient {
   late final Dio _dio;
   final Ref ref;
+
+  // 🔥 ЗАЩИТА ОТ КРАША: Флаг для предотвращения спама диалогами при множественных 401 ошибках
+  static bool _isSessionExpiredHandled = false;
 
   ShikimoriApiClient(this.ref) {
     _dio = Dio(BaseOptions(
@@ -39,16 +42,26 @@ class ShikimoriApiClient {
       onError: (error, handler) async {
         // 🔥 ПЕРЕХВАТ ИСТЕКШЕГО ТОКЕНА (401 Unauthorized)
         if (error.response?.statusCode == 401) {
-          debugPrint('❌ Ошибка 401: Токен истек. Сбрасываем сессию.');
-          await SecureStorage.clear();
-          
-          // Инвалидируем провайдер авторизации
-          ref.invalidate(isLoggedInProvider);
+          // Проверяем, не обрабатываем ли мы уже выход из аккаунта.
+          // Это спасет от краша, если 5 запросов одновременно вернут 401.
+          if (!_isSessionExpiredHandled) {
+            _isSessionExpiredHandled = true; // Блокируем остальные ошибки
 
-          // Вызываем премиальный диалог Liquid Glass из main.dart
-          // Игнорируем проверку типов, чтобы WidgetRef из функции принял наш Ref
-          // ignore: argument_type_not_assignable
-          showSessionExpiredDialog(ref as dynamic);
+            debugPrint('❌ Ошибка 401: Токен истек или отозван. Сбрасываем сессию.');
+            await SecureStorage.clear();
+
+            // Инвалидируем провайдер авторизации (перекинет на экран входа)
+            ref.invalidate(isLoggedInProvider);
+
+            // Вызываем премиальный диалог Liquid Glass из main.dart
+            // ignore: argument_type_not_assignable
+            showSessionExpiredDialog(ref as dynamic);
+
+            // Снимаем блокировку через 3 секунды, когда интерфейс уже перейдет на экран логина
+            Future.delayed(const Duration(seconds: 3), () {
+              _isSessionExpiredHandled = false;
+            });
+          }
         }
         return handler.next(error);
       },
@@ -117,8 +130,8 @@ class ShikimoriApiClient {
         'target_id': animeId,
         'target_type': 'Anime',
         'status': status,
-        if (score != null) 'score': score,
-        if (episodes != null) 'episodes': episodes,
+        'score': ?score,
+        'episodes': ?episodes,
         if (rateId == null) 'user_id': userId,
       }
     };

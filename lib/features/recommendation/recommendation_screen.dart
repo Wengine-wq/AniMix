@@ -1,11 +1,12 @@
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'; 
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../models/shikimori_anime.dart';
+import '../../widgets/smart_anime_poster.dart';
 import '../../providers/user_provider.dart';
 import '../anime_detail/anime_detail_screen.dart';
 
@@ -13,19 +14,20 @@ class RecommendationScreen extends StatefulHookConsumerWidget {
   const RecommendationScreen({super.key});
 
   @override
-  ConsumerState<RecommendationScreen> createState() => _RecommendationScreenState();
+  ConsumerState<RecommendationScreen> createState() =>
+      _RecommendationScreenState();
 }
 
 class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
   final List<ShikimoriAnime> _queue = [];
   bool _isLoading = false;
-  
+
   // Прогресс свайпа (от -1.0 до 1.0) для отображения градиентов
   double _swipeProgress = 0.0;
-  
+
   // Настройки подборки
   String _currentKind = 'tv'; // По умолчанию ищем сериалы
-  
+
   @override
   void initState() {
     super.initState();
@@ -39,19 +41,23 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
 
     try {
       final api = ref.read(apiClientProvider);
-      
+
       // Оценка строго целое число, иначе API выдает 422!
       final filters = <String, dynamic>{
         'order': 'random',
-        'score': 6, 
+        'score': 6,
         if (_currentKind != 'all') 'kind': _currentKind,
       };
 
       // Обход кэша Shikimori
       final randomPage = math.Random().nextInt(20) + 1;
 
-      final animes = await api.getAnimes(page: randomPage, limit: 15, filters: filters);
-      
+      final animes = await api.getAnimes(
+        page: randomPage,
+        limit: 15,
+        filters: filters,
+      );
+
       if (mounted) {
         setState(() {
           if (reset) _queue.clear();
@@ -61,11 +67,14 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
             }
           }
         });
-        
+
         if (_queue.length > 1) {
           final nextUrl = _queue[1].imageUrl ?? '';
           if (nextUrl.isNotEmpty) {
-            precacheImage(CachedNetworkImageProvider(nextUrl), context).catchError((_) {});
+            precacheImage(
+              CachedNetworkImageProvider(nextUrl),
+              context,
+            ).catchError((_) {});
           }
         }
       }
@@ -76,7 +85,12 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
           builder: (ctx) => CupertinoAlertDialog(
             title: const Text('Ошибка'),
             content: Text('Не удалось загрузить рекомендации.\n$e'),
-            actions: [CupertinoDialogAction(child: const Text('OK'), onPressed: () => Navigator.pop(ctx))],
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
           ),
         );
       }
@@ -90,7 +104,7 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
     try {
       final api = ref.read(apiClientProvider);
       final user = await ref.read(currentUserProvider.future);
-      
+
       if (user != null) {
         await api.setUserRate(anime.id, 'watching', userId: user.id);
         ref.invalidate(currentUserProvider); // Обновляем профиль в фоне
@@ -103,9 +117,9 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
   // Внутренняя функция продвижения очереди
   void _advanceQueue() {
     if (_queue.isEmpty) return;
-    
+
     setState(() {
-      _queue.removeAt(0); 
+      _queue.removeAt(0);
       _swipeProgress = 0.0; // Сбрасываем оверлей для новой карточки
     });
 
@@ -116,7 +130,10 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
     if (_queue.length > 1) {
       final nextUrl = _queue[1].imageUrl ?? '';
       if (nextUrl.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(nextUrl), context).catchError((_) {});
+        precacheImage(
+          CachedNetworkImageProvider(nextUrl),
+          context,
+        ).catchError((_) {});
       }
     }
   }
@@ -135,7 +152,9 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
       context: context,
       builder: (ctx) => CupertinoActionSheet(
         title: const Text('Что будем искать?'),
-        message: const Text('Алгоритм подберет случайные аниме с хорошим рейтингом.'),
+        message: const Text(
+          'Алгоритм подберет случайные аниме с хорошим рейтингом.',
+        ),
         actions: [
           _buildFilterAction(ctx, 'Любой формат', 'all'),
           _buildFilterAction(ctx, 'TV Сериалы', 'tv'),
@@ -150,7 +169,11 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
     );
   }
 
-  CupertinoActionSheetAction _buildFilterAction(BuildContext ctx, String title, String kind) {
+  CupertinoActionSheetAction _buildFilterAction(
+    BuildContext ctx,
+    String title,
+    String kind,
+  ) {
     final isActive = _currentKind == kind;
     return CupertinoActionSheetAction(
       onPressed: () {
@@ -163,7 +186,9 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
       child: Text(
         title,
         style: TextStyle(
-          color: isActive ? const Color(0xFFFF5722) : CupertinoColors.activeBlue,
+          color: isActive
+              ? const Color(0xFFFF5722)
+              : CupertinoColors.activeBlue,
           fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
         ),
       ),
@@ -181,7 +206,13 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
             children: [
               CupertinoActivityIndicator(radius: 20),
               SizedBox(height: 20),
-              Text('Подбираем шедевры...', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 16)),
+              Text(
+                'Подбираем шедевры...',
+                style: TextStyle(
+                  color: CupertinoColors.systemGrey,
+                  fontSize: 16,
+                ),
+              ),
             ],
           ),
         ),
@@ -195,7 +226,10 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
           child: CupertinoButton(
             color: const Color(0xFF1E1E1E),
             onPressed: () => _loadMoreAnime(reset: true),
-            child: const Text('Попробовать снова', style: TextStyle(color: Color(0xFFFF5722))),
+            child: const Text(
+              'Попробовать снова',
+              style: TextStyle(color: Color(0xFFFF5722)),
+            ),
           ),
         ),
       );
@@ -207,7 +241,10 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
       backgroundColor: const Color(0xFF0F0F0F),
       // Нативная прозрачная навигационная панель с кнопкой фильтров
       navigationBar: CupertinoNavigationBar(
-        middle: const Text('Что посмотреть?', style: TextStyle(color: Colors.white)),
+        middle: const Text(
+          'Что посмотреть?',
+          style: TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.transparent,
         border: null,
         trailing: CupertinoButton(
@@ -219,7 +256,11 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
               color: Colors.white.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(CupertinoIcons.slider_horizontal_3, color: Colors.white, size: 18),
+            child: const Icon(
+              CupertinoIcons.slider_horizontal_3,
+              color: Colors.white,
+              size: 18,
+            ),
           ),
         ),
       ),
@@ -229,14 +270,13 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
           // ==================== 1. ИММЕРСИВНЫЙ БЛЮР-ФОН ====================
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 600),
-            child: CachedNetworkImage(
+            child: SmartAnimePoster(
               key: ValueKey(topAnime.id),
-              imageUrl: topAnime.imageUrl ?? '',
+              animeId: topAnime.id,
+              imageUrl: topAnime.imageUrl,
+              title: topAnime.name ?? '',
+              russianTitle: topAnime.russian,
               fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-              memCacheWidth: 100, 
-              errorWidget: (_, __, ___) => Container(color: const Color(0xFF0F0F0F)),
             ),
           ),
           Positioned.fill(
@@ -264,7 +304,10 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: cardMaxWidth),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                             child: Stack(
                               children: [
                                 // ЗАДНЯЯ КАРТА (Индекс 1)
@@ -272,11 +315,18 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                                   Positioned.fill(
                                     child: AnimatedScale(
                                       scale: 0.92,
-                                      duration: const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       child: AnimatedOpacity(
                                         opacity: 0.7,
-                                        duration: const Duration(milliseconds: 300),
-                                        child: _buildAnimeCard(_queue[1], swipeProgress: 0.0),
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
+                                        child: _buildAnimeCard(
+                                          _queue[1],
+                                          swipeProgress: 0.0,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -288,13 +338,18 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                                     direction: DismissDirection.horizontal,
                                     onUpdate: (details) {
                                       setState(() {
-                                        _swipeProgress = details.direction == DismissDirection.startToEnd
-                                            ? details.progress  // Свайп вправо (Смотрю)
-                                            : -details.progress; // Свайп влево (Пропуск)
+                                        _swipeProgress =
+                                            details.direction ==
+                                                DismissDirection.startToEnd
+                                            ? details
+                                                  .progress // Свайп вправо (Смотрю)
+                                            : -details
+                                                  .progress; // Свайп влево (Пропуск)
                                       });
                                     },
                                     onDismissed: (direction) {
-                                      if (direction == DismissDirection.startToEnd) {
+                                      if (direction ==
+                                          DismissDirection.startToEnd) {
                                         _onSwipeRight(topAnime);
                                       } else {
                                         _onSwipeLeft(topAnime);
@@ -302,8 +357,13 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                                     },
                                     child: AnimatedScale(
                                       scale: 1.0,
-                                      duration: const Duration(milliseconds: 300),
-                                      child: _buildAnimeCard(topAnime, swipeProgress: _swipeProgress),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      child: _buildAnimeCard(
+                                        topAnime,
+                                        swipeProgress: _swipeProgress,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -351,7 +411,11 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                                 onTap: () {
                                   Navigator.push(
                                     context,
-                                    CupertinoPageRoute(builder: (_) => AnimeDetailScreen(animeId: topAnime.id)),
+                                    CupertinoPageRoute(
+                                      builder: (_) => AnimeDetailScreen(
+                                        animeId: topAnime.id,
+                                      ),
+                                    ),
                                   );
                                 },
                               ),
@@ -371,14 +435,21 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
   }
 
   // 🔥 Карточка с поддержкой Оверлеев (Градиенты + Штампы)
-  Widget _buildAnimeCard(ShikimoriAnime anime, {required double swipeProgress}) {
+  Widget _buildAnimeCard(
+    ShikimoriAnime anime, {
+    required double swipeProgress,
+  }) {
     final score = anime.score ?? 0.0;
-    
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 15)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
+          ),
         ],
       ),
       child: ClipRRect(
@@ -386,15 +457,14 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            CachedNetworkImage(
-              imageUrl: anime.imageUrl ?? '',
+            SmartAnimePoster(
+              animeId: anime.id,
+              imageUrl: anime.imageUrl,
+              title: anime.name ?? '',
+              russianTitle: anime.russian,
               fit: BoxFit.cover,
-              memCacheWidth: 600,
-              memCacheHeight: 900,
-              placeholder: (_, __) => Container(color: const Color(0xFF1E1E1E)),
-              errorWidget: (_, __, ___) => Container(color: const Color(0xFF1E1E1E), child: const Icon(CupertinoIcons.photo, color: Colors.grey, size: 50)),
             ),
-            
+
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -405,7 +475,7 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                 ),
               ),
             ),
-            
+
             Positioned(
               bottom: 24,
               left: 24,
@@ -415,27 +485,47 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                 children: [
                   if (score > 0)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
-                        color: score >= 8.0 ? CupertinoColors.systemGreen : CupertinoColors.systemOrange,
+                        color: score >= 8.0
+                            ? CupertinoColors.systemGreen
+                            : CupertinoColors.systemOrange,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '★ ${score.toStringAsFixed(1)}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 12),
                   Text(
                     anime.russian ?? anime.name ?? 'Без названия',
-                    style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, height: 1.1),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    anime.status == 'released' ? 'Вышло' : (anime.status == 'ongoing' ? 'Онгоинг' : 'Анонс'),
-                    style: const TextStyle(color: CupertinoColors.systemGrey2, fontSize: 16, fontWeight: FontWeight.w500),
+                    anime.status == 'released'
+                        ? 'Вышло'
+                        : (anime.status == 'ongoing' ? 'Онгоинг' : 'Анонс'),
+                    style: const TextStyle(
+                      color: CupertinoColors.systemGrey2,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -445,17 +535,33 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
             if (swipeProgress != 0.0)
               Positioned.fill(
                 child: Container(
-                  color: (swipeProgress > 0 ? CupertinoColors.systemGreen : CupertinoColors.systemRed)
-                      .withValues(alpha: (swipeProgress.abs() * 0.4).clamp(0.0, 0.4)), // Легкая заливка карточки
+                  color:
+                      (swipeProgress > 0
+                              ? CupertinoColors.systemGreen
+                              : CupertinoColors.systemRed)
+                          .withValues(
+                            alpha: (swipeProgress.abs() * 0.4).clamp(0.0, 0.4),
+                          ), // Легкая заливка карточки
                   child: Center(
                     child: Transform.rotate(
                       angle: swipeProgress > 0 ? -0.2 : 0.2, // Наклон штампа
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: (swipeProgress > 0 ? CupertinoColors.systemGreen : CupertinoColors.systemRed)
-                                .withValues(alpha: swipeProgress.abs().clamp(0.0, 1.0)),
+                            color:
+                                (swipeProgress > 0
+                                        ? CupertinoColors.systemGreen
+                                        : CupertinoColors.systemRed)
+                                    .withValues(
+                                      alpha: swipeProgress.abs().clamp(
+                                        0.0,
+                                        1.0,
+                                      ),
+                                    ),
                             width: 5,
                           ),
                           borderRadius: BorderRadius.circular(16),
@@ -463,8 +569,16 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                         child: Text(
                           swipeProgress > 0 ? 'СМОТРЮ' : 'ПРОПУСК',
                           style: TextStyle(
-                            color: (swipeProgress > 0 ? CupertinoColors.systemGreen : CupertinoColors.systemRed)
-                                .withValues(alpha: swipeProgress.abs().clamp(0.0, 1.0)),
+                            color:
+                                (swipeProgress > 0
+                                        ? CupertinoColors.systemGreen
+                                        : CupertinoColors.systemRed)
+                                    .withValues(
+                                      alpha: swipeProgress.abs().clamp(
+                                        0.0,
+                                        1.0,
+                                      ),
+                                    ),
                             fontSize: 42,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 2,
@@ -482,8 +596,8 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
   }
 
   Widget _buildActionButton({
-    required IconData icon, 
-    required Color color, 
+    required IconData icon,
+    required Color color,
     required VoidCallback onTap,
     double size = 64,
     double iconSize = 28,
@@ -498,7 +612,11 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
           color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
           border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
           boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 2),
+            BoxShadow(
+              color: color.withValues(alpha: 0.2),
+              blurRadius: 20,
+              spreadRadius: 2,
+            ),
           ],
         ),
         child: Icon(icon, color: color, size: iconSize),
