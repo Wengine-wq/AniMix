@@ -16,6 +16,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 🧹 Очистка старых iOS-артефактов
+        run: flutter clean
+
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
