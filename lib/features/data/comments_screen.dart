@@ -19,20 +19,27 @@ const String _shikiUrl = 'https://shikimori.io';
 class ShikiMediaService {
   static final Map<String, String> _cache = {};
 
-  static Future<String?> resolveImageUrl(String id, {bool isPoster = false}) async {
+  static Future<String?> resolveImageUrl(
+    String id, {
+    bool isPoster = false,
+  }) async {
     if (_cache.containsKey(id)) return _cache[id];
 
     final dio = Dio();
 
     // 1. Попытка API запроса (Концепция извлечения JSON данных)
     try {
-      final res = await dio.get('$_shikiUrl/api/forum/critiques/image=$id', 
-          options: Options(validateStatus: (s) => true));
+      final res = await dio.get(
+        '$_shikiUrl/api/forum/critiques/image=$id',
+        options: Options(validateStatus: (s) => true),
+      );
       if (res.statusCode == 200 && res.data != null) {
         final data = res.data is String ? jsonDecode(res.data) : res.data;
         final url = data['preview_url'] ?? data['original_url'] ?? data['url'];
         if (url != null) {
-          final fullUrl = url.toString().startsWith('http') ? url : '$_shikiUrl$url';
+          final fullUrl = url.toString().startsWith('http')
+              ? url
+              : '$_shikiUrl$url';
           _cache[id] = fullUrl;
           return fullUrl;
         }
@@ -40,15 +47,28 @@ class ShikiMediaService {
     } catch (_) {}
 
     // 2. Умный HEAD-поиск (Если API не отдал ссылку, ищем по расширениям)
-    final paths = isPoster 
-        ? ['/system/images/original/$id.jpg', '/system/images/original/$id.png', '/system/images/original/$id.gif']
-        : ['/system/forum/images/$id.jpg', '/system/forum/images/$id.png', '/system/forum/images/$id.gif'];
+    final paths = isPoster
+        ? [
+            '/system/images/original/$id.jpg',
+            '/system/images/original/$id.png',
+            '/system/images/original/$id.gif',
+          ]
+        : [
+            '/system/forum/images/$id.jpg',
+            '/system/forum/images/$id.png',
+            '/system/forum/images/$id.gif',
+          ];
 
     for (final path in paths) {
       try {
         final testUrl = '$_shikiUrl$path';
-        final res = await dio.head(testUrl, options: Options(validateStatus: (s) => true));
-        if (res.statusCode == 200 || res.statusCode == 301 || res.statusCode == 302) {
+        final res = await dio.head(
+          testUrl,
+          options: Options(validateStatus: (s) => true),
+        );
+        if (res.statusCode == 200 ||
+            res.statusCode == 301 ||
+            res.statusCode == 302) {
           _cache[id] = testUrl;
           return testUrl;
         }
@@ -120,10 +140,13 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   Future<void> _loadMoreComments() async {
     if (_isLoadingMore || !_hasMore) return;
     setState(() => _isLoadingMore = true);
-    
+
     try {
       final api = ref.read(apiClientProvider);
-      final more = await api.getComments(widget.topicId, page: _commentsPage + 1);
+      final more = await api.getComments(
+        widget.topicId,
+        page: _commentsPage + 1,
+      );
       if (mounted) {
         setState(() {
           _commentsPage++;
@@ -144,13 +167,14 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     try {
       final api = ref.read(apiClientProvider);
       String finalBody = text.trim();
-      
+
       if (_replyingTo != null) {
-        finalBody = '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
+        finalBody =
+            '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
       }
 
       final newComment = await api.postComment(widget.topicId, finalBody);
-      
+
       if (mounted) {
         setState(() {
           commentsList.insert(0, newComment);
@@ -161,7 +185,12 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       return true;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e'), backgroundColor: Colors.redAccent));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка отправки: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
       return false;
     }
@@ -171,7 +200,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   Widget build(BuildContext context) {
     final Set<int> loadedCommentIds = commentsList.map((c) => c.id).toSet();
     final Map<int, List<ShikimoriComment>> repliesMap = {};
-    
+
     for (var c in commentsList) {
       final match = RegExp(r'\[comment=[^\]]+\]').firstMatch(c.body);
       if (match != null) {
@@ -201,45 +230,83 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF09090B),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF09090B).withOpacity(0.95),
+        backgroundColor: const Color(0xFF09090B).withValues(alpha: 0.95),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Комментарии', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+            const Text(
+              'Комментарии',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             if (_totalCommentsCount > 0)
-              Text('Всего: $_totalCommentsCount', style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey)),
+              Text(
+                'Всего: $_totalCommentsCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.systemGrey,
+                ),
+              ),
           ],
         ),
-        leading: IconButton(icon: const Icon(CupertinoIcons.back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Column(
         children: [
           Expanded(
-            child: _isLoading 
-              ? const Center(child: CupertinoActivityIndicator(radius: 16))
-              : rootComments.isEmpty
-                ? const Center(child: Text('Здесь пока пусто. Станьте первым!', style: TextStyle(color: CupertinoColors.systemGrey)))
+            child: _isLoading
+                ? const Center(child: CupertinoActivityIndicator(radius: 16))
+                : rootComments.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Здесь пока пусто. Станьте первым!',
+                      style: TextStyle(color: CupertinoColors.systemGrey),
+                    ),
+                  )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
                     itemCount: rootComments.length + 1,
                     itemBuilder: (context, index) {
                       if (index == rootComments.length) {
                         if (!_hasMore) return const SizedBox(height: 40);
-                        
-                        final remaining = math.max(0, _totalCommentsCount - commentsList.length);
-                        final btnText = remaining > 0 ? 'Загрузить ещё (осталось $remaining)' : 'Загрузить предыдущие';
+
+                        final remaining = math.max(
+                          0,
+                          _totalCommentsCount - commentsList.length,
+                        );
+                        final btnText = remaining > 0
+                            ? 'Загрузить ещё (осталось $remaining)'
+                            : 'Загрузить предыдущие';
 
                         return Padding(
-                          padding: const EdgeInsets.only(top: 10.0, bottom: 40.0),
+                          padding: const EdgeInsets.only(
+                            top: 10.0,
+                            bottom: 40.0,
+                          ),
                           child: CupertinoButton(
                             color: const Color(0xFF1C1C1E),
                             borderRadius: BorderRadius.circular(14),
                             onPressed: _loadMoreComments,
-                            child: _isLoadingMore 
-                              ? const CupertinoActivityIndicator() 
-                              : Text(btnText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: _isLoadingMore
+                                ? const CupertinoActivityIndicator()
+                                : Text(
+                                    btnText,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                         );
                       }
@@ -249,7 +316,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
 
                       return _CommentCard(
                         topicId: widget.topicId,
-                        comment: c, 
+                        comment: c,
                         replies: replies,
                         allComments: commentsList,
                         onReplyTap: () => setState(() => _replyingTo = c),
@@ -261,7 +328,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                     },
                   ),
           ),
-          
+
           _CommentInputBar(
             replyTo: _replyingTo,
             onCancelReply: () => setState(() => _replyingTo = null),
@@ -287,8 +354,8 @@ class _CommentCard extends StatelessWidget {
 
   const _CommentCard({
     required this.topicId,
-    required this.comment, 
-    required this.replies, 
+    required this.comment,
+    required this.replies,
     required this.allComments,
     required this.onReplyTap,
     this.onNewReplyAdded,
@@ -301,12 +368,31 @@ class _CommentCard extends StatelessWidget {
       final date = DateTime.parse(isoDate).toLocal();
       final now = DateTime.now();
       final diff = now.difference(date);
-      if (diff.inDays == 0) return 'сегодня в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      if (diff.inDays == 1) return 'вчера в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      if (diff.inDays == 0) {
+        return 'сегодня в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      }
+      if (diff.inDays == 1) {
+        return 'вчера в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      }
       if (diff.inDays < 7) return '${diff.inDays} дн. назад';
-      final months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+      final months = [
+        'янв',
+        'фев',
+        'мар',
+        'апр',
+        'май',
+        'июн',
+        'июл',
+        'авг',
+        'сен',
+        'окт',
+        'ноя',
+        'дек',
+      ];
       return '${date.day} ${months[date.month - 1]} ${date.year}';
-    } catch (_) { return ''; }
+    } catch (_) {
+      return '';
+    }
   }
 
   @override
@@ -321,7 +407,7 @@ class _CommentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF18181B),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,8 +415,16 @@ class _CommentCard extends StatelessWidget {
           CircleAvatar(
             radius: 20,
             backgroundColor: const Color(0xFF2A2A2A),
-            backgroundImage: c.userAvatar != null ? CachedNetworkImageProvider(c.userAvatar!) : null,
-            child: c.userAvatar == null ? const Icon(CupertinoIcons.person_fill, color: Colors.grey, size: 20) : null,
+            backgroundImage: c.userAvatar != null
+                ? CachedNetworkImageProvider(c.userAvatar!)
+                : null,
+            child: c.userAvatar == null
+                ? const Icon(
+                    CupertinoIcons.person_fill,
+                    color: Colors.grey,
+                    size: 20,
+                  )
+                : null,
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -342,39 +436,65 @@ class _CommentCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        c.userNickname ?? 'Аноним', 
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15), 
-                        overflow: TextOverflow.ellipsis
-                      )
+                        c.userNickname ?? 'Аноним',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    Text(_formatDate(c.createdAt), style: const TextStyle(color: CupertinoColors.systemGrey2, fontSize: 12)),
+                    Text(
+                      _formatDate(c.createdAt),
+                      style: const TextStyle(
+                        color: CupertinoColors.systemGrey2,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                
+
                 // Рендер текста
                 Text.rich(
-                  TextSpan(children: _BBCodeParser.buildSpans(context, cleanBBCode)),
+                  TextSpan(
+                    children: _BBCodeParser.buildSpans(context, cleanBBCode),
+                  ),
                 ),
-                
+
                 const SizedBox(height: 14),
-                
+
                 Row(
                   children: [
                     GestureDetector(
                       onTap: onReplyTap,
                       behavior: HitTestBehavior.opaque,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 12,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(20)
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Row(
                           children: [
-                            Icon(CupertinoIcons.reply, color: CupertinoColors.systemGrey, size: 14),
+                            Icon(
+                              CupertinoIcons.reply,
+                              color: CupertinoColors.systemGrey,
+                              size: 14,
+                            ),
                             SizedBox(width: 6),
-                            Text('Ответить', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 13, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Ответить',
+                              style: TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -382,28 +502,45 @@ class _CommentCard extends StatelessWidget {
                     const Spacer(),
                     if (replies.isNotEmpty && !isInsideThread)
                       GestureDetector(
-                        onTap: () => Navigator.of(context, rootNavigator: true).push(
-                          CupertinoPageRoute(
-                            builder: (_) => _CommentThreadScreen(
-                              topicId: topicId,
-                              parentComment: c, 
-                              allComments: allComments,
-                              onNewReplyAdded: onNewReplyAdded,
-                            )
-                          ),
-                        ),
+                        onTap: () =>
+                            Navigator.of(context, rootNavigator: true).push(
+                              CupertinoPageRoute(
+                                builder: (_) => _CommentThreadScreen(
+                                  topicId: topicId,
+                                  parentComment: c,
+                                  allComments: allComments,
+                                  onNewReplyAdded: onNewReplyAdded,
+                                ),
+                              ),
+                            ),
                         behavior: HitTestBehavior.opaque,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 6,
+                            horizontal: 12,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF5722).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20)
+                            color: const Color(
+                              0xFFFF5722,
+                            ).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
                             children: [
-                              Text('${replies.length} ответ(а)', style: const TextStyle(color: Color(0xFFFF5722), fontSize: 13, fontWeight: FontWeight.bold)),
+                              Text(
+                                '${replies.length} ответ(а)',
+                                style: const TextStyle(
+                                  color: Color(0xFFFF5722),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               const SizedBox(width: 4),
-                              const Icon(CupertinoIcons.chevron_right, color: Color(0xFFFF5722), size: 12),
+                              const Icon(
+                                CupertinoIcons.chevron_right,
+                                color: Color(0xFFFF5722),
+                                size: 12,
+                              ),
                             ],
                           ),
                         ),
@@ -428,7 +565,12 @@ class _CommentThreadScreen extends StatefulWidget {
   final List<ShikimoriComment> allComments;
   final Function(ShikimoriComment)? onNewReplyAdded;
 
-  const _CommentThreadScreen({required this.topicId, required this.parentComment, required this.allComments, this.onNewReplyAdded});
+  const _CommentThreadScreen({
+    required this.topicId,
+    required this.parentComment,
+    required this.allComments,
+    this.onNewReplyAdded,
+  });
 
   @override
   State<_CommentThreadScreen> createState() => _CommentThreadScreenState();
@@ -442,7 +584,7 @@ class _CommentThreadScreenState extends State<_CommentThreadScreen> {
   void initState() {
     super.initState();
     localAllComments = List.from(widget.allComments);
-    _replyingTo = widget.parentComment; 
+    _replyingTo = widget.parentComment;
   }
 
   Future<bool> _postComment(String text) async {
@@ -451,23 +593,28 @@ class _CommentThreadScreenState extends State<_CommentThreadScreen> {
     try {
       final api = ProviderScope.containerOf(context).read(apiClientProvider);
       String finalBody = text.trim();
-      
+
       if (_replyingTo != null) {
-        finalBody = '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
+        finalBody =
+            '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
       }
 
       final newComment = await api.postComment(widget.topicId, finalBody);
-      
+
       if (mounted) {
         setState(() {
           localAllComments.insert(0, newComment);
-          _replyingTo = widget.parentComment; 
+          _replyingTo = widget.parentComment;
         });
         widget.onNewReplyAdded?.call(newComment);
       }
       return true;
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      }
       return false;
     }
   }
@@ -477,20 +624,31 @@ class _CommentThreadScreenState extends State<_CommentThreadScreen> {
     final replies = localAllComments.where((c) {
       final match = RegExp(r'\[comment=[^\]]+\]').firstMatch(c.body);
       if (match != null) {
-         final idMatch = RegExp(r'\d+').firstMatch(match.group(0)!);
-         return idMatch != null && idMatch.group(0) == widget.parentComment.id.toString();
+        final idMatch = RegExp(r'\d+').firstMatch(match.group(0)!);
+        return idMatch != null &&
+            idMatch.group(0) == widget.parentComment.id.toString();
       }
       return false;
     }).toList();
-    
+
     final sortedReplies = replies.reversed.toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF09090B),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF09090B).withOpacity(0.95),
-        title: const Text('Ветка ответов', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-        leading: IconButton(icon: const Icon(CupertinoIcons.back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        backgroundColor: const Color(0xFF09090B).withValues(alpha: 0.95),
+        title: const Text(
+          'Ветка ответов',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Column(
         children: [
@@ -500,31 +658,38 @@ class _CommentThreadScreenState extends State<_CommentThreadScreen> {
               children: [
                 _CommentCard(
                   topicId: widget.topicId,
-                  comment: widget.parentComment, 
-                  replies: const [], 
-                  allComments: const [], 
-                  onReplyTap: () => setState(() => _replyingTo = widget.parentComment), 
+                  comment: widget.parentComment,
+                  replies: const [],
+                  allComments: const [],
+                  onReplyTap: () =>
+                      setState(() => _replyingTo = widget.parentComment),
                   isInsideThread: true,
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   child: Divider(color: Color(0xFF2A2A2A), thickness: 1),
                 ),
-                
+
                 if (sortedReplies.isEmpty)
-                  const Text('Больше нет ответов', style: TextStyle(color: CupertinoColors.systemGrey), textAlign: TextAlign.center)
+                  const Text(
+                    'Больше нет ответов',
+                    style: TextStyle(color: CupertinoColors.systemGrey),
+                    textAlign: TextAlign.center,
+                  )
                 else
-                  ...sortedReplies.map((r) => Padding(
-                    padding: const EdgeInsets.only(left: 32), 
-                    child: _CommentCard(
-                      topicId: widget.topicId,
-                      comment: r, 
-                      replies: const [], 
-                      allComments: const [], 
-                      onReplyTap: () => setState(() => _replyingTo = r), 
-                      isInsideThread: true,
+                  ...sortedReplies.map(
+                    (r) => Padding(
+                      padding: const EdgeInsets.only(left: 32),
+                      child: _CommentCard(
+                        topicId: widget.topicId,
+                        comment: r,
+                        replies: const [],
+                        allComments: const [],
+                        onReplyTap: () => setState(() => _replyingTo = r),
+                        isInsideThread: true,
+                      ),
                     ),
-                  )),
+                  ),
               ],
             ),
           ),
@@ -548,7 +713,11 @@ class _CommentInputBar extends StatefulWidget {
   final VoidCallback onCancelReply;
   final Future<bool> Function(String) onSend;
 
-  const _CommentInputBar({required this.replyTo, required this.onCancelReply, required this.onSend});
+  const _CommentInputBar({
+    required this.replyTo,
+    required this.onCancelReply,
+    required this.onSend,
+  });
 
   @override
   State<_CommentInputBar> createState() => _CommentInputBarState();
@@ -564,12 +733,24 @@ class _CommentInputBarState extends State<_CommentInputBar> {
     final text = _controller.text;
     final selection = _controller.selection;
     if (selection.start == -1) return;
-    
+
     final selectedText = selection.textInside(text);
-    final newText = text.replaceRange(selection.start, selection.end, '[$tag]$selectedText[/$tag]');
+    final newText = text.replaceRange(
+      selection.start,
+      selection.end,
+      '[$tag]$selectedText[/$tag]',
+    );
     _controller.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: selection.start + tag.length + 2 + selectedText.length + tag.length + 3),
+      selection: TextSelection.collapsed(
+        offset:
+            selection.start +
+            tag.length +
+            2 +
+            selectedText.length +
+            tag.length +
+            3,
+      ),
     );
   }
 
@@ -577,8 +758,12 @@ class _CommentInputBarState extends State<_CommentInputBar> {
     final text = _controller.text;
     final selection = _controller.selection;
     final offset = selection.start == -1 ? text.length : selection.start;
-    
-    final newText = text.replaceRange(offset, selection.end == -1 ? text.length : selection.end, str);
+
+    final newText = text.replaceRange(
+      offset,
+      selection.end == -1 ? text.length : selection.end,
+      str,
+    );
     _controller.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: offset + str.length),
@@ -600,22 +785,31 @@ class _CommentInputBarState extends State<_CommentInputBar> {
           ),
         ),
         actions: [
-          CupertinoDialogAction(child: const Text('Отмена'), onPressed: () => Navigator.pop(ctx)),
           CupertinoDialogAction(
-            child: const Text('Добавить', style: TextStyle(color: Color(0xFFFF5722))),
+            child: const Text('Отмена'),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+          CupertinoDialogAction(
+            child: const Text(
+              'Добавить',
+              style: TextStyle(color: Color(0xFFFF5722)),
+            ),
             onPressed: () {
               Navigator.pop(ctx);
               final url = urlController.text.trim();
               if (url.isNotEmpty) {
                 if (url.contains('youtube.com') || url.contains('youtu.be')) {
                   _insertText('[video]$url[/video]');
-                } else if (url.endsWith('.jpg') || url.endsWith('.png') || url.endsWith('.gif') || url.endsWith('.webp')) {
+                } else if (url.endsWith('.jpg') ||
+                    url.endsWith('.png') ||
+                    url.endsWith('.gif') ||
+                    url.endsWith('.webp')) {
                   _insertText('[img]$url[/img]');
                 } else {
                   _insertText('[url=$url]Ссылка[/url]');
                 }
               }
-            }
+            },
           ),
         ],
       ),
@@ -625,9 +819,9 @@ class _CommentInputBarState extends State<_CommentInputBar> {
   Future<void> _handleSend() async {
     if (_controller.text.trim().isEmpty) return;
     setState(() => _isSending = true);
-    
+
     final success = await widget.onSend(_controller.text);
-    
+
     if (mounted) {
       setState(() => _isSending = false);
       if (success) {
@@ -643,7 +837,9 @@ class _CommentInputBarState extends State<_CommentInputBar> {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF18181B),
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -653,21 +849,41 @@ class _CommentInputBarState extends State<_CommentInputBar> {
             if (widget.replyTo != null)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                color: const Color(0xFFFF5722).withOpacity(0.1),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                color: const Color(0xFFFF5722).withValues(alpha: 0.1),
                 child: Row(
                   children: [
-                    const Icon(CupertinoIcons.reply, color: Color(0xFFFF5722), size: 16),
+                    const Icon(
+                      CupertinoIcons.reply,
+                      color: Color(0xFFFF5722),
+                      size: 16,
+                    ),
                     const SizedBox(width: 8),
-                    Expanded(child: Text('Ответ ${widget.replyTo!.userNickname}', style: const TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold, fontSize: 13))),
+                    Expanded(
+                      child: Text(
+                        'Ответ ${widget.replyTo!.userNickname}',
+                        style: const TextStyle(
+                          color: Color(0xFFFF5722),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                     GestureDetector(
                       onTap: widget.onCancelReply,
-                      child: const Icon(CupertinoIcons.clear_thick, color: Color(0xFFFF5722), size: 16),
+                      child: const Icon(
+                        CupertinoIcons.clear_thick,
+                        color: Color(0xFFFF5722),
+                        size: 16,
+                      ),
                     ),
                   ],
                 ),
               ),
-              
+
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
@@ -678,20 +894,29 @@ class _CommentInputBarState extends State<_CommentInputBar> {
                       constraints: const BoxConstraints(maxHeight: 120),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF27272A), 
+                        color: const Color(0xFF27272A),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withOpacity(0.1))
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                       child: TextField(
                         controller: _controller,
                         focusNode: _focusNode,
                         maxLines: null,
                         keyboardType: TextInputType.multiline,
-                        onTap: () { if (_showEmoji) setState(() => _showEmoji = false); },
-                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        onTap: () {
+                          if (_showEmoji) setState(() => _showEmoji = false);
+                        },
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                        ),
                         decoration: const InputDecoration(
                           hintText: 'Написать комментарий...',
-                          hintStyle: TextStyle(color: CupertinoColors.systemGrey),
+                          hintStyle: TextStyle(
+                            color: CupertinoColors.systemGrey,
+                          ),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -706,13 +931,29 @@ class _CommentInputBarState extends State<_CommentInputBar> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFFF5722), Color(0xFFFF8A65)]),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF5722), Color(0xFFFF8A65)],
+                        ),
                         borderRadius: BorderRadius.circular(22),
-                        boxShadow: [BoxShadow(color: const Color(0xFFFF5722).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF5722,
+                            ).withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: _isSending
-                          ? const CupertinoActivityIndicator(color: Colors.white)
-                          : const Icon(CupertinoIcons.paperplane_fill, color: Colors.white, size: 20),
+                          ? const CupertinoActivityIndicator(
+                              color: Colors.white,
+                            )
+                          : const Icon(
+                              CupertinoIcons.paperplane_fill,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                     ),
                   ),
                 ],
@@ -723,20 +964,45 @@ class _CommentInputBarState extends State<_CommentInputBar> {
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               child: Row(
                 children: [
-                  _ToolBtn(icon: CupertinoIcons.bold, onTap: () => _insertTag('b')),
+                  _ToolBtn(
+                    icon: CupertinoIcons.bold,
+                    onTap: () => _insertTag('b'),
+                  ),
                   const SizedBox(width: 8),
-                  _ToolBtn(icon: CupertinoIcons.italic, onTap: () => _insertTag('i')),
+                  _ToolBtn(
+                    icon: CupertinoIcons.italic,
+                    onTap: () => _insertTag('i'),
+                  ),
                   const SizedBox(width: 8),
-                  _ToolBtn(icon: CupertinoIcons.strikethrough, onTap: () => _insertTag('s')),
+                  _ToolBtn(
+                    icon: CupertinoIcons.strikethrough,
+                    onTap: () => _insertTag('s'),
+                  ),
                   const SizedBox(width: 8),
-                  _ToolBtn(icon: CupertinoIcons.link, onTap: _insertImagePrompt),
+                  _ToolBtn(
+                    icon: CupertinoIcons.link,
+                    onTap: _insertImagePrompt,
+                  ),
                   const SizedBox(width: 12),
                   GestureDetector(
                     onTap: () => _insertTag('spoiler'),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('СПОЙЛЕР', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'СПОЙЛЕР',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -750,12 +1016,20 @@ class _CommentInputBarState extends State<_CommentInputBar> {
                         setState(() => _showEmoji = true);
                       }
                     },
-                    child: Icon(_showEmoji ? CupertinoIcons.keyboard : CupertinoIcons.smiley, color: _showEmoji ? const Color(0xFFFF5722) : CupertinoColors.systemGrey, size: 26),
+                    child: Icon(
+                      _showEmoji
+                          ? CupertinoIcons.keyboard
+                          : CupertinoIcons.smiley,
+                      color: _showEmoji
+                          ? const Color(0xFFFF5722)
+                          : CupertinoColors.systemGrey,
+                      size: 26,
+                    ),
                   ),
                 ],
               ),
             ),
-            
+
             if (_showEmoji)
               SizedBox(
                 height: 260,
@@ -779,7 +1053,10 @@ class _ToolBtn extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: const Color(0xFF27272A), borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(
+          color: const Color(0xFF27272A),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Icon(icon, color: Colors.white70, size: 16),
       ),
     );
@@ -796,9 +1073,26 @@ class _EmojiGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final standardEmojis = [
-      ':pepe:', ':aww:', ':lol:', ':facepalm:', ':kiss:', ':cry:', ':evil:', ':hopeless:',
-      ':yummy:', ':smirk:', ':bored:', ':ololo:', ':shy:', ':wow:', ':smile:', ':D',
-      ':(', '+_(', ':|', ':\\'
+      ':pepe:',
+      ':aww:',
+      ':lol:',
+      ':facepalm:',
+      ':kiss:',
+      ':cry:',
+      ':evil:',
+      ':hopeless:',
+      ':yummy:',
+      ':smirk:',
+      ':bored:',
+      ':ololo:',
+      ':shy:',
+      ':wow:',
+      ':smile:',
+      ':D',
+      ':(',
+      '+_(',
+      ':|',
+      ':\\',
     ];
 
     // Генерируем с запасом. Несуществующие скроются сами
@@ -810,22 +1104,23 @@ class _EmojiGrid extends StatelessWidget {
       child: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 5, 
-          mainAxisSpacing: 16, 
-          crossAxisSpacing: 16
+          crossAxisCount: 5,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
         ),
         itemCount: allEmojis.length,
         itemBuilder: (context, index) {
           final code = allEmojis[index];
           final url = _BBCodeParser.getEmojiUrl(code);
-          
+
           return GestureDetector(
             onTap: () => onEmojiSelected(code),
             // Используем Image.network напрямую, он лучше крутит гифки и проще глушит 404
             child: Image.network(
               url,
               fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink(),
             ),
           );
         },
@@ -840,49 +1135,109 @@ class _EmojiGrid extends StatelessWidget {
 class _BBCodeParser {
   static String cleanHtmlToBBCode(String html) {
     String t = html;
-    
+
     // 1. Извлекаем прямые ссылки на эмодзи из HTML (чтобы не ломать их реальные расширения .gif / .png)
-    t = t.replaceAllMapped(RegExp(r'<img[^>]*src="([^"]*smileys[^"]+)"[^>]*>', caseSensitive: false), (m) {
-      String url = m.group(1)!;
-      if (url.startsWith('/')) url = '$_shikiUrl$url';
-      return '[emoji_url=$url]';
-    });
+    t = t.replaceAllMapped(
+      RegExp(r'<img[^>]*src="([^"]*smileys[^"]+)"[^>]*>', caseSensitive: false),
+      (m) {
+        String url = m.group(1)!;
+        if (url.startsWith('/')) url = '$_shikiUrl$url';
+        return '[emoji_url=$url]';
+      },
+    );
 
     // 2. Игнорируем замену [image=...] и [poster=...], чтобы затем передать их в виджет
     // Оставляем их текстом: [image=123] -> [image=123]
 
-    t = t.replaceAll('<br>', '\n').replaceAll('<br/>', '\n').replaceAll('<br />', '\n');
-    t = t.replaceAll('</p><p>', '\n\n').replaceAll('<p>', '').replaceAll('</p>', '');
-    t = t.replaceAll(RegExp(r'<div class="b-text_with_paragraphs">|<\/div>'), '');
+    t = t
+        .replaceAll('<br>', '\n')
+        .replaceAll('<br/>', '\n')
+        .replaceAll('<br />', '\n');
+    t = t
+        .replaceAll('</p><p>', '\n\n')
+        .replaceAll('<p>', '')
+        .replaceAll('</p>', '');
+    t = t.replaceAll(
+      RegExp(r'<div class="b-text_with_paragraphs">|<\/div>'),
+      '',
+    );
 
     // 3. Спойлеры
     t = t.replaceAllMapped(
-      RegExp(r'<div class="b-spoiler_block"[^>]*>.*?<span>(.*?)</span>.*?<div class="inside">(.*?)</div>\s*</div>', dotAll: true),
-      (m) => '[spoiler=${m.group(1)}]${m.group(2)}[/spoiler]'
+      RegExp(
+        r'<div class="b-spoiler_block"[^>]*>.*?<span>(.*?)</span>.*?<div class="inside">(.*?)</div>\s*</div>',
+        dotAll: true,
+      ),
+      (m) => '[spoiler=${m.group(1)}]${m.group(2)}[/spoiler]',
     );
     t = t.replaceAllMapped(
-      RegExp(r'<div class="b-spoiler_block"[^>]*>.*?<div class="inside">(.*?)</div>\s*</div>', dotAll: true),
-      (m) => '[spoiler]${m.group(1)}[/spoiler]'
+      RegExp(
+        r'<div class="b-spoiler_block"[^>]*>.*?<div class="inside">(.*?)</div>\s*</div>',
+        dotAll: true,
+      ),
+      (m) => '[spoiler]${m.group(1)}[/spoiler]',
     );
 
     // 4. Форматирование
-    t = t.replaceAllMapped(RegExp(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', caseSensitive: false, dotAll: true), (m) => '[url=${m.group(1)}]${m.group(2)}[/url]');
-    t = t.replaceAllMapped(RegExp(r'<strong[^>]*>(.*?)</strong>', caseSensitive: false, dotAll: true), (m) => '[b]${m.group(1)}[/b]');
-    t = t.replaceAllMapped(RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true), (m) => '[b]${m.group(1)}[/b]');
-    t = t.replaceAllMapped(RegExp(r'<em[^>]*>(.*?)</em>', caseSensitive: false, dotAll: true), (m) => '[i]${m.group(1)}[/i]');
-    t = t.replaceAllMapped(RegExp(r'<i[^>]*>(.*?)</i>', caseSensitive: false, dotAll: true), (m) => '[i]${m.group(1)}[/i]');
-    t = t.replaceAllMapped(RegExp(r'<del[^>]*>(.*?)</del>', caseSensitive: false, dotAll: true), (m) => '[s]${m.group(1)}[/s]');
-    t = t.replaceAllMapped(RegExp(r'<s[^>]*>(.*?)</s>', caseSensitive: false, dotAll: true), (m) => '[s]${m.group(1)}[/s]');
+    t = t.replaceAllMapped(
+      RegExp(
+        r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+        caseSensitive: false,
+        dotAll: true,
+      ),
+      (m) => '[url=${m.group(1)}]${m.group(2)}[/url]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(
+        r'<strong[^>]*>(.*?)</strong>',
+        caseSensitive: false,
+        dotAll: true,
+      ),
+      (m) => '[b]${m.group(1)}[/b]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true),
+      (m) => '[b]${m.group(1)}[/b]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'<em[^>]*>(.*?)</em>', caseSensitive: false, dotAll: true),
+      (m) => '[i]${m.group(1)}[/i]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'<i[^>]*>(.*?)</i>', caseSensitive: false, dotAll: true),
+      (m) => '[i]${m.group(1)}[/i]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'<del[^>]*>(.*?)</del>', caseSensitive: false, dotAll: true),
+      (m) => '[s]${m.group(1)}[/s]',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'<s[^>]*>(.*?)</s>', caseSensitive: false, dotAll: true),
+      (m) => '[s]${m.group(1)}[/s]',
+    );
 
     t = t.replaceAll(RegExp(r'<[^>]*>'), '');
-    t = t.replaceAll('&quot;', '"').replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>');
+    t = t
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
 
     // 5. Упоминания и системный мусор
-    t = t.replaceAllMapped(RegExp(r'\[comment=[^\]]+\](.*?)\[/comment\],?\s*', caseSensitive: false), (m) => '[mention]${m.group(1)}[/mention] ');
+    t = t.replaceAllMapped(
+      RegExp(r'\[comment=[^\]]+\](.*?)\[/comment\],?\s*', caseSensitive: false),
+      (m) => '[mention]${m.group(1)}[/mention] ',
+    );
     t = t.replaceAll(RegExp(r'\[/?solid\]', caseSensitive: false), '');
     t = t.replaceAll(RegExp(r'\[replies=[^\]]+\]'), '');
     t = t.replaceAll(RegExp(r'>\?c\d+;\d+;[^\s\n]+'), '');
-    t = t.replaceAllMapped(RegExp(r'\[(?:character|anime|manga|person|user)(?:=[^\]]+)?\](.*?)\[/(?:character|anime|manga|person|user)\]', caseSensitive: false), (m) => '[b]${m.group(1)}[/b]');
+    t = t.replaceAllMapped(
+      RegExp(
+        r'\[(?:character|anime|manga|person|user)(?:=[^\]]+)?\](.*?)\[/(?:character|anime|manga|person|user)\]',
+        caseSensitive: false,
+      ),
+      (m) => '[b]${m.group(1)}[/b]',
+    );
 
     return t.trim();
   }
@@ -890,11 +1245,26 @@ class _BBCodeParser {
   // Генерация ссылок для смайлов при ручном вводе
   static String getEmojiUrl(String code) {
     final map = {
-      ':pepe:': 'pepe.png', ':aww:': 'aww.gif', ':lol:': 'lol.gif', ':facepalm:': 'facepalm.gif',
-      ':kiss:': 'kiss.gif', ':cry:': 'cry.gif', ':evil:': 'evil.gif', ':hopeless:': 'hopeless.gif',
-      ':yummy:': 'yummy.gif', ':smirk:': 'smirk.gif', ':bored:': 'bored.gif', ':ololo:': 'ololo.gif',
-      ':shy:': 'shy.gif', ':wow:': 'wow.gif', ':smile:': 'smile.gif', ':D': 'D.gif', 
-      ':(': 'sad.gif', '+_(': 'plus_sad.gif', ':|': 'mda.gif', ':\\': 'mda.gif'
+      ':pepe:': 'pepe.png',
+      ':aww:': 'aww.gif',
+      ':lol:': 'lol.gif',
+      ':facepalm:': 'facepalm.gif',
+      ':kiss:': 'kiss.gif',
+      ':cry:': 'cry.gif',
+      ':evil:': 'evil.gif',
+      ':hopeless:': 'hopeless.gif',
+      ':yummy:': 'yummy.gif',
+      ':smirk:': 'smirk.gif',
+      ':bored:': 'bored.gif',
+      ':ololo:': 'ololo.gif',
+      ':shy:': 'shy.gif',
+      ':wow:': 'wow.gif',
+      ':smile:': 'smile.gif',
+      ':D': 'D.gif',
+      ':(': 'sad.gif',
+      '+_(': 'plus_sad.gif',
+      ':|': 'mda.gif',
+      ':\\': 'mda.gif',
     };
     final file = map[code] ?? '${code.replaceAll(':', '')}.gif';
     return '$_shikiUrl/images/smileys/$file';
@@ -902,13 +1272,13 @@ class _BBCodeParser {
 
   static List<InlineSpan> buildSpans(BuildContext context, String text) {
     final spans = <InlineSpan>[];
-    
+
     final pattern = RegExp(
       r'(\[mention\](.*?)\[/mention\])|' // 1, 2
       r'(\[quote(?:=(?:c\d+;\d+;)?([^\]]+))?\](.*?)\[/quote\])|' // 3, 4, 5
       r'(\[spoiler(?:=([^\]]*))?\](.*?)\[/spoiler\])|' // 6, 7, 8
       r'(\[img(?:=[^\]]+)?\](.*?)\[/img\])|' // 9, 10
-      r'(\[img=(.*?)\])|' // 11, 12 
+      r'(\[img=(.*?)\])|' // 11, 12
       r'(\[image=(\d+)\])|' // 13, 14 (Асинхронные вложения Шикимори)
       r'(\[poster=(\d+)\])|' // 15, 16 (Асинхронные постеры)
       r'(\[video\](.*?)\[/video\])|' // 17, 18
@@ -919,77 +1289,157 @@ class _BBCodeParser {
       r'(\[b\](.*?)\[/b\])|' // 28, 29
       r'(\[i\](.*?)\[/i\])|' // 30, 31
       r'(\[s\](.*?)\[/s\])', // 32, 33
-      dotAll: true, caseSensitive: false
+      dotAll: true,
+      caseSensitive: false,
     );
-    
+
     int lastIndex = 0;
     for (final match in pattern.allMatches(text)) {
       if (match.start > lastIndex) {
-        spans.add(TextSpan(text: text.substring(lastIndex, match.start), style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4)));
+        spans.add(
+          TextSpan(
+            text: text.substring(lastIndex, match.start),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              height: 1.4,
+            ),
+          ),
+        );
       }
-      
-      if (match.group(1) != null) { 
-        spans.add(TextSpan(text: '@${match.group(2)} ', style: const TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold, fontSize: 14)));
-      } else if (match.group(3) != null) { 
+
+      if (match.group(1) != null) {
+        spans.add(
+          TextSpan(
+            text: '@${match.group(2)} ',
+            style: const TextStyle(
+              color: Color(0xFFFF5722),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        );
+      } else if (match.group(3) != null) {
         final name = match.group(4) ?? 'Цитата';
-        spans.add(WidgetSpan(child: _QuoteBlock(name: name, content: match.group(5)!)));
-      } else if (match.group(6) != null) { 
+        spans.add(
+          WidgetSpan(
+            child: _QuoteBlock(name: name, content: match.group(5)!),
+          ),
+        );
+      } else if (match.group(6) != null) {
         final title = match.group(7) ?? 'Спойлер';
-        spans.add(WidgetSpan(child: _InlineSpoiler(title: title, content: match.group(8)!)));
-      } else if (match.group(9) != null || match.group(11) != null) { 
+        spans.add(
+          WidgetSpan(
+            child: _InlineSpoiler(title: title, content: match.group(8)!),
+          ),
+        );
+      } else if (match.group(9) != null || match.group(11) != null) {
         final url = match.group(10) ?? match.group(12)!;
         spans.add(WidgetSpan(child: _ImageThumbnail(url: url)));
       } else if (match.group(13) != null) {
         // Рендер асинхронного изображения (Форумные вложения)
-        spans.add(WidgetSpan(child: _AsyncShikiImage(imageId: match.group(14)!)));
+        spans.add(
+          WidgetSpan(child: _AsyncShikiImage(imageId: match.group(14)!)),
+        );
       } else if (match.group(15) != null) {
         // Рендер асинхронного постера
-        spans.add(WidgetSpan(child: _AsyncShikiImage(imageId: match.group(16)!, isPoster: true)));
-      } else if (match.group(17) != null || match.group(19) != null) { 
+        spans.add(
+          WidgetSpan(
+            child: _AsyncShikiImage(imageId: match.group(16)!, isPoster: true),
+          ),
+        );
+      } else if (match.group(17) != null || match.group(19) != null) {
         final url = match.group(18) ?? match.group(20)!;
         spans.add(WidgetSpan(child: _VideoThumbnail(url: url)));
-      } else if (match.group(21) != null) { 
+      } else if (match.group(21) != null) {
         // 100% точный URL из оригинального HTML Шикимори
         final url = match.group(22)!;
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Image.network(url, height: 32, errorBuilder: (_, __, ___) => const Icon(Icons.error, size: 16)),
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Image.network(
+                url,
+                height: 32,
+                errorBuilder: (_, _, _) => const Icon(Icons.error, size: 16),
+              ),
+            ),
           ),
-        ));
-      } else if (match.group(23) != null) { 
+        );
+      } else if (match.group(23) != null) {
         // Если пользователь сам напечатал :v200:
         final code = match.group(24)!;
         final url = getEmojiUrl(code);
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Image.network(url, height: 32, errorBuilder: (_, __, ___) => Text(code, style: const TextStyle(color: Colors.white))),
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Image.network(
+                url,
+                height: 32,
+                errorBuilder: (_, _, _) =>
+                    Text(code, style: const TextStyle(color: Colors.white)),
+              ),
+            ),
           ),
-        ));
-      } else if (match.group(25) != null) { 
+        );
+      } else if (match.group(25) != null) {
         final url = match.group(26)!;
-        spans.add(WidgetSpan(
-          child: GestureDetector(
-            onTap: () => _launchURL(url),
-            child: Text(match.group(27)!, style: const TextStyle(color: Color(0xFFFF5722), decoration: TextDecoration.underline, fontSize: 15, height: 1.4)),
-          )
-        ));
-      } else if (match.group(28) != null) { 
-        spans.add(TextSpan(children: buildSpans(context, match.group(29)!), style: const TextStyle(fontWeight: FontWeight.bold)));
-      } else if (match.group(30) != null) { 
-        spans.add(TextSpan(children: buildSpans(context, match.group(31)!), style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(32) != null) { 
-        spans.add(TextSpan(children: buildSpans(context, match.group(33)!), style: const TextStyle(decoration: TextDecoration.lineThrough)));
+        spans.add(
+          WidgetSpan(
+            child: GestureDetector(
+              onTap: () => _launchURL(url),
+              child: Text(
+                match.group(27)!,
+                style: const TextStyle(
+                  color: Color(0xFFFF5722),
+                  decoration: TextDecoration.underline,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (match.group(28) != null) {
+        spans.add(
+          TextSpan(
+            children: buildSpans(context, match.group(29)!),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        );
+      } else if (match.group(30) != null) {
+        spans.add(
+          TextSpan(
+            children: buildSpans(context, match.group(31)!),
+            style: const TextStyle(fontStyle: FontStyle.italic),
+          ),
+        );
+      } else if (match.group(32) != null) {
+        spans.add(
+          TextSpan(
+            children: buildSpans(context, match.group(33)!),
+            style: const TextStyle(decoration: TextDecoration.lineThrough),
+          ),
+        );
       }
-      
+
       lastIndex = match.end;
     }
-    
+
     if (lastIndex < text.length) {
-      spans.add(TextSpan(text: text.substring(lastIndex), style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4)));
+      spans.add(
+        TextSpan(
+          text: text.substring(lastIndex),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            height: 1.4,
+          ),
+        ),
+      );
     }
     return spans;
   }
@@ -1025,7 +1475,10 @@ class _AsyncShikiImageState extends State<_AsyncShikiImage> {
   }
 
   Future<void> _resolveImage() async {
-    final url = await ShikiMediaService.resolveImageUrl(widget.imageId, isPoster: widget.isPoster);
+    final url = await ShikiMediaService.resolveImageUrl(
+      widget.imageId,
+      isPoster: widget.isPoster,
+    );
     if (mounted) {
       if (url != null) {
         setState(() => _resolvedUrl = url);
@@ -1041,24 +1494,30 @@ class _AsyncShikiImageState extends State<_AsyncShikiImage> {
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xFF27272A), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: const Color(0xFF27272A),
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: const Row(
           children: [
-             Icon(Icons.broken_image, color: Colors.grey), 
-             SizedBox(width: 8), 
-             Text('Вложение недоступно', style: TextStyle(color: Colors.grey))
-          ]
+            Icon(Icons.broken_image, color: Colors.grey),
+            SizedBox(width: 8),
+            Text('Вложение недоступно', style: TextStyle(color: Colors.grey)),
+          ],
         ),
       );
     }
-    
+
     if (_resolvedUrl == null) {
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
-        height: 150, 
-        width: double.infinity, 
-        decoration: BoxDecoration(color: const Color(0xFF27272A), borderRadius: BorderRadius.circular(12)),
-        child: const Center(child: CupertinoActivityIndicator())
+        height: 150,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF27272A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(child: CupertinoActivityIndicator()),
       );
     }
 
@@ -1078,13 +1537,24 @@ class _QuoteBlock extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-      decoration: const BoxDecoration(border: Border(left: BorderSide(color: Color(0xFFFF5722), width: 3))),
+      decoration: const BoxDecoration(
+        border: Border(left: BorderSide(color: Color(0xFFFF5722), width: 3)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(name, style: const TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(
+            name,
+            style: const TextStyle(
+              color: Color(0xFFFF5722),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text.rich(TextSpan(children: _BBCodeParser.buildSpans(context, content))),
+          Text.rich(
+            TextSpan(children: _BBCodeParser.buildSpans(context, content)),
+          ),
         ],
       ),
     );
@@ -1111,8 +1581,13 @@ class _InlineSpoilerState extends State<_InlineSpoiler> {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(color: const Color(0xFF27272A), borderRadius: BorderRadius.circular(12)),
-        child: Text.rich(TextSpan(children: _BBCodeParser.buildSpans(context, widget.content))),
+        decoration: BoxDecoration(
+          color: const Color(0xFF27272A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text.rich(
+          TextSpan(children: _BBCodeParser.buildSpans(context, widget.content)),
+        ),
       );
     }
     return GestureDetector(
@@ -1124,14 +1599,25 @@ class _InlineSpoilerState extends State<_InlineSpoiler> {
         decoration: BoxDecoration(
           color: const Color(0xFF27272A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(CupertinoIcons.eye_slash_fill, color: Color(0xFFFF5722), size: 16),
+            const Icon(
+              CupertinoIcons.eye_slash_fill,
+              color: Color(0xFFFF5722),
+              size: 16,
+            ),
             const SizedBox(width: 8),
-            Text(widget.title.isNotEmpty ? widget.title : 'Спойлер', style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(
+              widget.title.isNotEmpty ? widget.title : 'Спойлер',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -1154,31 +1640,60 @@ class _ImageThumbnail extends StatelessWidget {
           MaterialPageRoute(
             builder: (_) => Scaffold(
               backgroundColor: Colors.black,
-              appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
+              appBar: AppBar(
+                backgroundColor: Colors.black,
+                iconTheme: const IconThemeData(color: Colors.white),
+              ),
               body: Center(
                 child: InteractiveViewer(
                   child: CachedNetworkImage(
-                    imageUrl: safeUrl, 
+                    imageUrl: safeUrl,
                     fit: BoxFit.contain,
-                    placeholder: (_, __) => const CupertinoActivityIndicator(color: Colors.white),
-                    errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white, size: 50),
+                    placeholder: (_, _) =>
+                        const CupertinoActivityIndicator(color: Colors.white),
+                    errorWidget: (_, _, _) => const Icon(
+                      Icons.broken_image,
+                      color: Colors.white,
+                      size: 50,
+                    ),
                   ),
                 ),
               ),
-            )
-          )
+            ),
+          ),
         );
       },
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
-        constraints: const BoxConstraints(maxHeight: 250, maxWidth: double.infinity),
+        constraints: const BoxConstraints(
+          maxHeight: 250,
+          maxWidth: double.infinity,
+        ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: CachedNetworkImage(
-            imageUrl: safeUrl, 
+            imageUrl: safeUrl,
             fit: BoxFit.cover,
-            placeholder: (_, __) => Container(height: 150, width: double.infinity, color: const Color(0xFF27272A), child: const Center(child: CupertinoActivityIndicator())),
-            errorWidget: (_, __, ___) => Container(padding: const EdgeInsets.all(16), color: const Color(0xFF27272A), child: const Row(children: [Icon(Icons.broken_image, color: Colors.grey), SizedBox(width: 8), Text('Изображение недоступно', style: TextStyle(color: Colors.grey))])),
+            placeholder: (_, _) => Container(
+              height: 150,
+              width: double.infinity,
+              color: const Color(0xFF27272A),
+              child: const Center(child: CupertinoActivityIndicator()),
+            ),
+            errorWidget: (_, _, _) => Container(
+              padding: const EdgeInsets.all(16),
+              color: const Color(0xFF27272A),
+              child: const Row(
+                children: [
+                  Icon(Icons.broken_image, color: Colors.grey),
+                  SizedBox(width: 8),
+                  Text(
+                    'Изображение недоступно',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1192,26 +1707,43 @@ class _VideoThumbnail extends StatelessWidget {
   const _VideoThumbnail({required this.url});
 
   String? _extractYoutubeId(String url) {
-    final regExp = RegExp(r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})', caseSensitive: false);
+    final regExp = RegExp(
+      r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+      caseSensitive: false,
+    );
     return regExp.firstMatch(url)?.group(1);
   }
 
   @override
   Widget build(BuildContext context) {
     final ytId = _extractYoutubeId(url);
-    
+
     if (ytId == null) {
       return GestureDetector(
         onTap: () => _BBCodeParser._launchURL(url),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 8),
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: const Color(0xFF27272A), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+            color: const Color(0xFF27272A),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: const Row(
             children: [
-              Icon(CupertinoIcons.play_rectangle_fill, color: Color(0xFFFF5722)),
+              Icon(
+                CupertinoIcons.play_rectangle_fill,
+                color: Color(0xFFFF5722),
+              ),
               SizedBox(width: 8),
-              Expanded(child: Text('Открыть видео', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  'Открыть видео',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1232,12 +1764,13 @@ class _VideoThumbnail extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: 'https://img.youtube.com/vi/$ytId/hqdefault.jpg',
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(color: const Color(0xFF27272A)),
+                errorWidget: (_, _, _) =>
+                    Container(color: const Color(0xFF27272A)),
               ),
             ),
             Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -1245,10 +1778,14 @@ class _VideoThumbnail extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF5722).withOpacity(0.9),
+                  color: const Color(0xFFFF5722).withValues(alpha: 0.9),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 28),
+                child: const Icon(
+                  CupertinoIcons.play_fill,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
             ),
           ],

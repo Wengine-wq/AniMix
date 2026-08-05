@@ -35,7 +35,9 @@ dependencies:
   shared_preferences: ^2.3.0        
   path_provider: ^2.1.4    
   webview_flutter: ^4.9.0  
-  video_player_win: ^3.2.2
+  webview_flutter_android: ^4.12.0
+  webview_flutter_wkwebview: ^3.25.1
+  fvp: ^0.37.3
   cupertino_icons: ^1.0.8
   flutter_web_auth_2: ^5.0.2
   flutter_secure_storage: ^10.0.0
@@ -46,8 +48,9 @@ dependencies:
   go_router: ^17.2.1
   url_launcher: ^6.3.2
   cached_network_image: ^3.4.1
+  intl: ^0.20.2
   flutter_svg: ^2.2.4
-  liquid_glass_widgets: ^0.9.0
+  liquid_glass_widgets: ^0.29.2
   webview_windows: ^0.4.0
 
   flutter_localizations:

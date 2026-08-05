@@ -1,8 +1,11 @@
+import 'dart:io';
+import 'dart:ui';
+import 'package:fvp/fvp.dart' as fvp;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'features/auth/login_screen.dart';
@@ -11,250 +14,348 @@ import 'features/profile/profile_screen.dart';
 import 'features/recommendation/recommendation_screen.dart';
 import 'features/catalog/catalog_screen.dart';
 import 'providers/auth_provider.dart';
+import 'core/animix_theme.dart';
+import 'core/app_settings.dart';
 
-// Цветовая палитра AniMix
-const Color _accentColor = Color(0xFF8B5CF6);
-
-// 🔥 ГЛОБАЛЬНЫЙ КЛЮЧ НАВИГАЦИИ
-// Необходим для показа диалога Liquid Glass об истекшей сессии прямо из API клиента
+// 🔥 ГЛОБАЛЬНЫЙ КЛЮЧ НАВИГАЦИИ (Нужен для вызова диалогов из перехватчиков API)
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-// 🔥 ФУНКЦИЯ ДЛЯ ВЫЗОВА ДИАЛОГА (вызывается из shikimori_api_client.dart при 401 ошибке)
-void showSessionExpiredDialog(WidgetRef ref) {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows) {
+    fvp.registerWith(
+      options: const {
+        'platforms': ['windows'],
+      },
+    );
+  }
+
+  debugPaintSizeEnabled = false;
+  debugPaintBaselinesEnabled = false;
+  debugRepaintRainbowEnabled = false;
+  debugProfilePaintsEnabled = false;
+
+  // Стандартная загрузка .env
+  await dotenv.load(fileName: ".env");
+  await AppSettingsController.instance.initialize();
+  await LiquidGlassWidgets.initialize();
+
+  runApp(
+    LiquidGlassWidgets.wrap(
+      adaptiveQuality: true,
+      theme: GlassThemeData.simple(
+        blur: 10,
+        thickness: 30,
+        quality: GlassQuality.standard,
+      ),
+      child: const ProviderScope(child: MyApp()),
+    ),
+  );
+}
+
+class MyApp extends ConsumerWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Слушаем состояние авторизации для выбора стартового экрана.
+    // Используем .maybeWhen, так как он поддерживается во всех версиях Riverpod (и 1.x, и 2.x)
+    final isLoggedIn = ref
+        .watch(isLoggedInProvider)
+        .maybeWhen(data: (bool data) => data, orElse: () => false);
+
+    final settings = AppSettingsController.instance;
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) => MaterialApp(
+        navigatorKey: appNavigatorKey,
+        title: 'AniMix',
+        debugShowCheckedModeBanner: false,
+        theme: AniMixTheme.material(settings.accentColor),
+        builder: (context, child) => CupertinoTheme(
+          data: AniMixTheme.cupertino(settings.accentColor),
+          child: DefaultTextStyle(
+            style: Theme.of(context).textTheme.bodyMedium!,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        ),
+        home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// 🚨 ДИАЛОГ ИСТЕКШЕЙ СЕССИИ (Полностью нативное стекло)
+// Вызывается из shikimori_api_client.dart при ошибке 401
+// =====================================================================
+void showSessionExpiredDialog(dynamic ref) {
   final context = appNavigatorKey.currentContext;
   if (context == null) return;
-  
-  showGeneralDialog(
+  final accent = Theme.of(context).colorScheme.primary;
+
+  showDialog(
     context: context,
-    barrierDismissible: false, // Запрещаем закрывать тапом по фону
-    barrierColor: Colors.black.withOpacity(0.8), // Глубокое затемнение окружения
-    transitionDuration: const Duration(milliseconds: 400),
-    pageBuilder: (context, animation, secondaryAnimation) {
-      return FadeTransition(
-        opacity: animation,
-        child: _LiquidGlassExpiredDialog(ref: ref),
+    barrierDismissible: false,
+    barrierColor: Colors.black.withValues(alpha: 0.6),
+    builder: (context) {
+      return Center(
+        child: Material(
+          color: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: 25,
+                sigmaY: 25,
+              ), // Нативное размытие
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.85,
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05), // Тинт стекла
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: 0.15,
+                    ), // Эффект граней (Fresnel)
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 30,
+                      spreadRadius: -5,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.exclamationmark_triangle_fill,
+                        color: Colors.redAccent,
+                        size: 36,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Сессия истекла',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Токен авторизации был отозван или его срок действия истек. Пожалуйста, войдите в аккаунт заново.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        // Так как в apiClient мы уже вызвали ref.invalidate(),
+                        // приложение автоматически вернет пользователя на LoginScreen
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              accent,
+                              Color.lerp(accent, Colors.black, 0.25)!,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'Войти',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       );
     },
   );
 }
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+// =====================================================================
+// 🪞 ГЛОБАЛЬНЫЙ ВИДЖЕТ НАТИВНОГО СТЕКЛА (AniMixGlass)
+// Используется в LoginScreen и других экранах вместо сторонних библиотек
+// =====================================================================
+class AniMixGlass extends StatelessWidget {
+  final Widget child;
+  final double borderRadius;
+  final EdgeInsetsGeometry padding;
+  final double blur; // 🔥 Добавили параметр для интенсивности размытия
 
-  // Инициализация шейдеров Liquid Glass
-  await LiquidGlassWidgets.initialize();
-
-  runApp(ProviderScope(
-    child: LiquidGlassWidgets.wrap(
-      const MyApp(),
-      adaptiveQuality: true,
-    ),
-  ));
-}
-
-class MyApp extends HookConsumerWidget {
-  const MyApp({super.key});
+  const AniMixGlass({
+    super.key,
+    required this.child,
+    this.borderRadius = 24.0,
+    this.padding = EdgeInsets.zero,
+    this.blur = 25.0, // Значение по умолчанию
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Используем isLoggedInProvider из вашего auth_provider.dart
-    final authState = ref.watch(isLoggedInProvider);
-
-    return MaterialApp(
-      title: 'AniMix',
-      debugShowCheckedModeBanner: false,
-      // Встраиваем наш глобальный ключ для перехвата сессии
-      navigatorKey: appNavigatorKey,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: _accentColor,
-        scaffoldBackgroundColor: const Color(0xFF09090B),
-        fontFamily: 'SF Pro Display',
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AniMixTheme.surface,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: AniMixTheme.divider),
       ),
-      home: authState.when(
-        data: (isLoggedIn) => isLoggedIn ? const MainTabs() : const LoginScreen(),
-        loading: () => const Scaffold(body: Center(child: CupertinoActivityIndicator())),
-        error: (e, _) => Scaffold(body: Center(child: Text('Ошибка: $e'))),
-      ),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('ru', 'RU')],
+      child: child,
     );
   }
 }
 
-class MainTabs extends StatefulWidget {
-  const MainTabs({super.key});
+// =====================================================================
+// 🏠 ГЛАВНЫЙ КОНТЕЙНЕР С НАТИВНЫМ СТЕКЛЯННЫМ NAV BAR
+// =====================================================================
+class MainWrapper extends StatefulWidget {
+  const MainWrapper({super.key});
 
   @override
-  State<MainTabs> createState() => _MainTabsState();
+  State<MainWrapper> createState() => _MainWrapperState();
 }
 
-class _MainTabsState extends State<MainTabs> {
+class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
-  
-  final List<GlobalKey<NavigatorState>> _navigatorKeys = [
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
+
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const CatalogScreen(),
+    const RecommendationScreen(),
+    const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF09090B),
-      // Позволяет контенту затекать под навбар для видимой радуги и преломления
-      extendBody: true, 
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          _buildTab(0, const HomeScreen()),
-          _buildTab(1, const RecommendationScreen()),
-          _buildTab(2, const CatalogScreen()),
-          _buildTab(3, const ProfileScreen()),
-        ],
+    const destinations = [
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.house),
+        selectedIcon: Icon(CupertinoIcons.house_fill),
+        label: 'Главная',
       ),
-      // ЭКСТРЕМАЛЬНАЯ ОПТИКА LIQUID GLASS: Идеальная прозрачность для эффекта "Бензина"
-      bottomNavigationBar: AdaptiveLiquidGlassLayer(
-        settings: const LiquidGlassSettings(
-          glassColor: Color(0x60050507),    // ~38% непрозрачности: идеально пропускает цвет для "растекания"
-          blur: 45.0,                       // Высокий блюр для плавного смешивания фоновых цветов
-          thickness: 80.0,                  // Огромная толщина для эффекта линзы и сильного преломления
-          chromaticAberration: 0.95,        // Максимальная бензиновая радужка на гранях
-          refractiveIndex: 1.8,             // Сверх-сильное искажение контента за стеклом
-          lightIntensity: 0.15,             // Приглушенный свет на гранях для глубокого премиального вида
-          specularSharpness: GlassSpecularSharpness.soft, // Мягкие, "жидкие" блики
-        ),
-        child: GlassBottomBar(
-          selectedIndex: _currentIndex,
-          onTabSelected: (index) {
-            if (_currentIndex == index) {
-              _navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
-            } else {
-              setState(() => _currentIndex = index);
-            }
-          },
-          selectedIconColor: Colors.white, 
-          unselectedIconColor: Colors.white.withOpacity(0.35),
-          // То самое "стеклышко поверх" - активный индикатор, который вбирает в себя оптику
-          indicatorColor: _accentColor.withOpacity(0.4), 
-          maskingQuality: MaskingQuality.high,
-          tabs: const [
-            GlassBottomBarTab(
-              icon: Icon(CupertinoIcons.house),
-              activeIcon: Icon(CupertinoIcons.house_fill),
-              label: 'Главная',
-            ),
-            GlassBottomBarTab(
-              icon: Icon(CupertinoIcons.sparkles),
-              activeIcon: Icon(CupertinoIcons.sparkles),
-              label: 'Подбор',
-            ),
-            GlassBottomBarTab(
-              icon: Icon(CupertinoIcons.list_bullet),
-              activeIcon: Icon(CupertinoIcons.list_bullet_indent),
-              label: 'Каталог',
-            ),
-            GlassBottomBarTab(
-              icon: Icon(CupertinoIcons.person),
-              activeIcon: Icon(CupertinoIcons.person_fill),
-              label: 'Профиль',
-            ),
-          ],
-        ),
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.square_grid_2x2),
+        selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+        label: 'Каталог',
       ),
-    );
-  }
-
-  Widget _buildTab(int index, Widget child) {
-    return Navigator(
-      key: _navigatorKeys[index],
-      onGenerateRoute: (settings) {
-        return MaterialPageRoute(builder: (_) => child);
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.sparkles),
+        selectedIcon: Icon(CupertinoIcons.sparkles),
+        label: 'Подборка',
+      ),
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.person),
+        selectedIcon: Icon(CupertinoIcons.person_fill),
+        label: 'Профиль',
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 1000;
+        final content = IndexedStack(index: _currentIndex, children: _screens);
+        if (wide) {
+          return Scaffold(
+            body: Row(
+              children: [
+                SafeArea(
+                  right: false,
+                  child: NavigationRail(
+                    selectedIndex: _currentIndex,
+                    onDestinationSelected: (index) =>
+                        setState(() => _currentIndex = index),
+                    labelType: NavigationRailLabelType.all,
+                    leading: Padding(
+                      padding: const EdgeInsets.only(top: 14, bottom: 22),
+                      child: Text(
+                        'A',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    destinations: const [
+                      NavigationRailDestination(
+                        icon: Icon(CupertinoIcons.house),
+                        selectedIcon: Icon(CupertinoIcons.house_fill),
+                        label: Text('Главная'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(CupertinoIcons.square_grid_2x2),
+                        selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+                        label: Text('Каталог'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(CupertinoIcons.sparkles),
+                        label: Text('Подборка'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(CupertinoIcons.person),
+                        selectedIcon: Icon(CupertinoIcons.person_fill),
+                        label: Text('Профиль'),
+                      ),
+                    ],
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: content),
+              ],
+            ),
+          );
+        }
+        return Scaffold(
+          body: content,
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (index) =>
+                setState(() => _currentIndex = index),
+            destinations: destinations,
+          ),
+        );
       },
-    );
-  }
-}
-
-// =====================================================================
-// ПРЕМИАЛЬНЫЙ ДИАЛОГ ОБ ИСТЕКШЕЙ СЕССИИ (LIQUID GLASS)
-// =====================================================================
-class _LiquidGlassExpiredDialog extends StatelessWidget {
-  final WidgetRef ref;
-  const _LiquidGlassExpiredDialog({required this.ref});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Center(
-        child: AdaptiveLiquidGlassLayer(
-          settings: const LiquidGlassSettings(
-            glassColor: Color(0xD9050507), // Темная подложка (85%), чтобы текст читался идеально
-            blur: 60.0,
-            thickness: 40.0,
-            chromaticAberration: 0.25, // Мощная дисперсия (угрожающая для алертов)
-            refractiveIndex: 1.5,
-            specularSharpness: GlassSpecularSharpness.sharp,
-          ),
-          child: GlassContainer(
-            shape: const LiquidRoundedSuperellipse(borderRadius: 36.0),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 32.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Иконка замка в красном стекле
-                  GlassContainer(
-                    shape: const LiquidRoundedSuperellipse(borderRadius: 100.0),
-                    settings: const LiquidGlassSettings(
-                      glassColor: Color(0x33FF3B30), // Красная подложка
-                      blur: 10.0,
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Icon(CupertinoIcons.lock_slash_fill, color: CupertinoColors.systemRed, size: 42),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Сессия истекла',
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Ваш токен авторизации устарел.\nПожалуйста, войдите в аккаунт заново.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.3, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 36),
-                  // Кнопка с физикой желе
-                  GlassButton(
-                    onTap: () {
-                      Navigator.pop(context); // Закрываем сам диалог
-                      ref.invalidate(isLoggedInProvider); // Перекидываем на LoginScreen в main.dart
-                    },
-                    shape: const LiquidRoundedSuperellipse(borderRadius: 20.0),
-                    settings: const LiquidGlassSettings(
-                      glassColor: Color(0x66FF3B30), // Красный премиальный тинт
-                      blur: 20.0,
-                    ),
-                    icon: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                      child: Text('Войти заново', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17, letterSpacing: -0.5)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

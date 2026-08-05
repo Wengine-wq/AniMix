@@ -7,11 +7,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart'; 
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'; // 🔥 Подключаем Liquid Glass
 
 import '../../core/shikimori_auth_service.dart';
 import '../../providers/auth_provider.dart';
-import '../../main.dart';
+import '../../main.dart'; // Подключаем наш AniMixGlass
 
 class LoginScreen extends HookConsumerWidget {
   const LoginScreen({super.key});
@@ -27,64 +26,64 @@ class LoginScreen extends HookConsumerWidget {
           // 1. АТМОСФЕРНЫЙ ФОН С ПРЕЛОМЛЕНИЕМ
           _buildAnimatedBackground(),
 
-          // 2. СЛОЙ LIQUID GLASS ДЛЯ ВСЕГО ЭКРАНА
-          AdaptiveLiquidGlassLayer(
-            settings: const LiquidGlassSettings(
-              blur: 40.0,
-              thickness: 25.0,
-              chromaticAberration: 0.15,
-              refractiveIndex: 1.4,
+          // 2. НАТИВНЫЙ БЛЮР ВМЕСТО AdaptiveLiquidGlassLayer
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 40.0, sigmaY: 40.0),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.15),
+              ),
             ),
-            child: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420), // Идеально для Windows / iPad
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // ЛОГОТИП И ЗАГОЛОВОК
-                        const Icon(CupertinoIcons.play_circle_fill, size: 72, color: Colors.white),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'AniMix',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 56, 
-                            fontWeight: FontWeight.w900, 
-                            color: Colors.white, 
-                            letterSpacing: -2,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Открой мир аниме заново.\nСмотри любимые тайтлы без ограничений.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 17, 
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 64),
+          ),
 
-                        // 🔥 КНОПКА ВОЙТИ (LIQUID GLASS)
-                        GlassButton(
-                          onTap: () => _handleLogin(context, ref, authService), // Передаем ref
-                          quality: GlassQuality.premium,
-                          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
-                          settings: const LiquidGlassSettings(
-                            glassColor: Color(0x668B5CF6), // Фирменный фиолетовый тинт
-                            blur: 15.0,
-                            specularSharpness: GlassSpecularSharpness.sharp,
-                          ),
-                          icon: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: Row(
+          // 3. ТВОЙ ОРИГИНАЛЬНЫЙ КОНТЕНТ БЕЗ ИЗМЕНЕНИЙ
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420), // Идеально для Windows / iPad
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ЛОГОТИП И ЗАГОЛОВОК
+                      const Icon(CupertinoIcons.play_circle_fill, size: 72, color: Colors.white),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'AniMix',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 56,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: -2,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Открой мир аниме заново.\nСмотри любимые тайтлы без ограничений.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w500,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 64),
+
+                      // 🔥 КНОПКА ВОЙТИ (Переведена на AniMixGlass)
+                      GestureDetector(
+                        onTap: () => _handleLogin(context, ref, authService),
+                        child: AniMixGlass(
+                          borderRadius: 24,
+                          blur: 15.0,
+                          child: Container(
+                            color: const Color(0x668B5CF6), // Фирменный фиолетовый тинт
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(CupertinoIcons.person_crop_circle_fill, color: Colors.white, size: 24),
@@ -102,21 +101,20 @@ class LoginScreen extends HookConsumerWidget {
                             ),
                           ),
                         ),
+                      ),
 
-                        const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                        // ВТОРИЧНАЯ КНОПКА (РУЧНОЙ ВВОД)
-                        GlassButton(
-                          onTap: () => _showManualCodeDialog(context, ref, authService), // Передаем ref
-                          quality: GlassQuality.standard,
-                          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
-                          settings: const LiquidGlassSettings(
-                            glassColor: Color(0x1AFFFFFF), // Легкий светлый тинт
-                            blur: 20.0,
-                          ),
-                          icon: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 18),
-                            child: Text(
+                      // ВТОРИЧНАЯ КНОПКА (РУЧНОЙ ВВОД) - Переведена на AniMixGlass
+                      GestureDetector(
+                        onTap: () => _showManualCodeDialog(context, ref, authService),
+                        child: AniMixGlass(
+                          borderRadius: 24,
+                          blur: 20.0,
+                          child: Container(
+                            color: const Color(0x1AFFFFFF), // Легкий светлый тинт
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            child: const Text(
                               'Ввести код вручную',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -127,8 +125,8 @@ class LoginScreen extends HookConsumerWidget {
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
