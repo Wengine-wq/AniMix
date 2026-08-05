@@ -76,6 +76,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  config:
+    # CI uses the checked-in CocoaPods integration in ios/Podfile.
+    # Do not auto-migrate this Xcode project to Swift Package Manager.
+    enable-swift-package-manager: false
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
