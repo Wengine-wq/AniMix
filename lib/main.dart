@@ -1,18 +1,18 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/recommendation/recommendation_screen.dart';
 import 'features/catalog/catalog_screen.dart';
+import 'features/downloads/downloads_screen.dart';
+import 'features/profile/settings_screen.dart';
 import 'providers/auth_provider.dart';
 import 'core/animix_theme.dart';
 import 'core/app_settings.dart';
@@ -39,19 +39,7 @@ void main() async {
   // Стандартная загрузка .env
   await dotenv.load(fileName: ".env");
   await AppSettingsController.instance.initialize();
-  await LiquidGlassWidgets.initialize();
-
-  runApp(
-    LiquidGlassWidgets.wrap(
-      adaptiveQuality: true,
-      theme: GlassThemeData.simple(
-        blur: 10,
-        thickness: 30,
-        quality: GlassQuality.standard,
-      ),
-      child: const ProviderScope(child: MyApp()),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerWidget {
@@ -61,9 +49,7 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Слушаем состояние авторизации для выбора стартового экрана.
     // Используем .maybeWhen, так как он поддерживается во всех версиях Riverpod (и 1.x, и 2.x)
-    final isLoggedIn = ref
-        .watch(isLoggedInProvider)
-        .maybeWhen(data: (bool data) => data, orElse: () => false);
+    final authState = ref.watch(isLoggedInProvider);
 
     final settings = AppSettingsController.instance;
     return AnimatedBuilder(
@@ -72,18 +58,68 @@ class MyApp extends ConsumerWidget {
         navigatorKey: appNavigatorKey,
         title: 'AniMix',
         debugShowCheckedModeBanner: false,
-        theme: AniMixTheme.material(settings.accentColor),
+        theme: AniMixTheme.material(settings.accentColor, settings.themeStyle),
         builder: (context, child) => CupertinoTheme(
-          data: AniMixTheme.cupertino(settings.accentColor),
+          data: AniMixTheme.cupertino(
+            settings.accentColor,
+            settings.themeStyle,
+          ),
           child: DefaultTextStyle(
             style: Theme.of(context).textTheme.bodyMedium!,
             child: child ?? const SizedBox.shrink(),
           ),
         ),
-        home: isLoggedIn ? const MainWrapper() : const LoginScreen(),
+        home: authState.when(
+          data: (loggedIn) =>
+              loggedIn ? const MainWrapper() : const LoginScreen(),
+          loading: () => const _StartupLoading(),
+          error: (_, _) =>
+              _StartupError(onRetry: () => ref.invalidate(isLoggedInProvider)),
+        ),
       ),
     );
   }
+}
+
+class _StartupLoading extends StatelessWidget {
+  const _StartupLoading();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: CupertinoActivityIndicator(radius: 15)),
+  );
+}
+
+class _StartupError extends StatelessWidget {
+  const _StartupError({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(CupertinoIcons.exclamationmark_triangle, size: 42),
+            const SizedBox(height: 16),
+            const Text(
+              'Не удалось проверить авторизацию',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(CupertinoIcons.refresh),
+              label: const Text('Повторить'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // =====================================================================
@@ -93,162 +129,34 @@ class MyApp extends ConsumerWidget {
 void showSessionExpiredDialog(dynamic ref) {
   final context = appNavigatorKey.currentContext;
   if (context == null) return;
-  final accent = Theme.of(context).colorScheme.primary;
-
-  showDialog(
+  showDialog<void>(
     context: context,
     barrierDismissible: false,
-    barrierColor: Colors.black.withValues(alpha: 0.6),
-    builder: (context) {
-      return Center(
-        child: Material(
-          color: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: 25,
-                sigmaY: 25,
-              ), // Нативное размытие
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.85,
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05), // Тинт стекла
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: 0.15,
-                    ), // Эффект граней (Fresnel)
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 30,
-                      spreadRadius: -5,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        CupertinoIcons.exclamationmark_triangle_fill,
-                        color: Colors.redAccent,
-                        size: 36,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Сессия истекла',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Токен авторизации был отозван или его срок действия истек. Пожалуйста, войдите в аккаунт заново.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 15,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        // Так как в apiClient мы уже вызвали ref.invalidate(),
-                        // приложение автоматически вернет пользователя на LoginScreen
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              accent,
-                              Color.lerp(accent, Colors.black, 0.25)!,
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.withValues(alpha: 0.4),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Text(
-                          'Войти',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+    builder: (context) => AlertDialog(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      icon: const Icon(
+        CupertinoIcons.exclamationmark_triangle_fill,
+        color: Colors.redAccent,
+        size: 38,
+      ),
+      title: const Text('Сессия истекла'),
+      content: const Text(
+        'Shikimori больше не принимает текущий токен. Войдите в аккаунт повторно.',
+        textAlign: TextAlign.center,
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Войти повторно'),
         ),
-      );
-    },
+      ],
+    ),
   );
 }
 
 // =====================================================================
-// 🪞 ГЛОБАЛЬНЫЙ ВИДЖЕТ НАТИВНОГО СТЕКЛА (AniMixGlass)
-// Используется в LoginScreen и других экранах вместо сторонних библиотек
-// =====================================================================
-class AniMixGlass extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final EdgeInsetsGeometry padding;
-  final double blur; // 🔥 Добавили параметр для интенсивности размытия
-
-  const AniMixGlass({
-    super.key,
-    required this.child,
-    this.borderRadius = 24.0,
-    this.padding = EdgeInsets.zero,
-    this.blur = 25.0, // Значение по умолчанию
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: AniMixTheme.surface,
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: AniMixTheme.divider),
-      ),
-      child: child,
-    );
-  }
-}
-
-// =====================================================================
-// 🏠 ГЛАВНЫЙ КОНТЕЙНЕР С НАТИВНЫМ СТЕКЛЯННЫМ NAV BAR
+// Адаптивная корневая навигация: tab bar на телефоне и rail на desktop.
 // =====================================================================
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -259,88 +167,74 @@ class MainWrapper extends StatefulWidget {
 
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
+  final Set<int> _visited = {0};
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const CatalogScreen(),
     const RecommendationScreen(),
+    const CatalogScreen(),
+    const DownloadsScreen(),
     const ProfileScreen(),
+    const SettingsScreen(),
   ];
+
+  void _select(int index) {
+    setState(() {
+      _currentIndex = index;
+      _visited.add(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    const destinations = [
+    const mobileDestinations = [
       NavigationDestination(
         icon: Icon(CupertinoIcons.house),
         selectedIcon: Icon(CupertinoIcons.house_fill),
         label: 'Главная',
       ),
       NavigationDestination(
-        icon: Icon(CupertinoIcons.square_grid_2x2),
-        selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
-        label: 'Каталог',
-      ),
-      NavigationDestination(
         icon: Icon(CupertinoIcons.sparkles),
         selectedIcon: Icon(CupertinoIcons.sparkles),
-        label: 'Подборка',
+        label: 'Для вас',
       ),
       NavigationDestination(
-        icon: Icon(CupertinoIcons.person),
-        selectedIcon: Icon(CupertinoIcons.person_fill),
+        icon: Icon(CupertinoIcons.bookmark),
+        selectedIcon: Icon(CupertinoIcons.bookmark_fill),
+        label: 'Закладки',
+      ),
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.arrow_down_circle),
+        selectedIcon: Icon(CupertinoIcons.arrow_down_circle_fill),
+        label: 'Загрузки',
+      ),
+      NavigationDestination(
+        icon: Icon(CupertinoIcons.person_crop_circle),
+        selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill),
         label: 'Профиль',
       ),
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 1000;
-        final content = IndexedStack(index: _currentIndex, children: _screens);
+        final wide = constraints.maxWidth >= 900;
+        final visibleIndex = !wide && _currentIndex > 4 ? 4 : _currentIndex;
+        final content = IndexedStack(
+          index: visibleIndex,
+          children: [
+            for (var index = 0; index < _screens.length; index++)
+              (_visited.contains(index) || index == visibleIndex)
+                  ? _screens[index]
+                  : const SizedBox.shrink(),
+          ],
+        );
         if (wide) {
           return Scaffold(
             body: Row(
               children: [
-                SafeArea(
-                  right: false,
-                  child: NavigationRail(
-                    selectedIndex: _currentIndex,
-                    onDestinationSelected: (index) =>
-                        setState(() => _currentIndex = index),
-                    labelType: NavigationRailLabelType.all,
-                    leading: Padding(
-                      padding: const EdgeInsets.only(top: 14, bottom: 22),
-                      child: Text(
-                        'A',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    destinations: const [
-                      NavigationRailDestination(
-                        icon: Icon(CupertinoIcons.house),
-                        selectedIcon: Icon(CupertinoIcons.house_fill),
-                        label: Text('Главная'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(CupertinoIcons.square_grid_2x2),
-                        selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
-                        label: Text('Каталог'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(CupertinoIcons.sparkles),
-                        label: Text('Подборка'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(CupertinoIcons.person),
-                        selectedIcon: Icon(CupertinoIcons.person_fill),
-                        label: Text('Профиль'),
-                      ),
-                    ],
-                  ),
+                _DesktopSidebar(
+                  selectedIndex: _currentIndex,
+                  onSelected: _select,
                 ),
-                const VerticalDivider(width: 1),
                 Expanded(child: content),
               ],
             ),
@@ -348,14 +242,214 @@ class _MainWrapperState extends State<MainWrapper> {
         }
         return Scaffold(
           body: content,
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: (index) =>
-                setState(() => _currentIndex = index),
-            destinations: destinations,
+          bottomNavigationBar: _FloatingTabBar(
+            selectedIndex: visibleIndex,
+            destinations: mobileDestinations,
+            onSelected: _select,
           ),
         );
       },
+    );
+  }
+}
+
+class _FloatingTabBar extends StatelessWidget {
+  const _FloatingTabBar({
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final List<NavigationDestination> destinations;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return ColoredBox(
+      color: Colors.transparent,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+        child: Container(
+          height: 66,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: const Color(0x1FFFFFFF)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 24,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              for (var index = 0; index < destinations.length; index++)
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    selected: selectedIndex == index,
+                    label: destinations[index].label,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(19),
+                      onTap: () => onSelected(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 190),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color: selectedIndex == index
+                              ? accent.withValues(alpha: .17)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(19),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconTheme(
+                              data: IconThemeData(
+                                size: 20,
+                                color: selectedIndex == index
+                                    ? accent
+                                    : AniMixTheme.subtleText,
+                              ),
+                              child: selectedIndex == index
+                                  ? (destinations[index].selectedIcon ??
+                                        destinations[index].icon)
+                                  : destinations[index].icon,
+                            ),
+                            const SizedBox(height: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                destinations[index].label,
+                                style: TextStyle(
+                                  color: selectedIndex == index
+                                      ? Colors.white
+                                      : AniMixTheme.subtleText,
+                                  fontSize: 9,
+                                  fontWeight: selectedIndex == index
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopSidebar extends StatelessWidget {
+  const _DesktopSidebar({
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      ('Главная', CupertinoIcons.house_fill),
+      ('Для вас', CupertinoIcons.sparkles),
+      ('Закладки', CupertinoIcons.bookmark_fill),
+      ('Загрузки', CupertinoIcons.arrow_down_circle_fill),
+      ('Профиль', CupertinoIcons.person_crop_circle_fill),
+      ('Настройки', CupertinoIcons.gear_alt_fill),
+    ];
+    return Container(
+      width: 220,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        border: const Border(right: BorderSide(color: AniMixTheme.divider)),
+      ),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 18, 26),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      width: 38,
+                      height: 38,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  const Text(
+                    'AniMix',
+                    style: TextStyle(
+                      fontSize: 21,
+                      letterSpacing: -.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (var index = 0; index < items.length; index++)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 2,
+                ),
+                child: Material(
+                  color: selectedIndex == index
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: .16)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(13),
+                  child: ListTile(
+                    dense: true,
+                    minTileHeight: 48,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    leading: Icon(
+                      items[index].$2,
+                      size: 20,
+                      color: selectedIndex == index
+                          ? Theme.of(context).colorScheme.primary
+                          : AniMixTheme.subtleText,
+                    ),
+                    title: Text(
+                      items[index].$1,
+                      style: TextStyle(
+                        color: selectedIndex == index
+                            ? Colors.white
+                            : AniMixTheme.subtleText,
+                        fontWeight: selectedIndex == index
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    onTap: () => onSelected(index),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

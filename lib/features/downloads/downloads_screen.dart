@@ -210,9 +210,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   ? CachedNetworkImage(
                       imageUrl: item.posterUrl!,
                       fit: BoxFit.cover,
-                      errorWidget: (_, _, _) => _posterPlaceholder(),
+                      errorWidget: (_, _, _) => _posterPlaceholder(context),
                     )
-                  : _posterPlaceholder(),
+                  : _posterPlaceholder(context),
             ),
           ),
           const SizedBox(width: 14),
@@ -303,9 +303,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  Widget _posterPlaceholder() => const ColoredBox(
-    color: AniMixTheme.elevated,
-    child: Center(child: Icon(CupertinoIcons.film, color: Colors.white30)),
+  Widget _posterPlaceholder(BuildContext context) => ColoredBox(
+    color: Theme.of(context).colorScheme.surfaceContainer,
+    child: const Center(
+      child: Icon(CupertinoIcons.film, color: Colors.white30),
+    ),
   );
 
   void _retry(DownloadItem item) {

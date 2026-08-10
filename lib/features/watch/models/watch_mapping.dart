@@ -18,20 +18,20 @@ class WatchMapping {
   String get key => '${shikimoriId}_$provider';
 
   Map<String, dynamic> toJson() => {
-        'shikimoriId': shikimoriId,
-        'provider': provider,
-        'releaseId': releaseId,
-        'releaseTitle': releaseTitle,
-        'posterUrl': posterUrl,
-        'savedAt': savedAt.toIso8601String(),
-      };
+    'shikimoriId': shikimoriId,
+    'provider': provider,
+    'releaseId': releaseId,
+    'releaseTitle': releaseTitle,
+    'posterUrl': posterUrl,
+    'savedAt': savedAt.toIso8601String(),
+  };
 
   factory WatchMapping.fromJson(Map<String, dynamic> json) => WatchMapping(
-        shikimoriId: json['shikimoriId'],
-        provider: json['provider'],
-        releaseId: json['releaseId'],
-        releaseTitle: json['releaseTitle'],
-        posterUrl: json['posterUrl'],
-        savedAt: DateTime.parse(json['savedAt']),
-      );
+    shikimoriId: json['shikimoriId'],
+    provider: json['provider'],
+    releaseId: json['releaseId'],
+    releaseTitle: json['releaseTitle'],
+    posterUrl: json['posterUrl'],
+    savedAt: DateTime.parse(json['savedAt']),
+  );
 }

@@ -5,7 +5,10 @@ class WatchStorage {
   static const _watchedKey = 'watched_eps_v2_';
   static const _progressKey = 'progress_v2_';
 
-  static Future<void> markEpisodeWatched(int animeId, String episodeNumber) async {
+  static Future<void> markEpisodeWatched(
+    int animeId,
+    String episodeNumber,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_watchedKey$animeId';
     final list = prefs.getStringList(key) ?? [];
@@ -20,13 +23,20 @@ class WatchStorage {
     return prefs.getStringList('$_watchedKey$animeId') ?? [];
   }
 
-  static Future<void> saveProgress(int animeId, String episodeNumber, Duration position) async {
+  static Future<void> saveProgress(
+    int animeId,
+    String episodeNumber,
+    Duration position,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_progressKey${animeId}_$episodeNumber';
     await prefs.setInt(key, position.inSeconds);
   }
 
-  static Future<Duration?> getProgress(int animeId, String episodeNumber) async {
+  static Future<Duration?> getProgress(
+    int animeId,
+    String episodeNumber,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final seconds = prefs.getInt('$_progressKey${animeId}_$episodeNumber');
     return seconds != null ? Duration(seconds: seconds) : null;

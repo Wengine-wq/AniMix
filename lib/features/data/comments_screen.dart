@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/shikimori_comment.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/animix_surface.dart';
 
 // Актуальный домен Шикимори
 const String _shikiUrl = 'https://shikimori.io';
@@ -97,6 +98,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
+  Object? _loadError;
 
   ShikimoriComment? _replyingTo;
 
@@ -121,6 +123,10 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _loadComments() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final api = ref.read(apiClientProvider);
       final comms = await api.getComments(widget.topicId, page: 1);
@@ -129,11 +135,17 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           commentsList = comms;
           _hasMore = comms.length >= 30;
           _isLoading = false;
+          _loadError = null;
         });
       }
     } catch (e) {
       debugPrint('Ошибка загрузки комментов: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = e;
+        });
+      }
     }
   }
 
@@ -156,6 +168,17 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       }
     } catch (e) {
       debugPrint('Ошибка подгрузки комментов: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Не удалось загрузить следующую страницу'),
+            action: SnackBarAction(
+              label: 'Повторить',
+              onPressed: _loadMoreComments,
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingMore = false);
     }
@@ -228,9 +251,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF09090B),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF09090B).withValues(alpha: 0.95),
+        backgroundColor: Theme.of(
+          context,
+        ).scaffoldBackgroundColor.withValues(alpha: 0.98),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: Column(
@@ -264,6 +289,14 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CupertinoActivityIndicator(radius: 16))
+                : _loadError != null
+                ? AniMixEmptyState(
+                    icon: CupertinoIcons.wifi_exclamationmark,
+                    title: 'Не удалось загрузить комментарии',
+                    message: 'Проверьте подключение и повторите попытку.',
+                    actionLabel: 'Повторить',
+                    onAction: _loadComments,
+                  )
                 : rootComments.isEmpty
                 ? const Center(
                     child: Text(
@@ -634,9 +667,11 @@ class _CommentThreadScreenState extends State<_CommentThreadScreen> {
     final sortedReplies = replies.reversed.toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF09090B),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF09090B).withValues(alpha: 0.95),
+        backgroundColor: Theme.of(
+          context,
+        ).scaffoldBackgroundColor.withValues(alpha: 0.98),
         title: const Text(
           'Ветка ответов',
           style: TextStyle(
