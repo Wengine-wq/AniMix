@@ -6,9 +6,9 @@ class ShikimoriUser {
   final String? avatarUrl;
   final String? imageUrl;
   final String? name;
-  final String? sex;           // муж / жен
-  final String? birthOn;       // дата рождения
-  final String? joinedAt;      // дата регистрации
+  final String? sex; // муж / жен
+  final String? birthOn; // дата рождения
+  final String? joinedAt; // дата регистрации
   final String? lastOnlineAt;
   final int? totalHours; // время за аниме  // последний онлайн
   final int scores;
@@ -17,27 +17,28 @@ class ShikimoriUser {
   final int watching;
   final int dropped;
   final int rewatched;
-  
 
   ShikimoriUser.fromJson(Map<String, dynamic> json)
-      : id = json['id'] ?? 0,
-        nickname = json['nickname'] ?? '',
-        avatarUrl = _normalizeUrl(json['image']?['original'] ?? json['image']?['x160']),
-        imageUrl = _normalizeUrl(json['image']?['x160']),
-        name = json['name'],
-        sex = json['sex'],
-        birthOn = json['birth_on'],
-        joinedAt = json['created_at'],
-        lastOnlineAt = json['last_online_at'],
-        scores = _parseTotalScores(json),
-        watched = _parseStatus(json, 'completed'),
-        planned = _parseStatus(json, 'planned'),
-        watching = _parseStatus(json, 'watching'),
-        dropped = _parseStatus(json, 'dropped'),
-        rewatched = _parseStatus(json, 'rewatching'),
-        totalHours = json['stats']?['activity']?.isNotEmpty == true
-            ? (json['stats']['activity'][0]['value'] as int?) ?? 0
-            : 0 {
+    : id = json['id'] ?? 0,
+      nickname = json['nickname'] ?? '',
+      avatarUrl = _normalizeUrl(
+        json['image']?['original'] ?? json['image']?['x160'],
+      ),
+      imageUrl = _normalizeUrl(json['image']?['x160']),
+      name = json['name'],
+      sex = json['sex'],
+      birthOn = json['birth_on'],
+      joinedAt = json['created_at'],
+      lastOnlineAt = json['last_online_at'],
+      scores = _parseTotalScores(json),
+      watched = _parseStatus(json, 'completed'),
+      planned = _parseStatus(json, 'planned'),
+      watching = _parseStatus(json, 'watching'),
+      dropped = _parseStatus(json, 'dropped'),
+      rewatched = _parseStatus(json, 'rewatching'),
+      totalHours = json['stats']?['activity']?.isNotEmpty == true
+          ? (json['stats']['activity'][0]['value'] as int?) ?? 0
+          : 0 {
     debugPrint('📊 FULL USER LOADED: $nickname');
   }
 

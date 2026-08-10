@@ -1,4 +1,5 @@
 import 'package:animix/core/animix_theme.dart';
+import 'package:animix/core/app_settings.dart';
 import 'package:animix/features/downloads/downloads_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +10,10 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await tester.pumpWidget(
       MaterialApp(
-        theme: AniMixTheme.material(const Color(0xFF8B5CF6)),
+        theme: AniMixTheme.material(
+          const Color(0xFF8B5CF6),
+          AniMixThemeStyle.graphite,
+        ),
         home: const DownloadsScreen(),
       ),
     );

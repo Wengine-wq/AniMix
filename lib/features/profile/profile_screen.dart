@@ -1,875 +1,757 @@
-import 'dart:math' as math;
-
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart'; // 🔥 ДОБАВЛЕН ИМПОРТ ДЛЯ ИНИЦИАЛИЗАЦИИ ЛОКАЛИ
 
-import '../../providers/user_provider.dart';
+import '../../core/animix_theme.dart';
+import '../../core/secure_storage.dart';
 import '../../models/shikimori_history.dart';
+import '../../models/shikimori_user.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/animix_surface.dart';
 import '../../widgets/smart_anime_poster.dart';
-import '../../core/app_settings.dart';
+import '../anime_detail/anime_detail_screen.dart';
+import '../auth/login_screen.dart';
 import 'settings_screen.dart';
 
-// 🔥 Импортируем наш глобальный нативный класс стекла
-import '../../main.dart';
-
-// Цветовая палитра "Premium Violet"
-Color get _accentColor => AppSettingsController.instance.accentColor;
-Color get _accentLight =>
-    Color.lerp(_accentColor, Colors.white, 0.24) ?? _accentColor;
-const Color _bgColor = Color(0xFF09090B);
-
-// Провайдер истории с привязкой к ID
 final userHistoryProvider = FutureProvider.family
     .autoDispose<List<ShikimoriHistory>, int>((ref, userId) async {
-      final api = ref.watch(apiClientProvider);
-      return api.getUserHistory(userId, limit: 100);
+      return ref.watch(apiClientProvider).getUserHistory(userId, limit: 60);
     });
 
-// =====================================================================
-// ЭКРАН ПРОФИЛЯ
-// =====================================================================
-class ProfileScreen extends ConsumerStatefulWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
-  @override
-  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  Future<void> _onRefresh() async {
+  Future<void> _refresh(WidgetRef ref) async {
     ref.invalidate(currentUserProvider);
-    // Принудительно ждем обновления юзера, чтобы инвалидировать его историю
     final user = await ref.read(currentUserProvider.future);
-    if (user != null) {
-      ref.invalidate(userHistoryProvider(user.id));
-    }
+    if (user != null) ref.invalidate(userHistoryProvider(user.id));
+  }
+
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final accepted = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Выйти из аккаунта?'),
+        content: const Text(
+          'Локальные загрузки сохранятся, но списки перестанут синхронизироваться.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Выйти'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    await SecureStorage.clear();
+    ref.invalidate(isLoggedInProvider);
+    ref.invalidate(currentUserProvider);
   }
 
   @override
-  Widget build(BuildContext context) {
-    final userAsync = ref.watch(currentUserProvider);
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
     return Scaffold(
-      backgroundColor: _bgColor,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color.alphaBlend(
-                      _accentColor.withValues(alpha: 0.08),
-                      const Color(0xFF111117),
-                    ),
-                    _bgColor,
-                    _bgColor,
-                  ],
-                  stops: const [0, 0.3, 1],
-                ),
-              ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Профиль'),
+        actions: [
+          IconButton(
+            tooltip: 'Настройки',
+            onPressed: () => Navigator.push(
+              context,
+              CupertinoPageRoute<void>(builder: (_) => const SettingsScreen()),
             ),
+            icon: const Icon(CupertinoIcons.gear_alt_fill),
           ),
-
-          // 2. ОСНОВНОЙ КОНТЕНТ
-          userAsync.when(
-            loading: () =>
-                const Center(child: CupertinoActivityIndicator(radius: 16)),
-            error: (error, stack) {
-              // Изящная защита от 429 ошибки (Rate Limit)
-              final isRateLimit = error.toString().contains('429');
-
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _PremiumGlass(
-                    padding: const EdgeInsets.all(28),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isRateLimit
-                                ? CupertinoIcons.timer
-                                : CupertinoIcons.exclamationmark_triangle_fill,
-                            color: Colors.redAccent,
-                            size: 48,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          isRateLimit
-                              ? 'Слишком много запросов'
-                              : 'Ошибка загрузки',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          isRateLimit
-                              ? 'Shikimori временно ограничил доступ.\nПожалуйста, подождите минуту.'
-                              : 'Не удалось загрузить данные профиля.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 15,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // 🔥 ЗАМЕНИЛИ GestureDetector НА _BouncingButton
-                        _BouncingButton(
-                          onTap: () => ref.refresh(currentUserProvider),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [_accentColor, Color(0xFF6D28D9)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  CupertinoIcons.refresh,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Обновить',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-            data: (user) {
-              if (user == null) {
-                return const Center(
-                  child: Text(
-                    'Нет данных',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                );
-              }
-
-              // Загружаем историю только если юзер загрузился
-              final historyAsync = ref.watch(userHistoryProvider(user.id));
-
-              return CustomScrollView(
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                slivers: [
-                  CupertinoSliverRefreshControl(onRefresh: _onRefresh),
-
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        top: MediaQuery.of(context).padding.top + 20,
-                      ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: user.when(
+        loading: () =>
+            const Center(child: CupertinoActivityIndicator(radius: 15)),
+        error: (_, _) => AniMixEmptyState(
+          icon: CupertinoIcons.exclamationmark_triangle,
+          title: 'Не удалось загрузить профиль',
+          message: 'Shikimori временно не отвечает.',
+          actionLabel: 'Повторить',
+          onAction: () => ref.invalidate(currentUserProvider),
+        ),
+        data: (value) {
+          if (value == null) {
+            return AniMixEmptyState(
+              icon: CupertinoIcons.person_crop_circle,
+              title: 'Профиль Shikimori',
+              message:
+                  'Войдите, чтобы синхронизировать закладки, прогресс и историю.',
+              actionLabel: 'Войти',
+              onAction: () => Navigator.push(
+                context,
+                CupertinoPageRoute<void>(builder: (_) => const LoginScreen()),
+              ),
+            );
+          }
+          final history = ref.watch(userHistoryProvider(value.id));
+          return RefreshIndicator.adaptive(
+            onRefresh: () => _refresh(ref),
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 920),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _ProfileHeader(
+                            user: value,
+                            coverUrl: history.value
+                                ?.map((item) => item.anime?.imageUrl)
+                                .whereType<String>()
+                                .firstOrNull,
+                          ),
+                          const SizedBox(height: 24),
+                          _StatusSummary(user: value),
+                          const SizedBox(height: 24),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            child: Column(
                               children: [
-                                const Text(
-                                  'Профиль',
-                                  style: TextStyle(
-                                    fontSize: 34,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                    letterSpacing: -1.2,
-                                  ),
-                                ),
-
-                                // 🔥 АНИМИРОВАННАЯ СТЕКЛЯННАЯ КНОПКА НАСТРОЕК
-                                _BouncingButton(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    CupertinoPageRoute(
-                                      builder: (_) => const SettingsScreen(),
-                                    ),
-                                  ),
-                                  child: const _PremiumGlass(
-                                    borderRadius:
-                                        100.0, // Делает кнопку идеально круглой
-                                    padding: EdgeInsets.all(12),
-                                    child: Icon(
-                                      CupertinoIcons.gear_alt_fill,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
+                                _ProfileInfoCard(user: value),
+                                const SizedBox(height: 16),
+                                _StatisticsCard(user: value),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 32),
-                          Center(child: _buildProfileHeader(user)),
-                          const SizedBox(height: 32),
-
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: _buildLibraryProgressBar(user),
-                          ),
-                          const SizedBox(height: 16),
-
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: _buildStatsGrid(user),
-                          ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 30),
                         ],
                       ),
                     ),
                   ),
-
-                  SliverToBoxAdapter(
-                    child: historyAsync.when(
-                      data: (history) {
-                        if (history.isEmpty) return const SizedBox();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 920),
+                      child: history.when(
+                        loading: () => const Padding(
+                          padding: EdgeInsets.all(28),
+                          child: CupertinoActivityIndicator(),
+                        ),
+                        error: (_, _) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: AniMixSurface(
+                            padding: const EdgeInsets.all(18),
+                            child: Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Не удалось загрузить активность',
+                                    style: TextStyle(
+                                      color: AniMixTheme.subtleText,
+                                    ),
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () => ref.invalidate(
+                                    userHistoryProvider(value.id),
+                                  ),
+                                  icon: const Icon(CupertinoIcons.refresh),
+                                  label: const Text('Повторить'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        data: (items) => items.isEmpty
+                            ? const SizedBox.shrink()
+                            : Column(
                                 children: [
-                                  const Text(
-                                    'Активность',
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _ActivityChartPremium(history: history),
-                                  const SizedBox(height: 32),
-                                  const Text(
-                                    'Недавняя история',
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
+                                  _ActivityGraph(items: items),
+                                  const SizedBox(height: 28),
+                                  _RecentActivity(items: items),
                                 ],
                               ),
-                            ),
-                            // Оригинальный горизонтальный скролл истории
-                            SizedBox(
-                              height: 180,
-                              child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                physics: const BouncingScrollPhysics(),
-                                itemCount: history.length > 15
-                                    ? 15
-                                    : history.length,
-                                itemBuilder: (context, index) =>
-                                    _HistoryCard(history[index]),
-                              ),
-                            ),
-                            const SizedBox(height: 120), // Отступ под навбар
-                          ],
-                        );
-                      },
-                      loading: () => const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: CupertinoActivityIndicator()),
                       ),
-                      error: (_, _) => const SizedBox(),
                     ),
                   ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader(dynamic user) {
-    return Column(
-      children: [
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: _accentColor.withValues(alpha: 0.3),
-                blurRadius: 30,
-                spreadRadius: 5,
-              ),
-            ],
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
-              width: 2,
-            ),
-          ),
-          child: ClipOval(
-            child: CachedNetworkImage(
-              imageUrl: user.avatarUrl ?? '',
-              fit: BoxFit.cover,
-              errorWidget: (_, _, _) => const Icon(
-                CupertinoIcons.person_solid,
-                size: 60,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          user.nickname ?? 'Без имени',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: _accentColor.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            'AniMix User',
-            style: TextStyle(
-              color: _accentLight,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLibraryProgressBar(dynamic user) {
-    final int total = user.watched + user.planned + user.dropped;
-    if (total == 0) return const SizedBox();
-
-    return _PremiumGlass(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Медиатека',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(
-              height: 12,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: user.watched == 0 ? 0 : user.watched,
-                    child: Container(color: _accentColor),
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 30, 20, 48),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFFF5C66),
+                          side: const BorderSide(color: Color(0x66FF5C66)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 15,
+                          ),
+                        ),
+                        onPressed: () => _logout(context, ref),
+                        icon: const Icon(CupertinoIcons.square_arrow_right),
+                        label: const Text('Выйти из аккаунта'),
+                      ),
+                    ),
                   ),
-                  Expanded(
-                    flex: user.planned == 0 ? 0 : user.planned,
-                    child: Container(color: CupertinoColors.systemBlue),
-                  ),
-                  Expanded(
-                    flex: user.dropped == 0 ? 0 : user.dropped,
-                    child: Container(color: CupertinoColors.systemRed),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 16,
-            runSpacing: 10,
-            children: [
-              _buildLegendDot('Просмотрено', user.watched, _accentColor),
-              _buildLegendDot(
-                'В планах',
-                user.planned,
-                CupertinoColors.systemBlue,
-              ),
-              _buildLegendDot(
-                'Брошено',
-                user.dropped,
-                CupertinoColors.systemRed,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendDot(String title, int count, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          title,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          count.toString(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsGrid(dynamic user) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildStatCard(
-            'Завершено',
-            user.watched.toString(),
-            CupertinoIcons.check_mark_circled_solid,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildStatCard(
-            'В процессе',
-            user.watching.toString(),
-            CupertinoIcons.time,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon) {
-    return _PremiumGlass(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: _accentLight, size: 26),
-          const SizedBox(height: 16),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                height: 1.1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =====================================================================
-// ПРЕМИУМ ГРАФИК АКТИВНОСТИ
-// =====================================================================
-class _ActivityChartPremium extends StatelessWidget {
-  final List<ShikimoriHistory> history;
-  const _ActivityChartPremium({required this.history});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: initializeDateFormatting('ru', null),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const _PremiumGlass(
-            padding: EdgeInsets.all(20),
-            child: SizedBox(
-              height: 204, // Сохраняем высоту, чтобы верстка не прыгала
-              child: Center(child: CupertinoActivityIndicator()),
+                ),
+              ],
             ),
           );
-        }
+        },
+      ),
+    );
+  }
+}
 
-        final now = DateTime.now();
-        final Map<String, int> monthlyActivity = {};
-        for (int i = 5; i >= 0; i--) {
-          final key = DateFormat(
-            'MMM yy',
-            'ru',
-          ).format(DateTime(now.year, now.month - i));
-          monthlyActivity[key] = 0;
-        }
-        for (var item in history) {
-          if (item.createdAt.isEmpty) continue;
-          try {
-            final key = DateFormat(
-              'MMM yy',
-              'ru',
-            ).format(DateTime.parse(item.createdAt));
-            if (monthlyActivity.containsKey(key)) {
-              monthlyActivity[key] = monthlyActivity[key]! + 1;
-            }
-          } catch (_) {}
-        }
-        final maxCount = monthlyActivity.values.isEmpty
-            ? 1
-            : monthlyActivity.values.reduce(math.max);
-        final maxDivisor = maxCount == 0 ? 1 : maxCount;
+class _ActivityGraph extends StatelessWidget {
+  const _ActivityGraph({required this.items});
+  final List<ShikimoriHistory> items;
 
-        return _PremiumGlass(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Просмотры за полгода',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Icon(
-                    CupertinoIcons.graph_square_fill,
-                    color: _accentLight,
-                    size: 20,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                height: 160,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: monthlyActivity.entries.map((entry) {
-                    final heightRatio = entry.value / maxDivisor;
-                    return Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (entry.value > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Text(
-                                entry.value.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 800),
-                            curve: Curves.easeOutQuart,
-                            width: 16,
-                            height: math.max(10.0, 90.0 * heightRatio),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  _accentColor.withValues(
-                                    alpha: 0.3 + (0.7 * heightRatio),
-                                  ),
-                                  _accentLight.withValues(
-                                    alpha: 0.5 + (0.5 * heightRatio),
-                                  ),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                              boxShadow: [
-                                if (entry.value > 0)
-                                  BoxShadow(
-                                    color: _accentColor.withValues(
-                                      alpha: 0.3 * heightRatio,
-                                    ),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            entry.key.split(' ')[0],
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final counts = <String, int>{};
+    for (final item in items) {
+      final date = DateTime.tryParse(item.createdAt)?.toLocal();
+      if (date == null) continue;
+      final key = '${date.year}-${date.month}-${date.day}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    final days = List.generate(56, (index) {
+      final date = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: 55 - index));
+      return (date, counts['${date.year}-${date.month}-${date.day}'] ?? 0);
+    });
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: AniMixSurface(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AniMixSectionHeader(
+              title: 'Активность',
+              subtitle: 'Последние восемь недель',
+              icon: CupertinoIcons.chart_bar_square_fill,
+            ),
+            const SizedBox(height: 18),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 5.0;
+                final size = ((constraints.maxWidth - spacing * 13) / 14).clamp(
+                  9.0,
+                  19.0,
+                );
+                final accent = Theme.of(context).colorScheme.primary;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: days.map((day) {
+                    final alpha = day.$2 == 0
+                        ? .08
+                        : day.$2 == 1
+                        ? .28
+                        : day.$2 == 2
+                        ? .55
+                        : .9;
+                    return Tooltip(
+                      message:
+                          '${day.$1.day.toString().padLeft(2, '0')}.${day.$1.month.toString().padLeft(2, '0')}: ${day.$2}',
+                      child: Container(
+                        width: size,
+                        height: size,
+                        decoration: BoxDecoration(
+                          color: day.$2 == 0
+                              ? Colors.white.withValues(alpha: alpha)
+                              : accent.withValues(alpha: alpha),
+                          borderRadius: BorderRadius.circular(size * .28),
+                        ),
                       ),
                     );
                   }).toList(),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// =====================================================================
-// КАРТОЧКА ИСТОРИИ (С добавленной физикой нажатия)
-// =====================================================================
-class _HistoryCard extends StatelessWidget {
-  final ShikimoriHistory history;
-  const _HistoryCard(this.history);
-
-  @override
-  Widget build(BuildContext context) {
-    final anime = history.anime;
-    final animeName = anime?.russian ?? anime?.name ?? '';
-    final imageUrl = anime?.imageUrl ?? '';
-
-    // 🔥 Обернули карточку в BouncingButton для приятного импакта
-    return _BouncingButton(
-      onTap: () {
-        // Здесь можно будет добавить переход на экран аниме
-        debugPrint('Нажали на: $animeName');
-      },
-      child: Container(
-        width: 120,
-        margin: const EdgeInsets.only(right: 14),
-        child: AniMixGlass(
-          blur: 15.0,
-          borderRadius: 18.0,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Container(color: const Color(0x80121212)),
-
-              if (anime != null)
-                SmartAnimePoster(
-                  animeId: anime.id,
-                  imageUrl: imageUrl,
-                  title: anime.name ?? '',
-                  russianTitle: anime.russian,
-                )
-              else
-                _buildFallback(),
-
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.8),
-                    ],
-                    stops: const [0.3, 1.0],
-                  ),
-                ),
-              ),
-
-              Positioned(
-                bottom: 12,
-                left: 10,
-                right: 10,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      history.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
-                      ),
-                    ),
-                    if (animeName.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        animeName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildFallback() => Container(
-    color: const Color(0xFF1C1C1E),
-    child: const Center(
-      child: Icon(CupertinoIcons.sparkles, color: Colors.grey, size: 24),
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.user, required this.coverUrl});
+  final ShikimoriUser user;
+  final String? coverUrl;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomCenter,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 230,
+            clipBehavior: Clip.antiAlias,
+            decoration: const BoxDecoration(
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(30),
+                bottomRight: Radius.circular(30),
+              ),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (coverUrl?.isNotEmpty == true)
+                  CachedNetworkImage(
+                    imageUrl: coverUrl!,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    errorWidget: (_, _, _) => const _ProfileGradient(),
+                  )
+                else
+                  const _ProfileGradient(),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0x8A000000)],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            bottom: -52,
+            child: Container(
+              width: 108,
+              height: 108,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  width: 5,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x52000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 7),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: user.imageUrl?.isNotEmpty == true
+                  ? CachedNetworkImage(
+                      imageUrl: user.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, _, _) => const Icon(
+                        CupertinoIcons.person_crop_circle_fill,
+                        size: 82,
+                        color: Colors.white38,
+                      ),
+                    )
+                  : const Icon(
+                      CupertinoIcons.person_crop_circle_fill,
+                      size: 82,
+                      color: Colors.white38,
+                    ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 64),
+      Text(
+        user.nickname,
+        style: const TextStyle(
+          fontSize: 28,
+          letterSpacing: -.6,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      const SizedBox(height: 7),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: CupertinoColors.systemGreen,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _onlineText(user.lastOnlineAt),
+            style: const TextStyle(
+              color: AniMixTheme.subtleText,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  static String _onlineText(String? value) {
+    final date = DateTime.tryParse(value ?? '')?.toLocal();
+    if (date == null) return 'Профиль Shikimori';
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    if (difference.inMinutes < 5) return 'сейчас онлайн';
+    if (difference.inHours < 1) return '${difference.inMinutes} мин. назад';
+    if (difference.inDays < 1) return '${difference.inHours} ч. назад';
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+}
+
+class _ProfileGradient extends StatelessWidget {
+  const _ProfileGradient();
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Theme.of(context).colorScheme.primary.withValues(alpha: .9),
+          const Color(0xFF7C3AED).withValues(alpha: .72),
+          const Color(0xFF4338CA).withValues(alpha: .58),
+        ],
+      ),
     ),
   );
 }
 
-// =====================================================================
-// ХЕЛПЕР ДЛЯ ЭМУЛЯЦИИ "ТЕМНОГО СТЕКЛА" ИЗ БИБЛИОТЕКИ
-// =====================================================================
-class _PremiumGlass extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final EdgeInsetsGeometry padding;
-
-  const _PremiumGlass({
-    required this.child,
-    this.borderRadius = 24.0,
-    this.padding = EdgeInsets.zero,
-  });
+class _StatusSummary extends StatelessWidget {
+  const _StatusSummary({required this.user});
+  final ShikimoriUser user;
 
   @override
   Widget build(BuildContext context) {
-    return AniMixGlass(
-      blur: 25,
-      borderRadius: borderRadius,
-      child: Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        child: child,
+    final stats = [
+      ('Смотрю', user.watching, CupertinoColors.systemBlue),
+      ('В планах', user.planned, CupertinoColors.systemGrey),
+      ('Просмотрено', user.watched, CupertinoColors.systemGreen),
+      ('Брошено', user.dropped, CupertinoColors.systemRed),
+      ('Пересмотрено', user.rewatched, CupertinoColors.systemPurple),
+    ].where((item) => item.$2 > 0).toList();
+    return SizedBox(
+      height: 84,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: stats.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final item = stats[index];
+          return Container(
+            width: 126,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: item.$3.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${item.$2}',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  item.$1,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: AniMixTheme.subtleText,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-// =====================================================================
-// 🔥 АНИМАЦИОННАЯ ОБЕРТКА ДЛЯ КНОПОК (ЭФФЕКТ УПРУГОСТИ / ИМПАКТ)
-// =====================================================================
-class _BouncingButton extends StatefulWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-
-  const _BouncingButton({required this.child, this.onTap});
-
-  @override
-  State<_BouncingButton> createState() => _BouncingButtonState();
-}
-
-class _BouncingButtonState extends State<_BouncingButton> {
-  bool _isPressed = false;
-
-  void _handleTapDown(TapDownDetails details) =>
-      setState(() => _isPressed = true);
-  void _handleTapUp(TapUpDetails details) => setState(() => _isPressed = false);
-  void _handleTapCancel() => setState(() => _isPressed = false);
+class _ProfileInfoCard extends StatelessWidget {
+  const _ProfileInfoCard({required this.user});
+  final ShikimoriUser user;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: _handleTapDown,
-      onTapUp: _handleTapUp,
-      onTapCancel: _handleTapCancel,
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 150),
-        opacity: _isPressed ? 0.7 : 1.0, // Легкое потускнение при клике
-        child: AnimatedScale(
-          scale: _isPressed ? 0.94 : 1.0, // Упругое масштабирование
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: widget.child,
+    final values = <(String, String)>[
+      if (user.name?.trim().isNotEmpty == true) ('Имя', user.name!),
+      if (user.birthOn?.isNotEmpty == true) ('Дата рождения', user.birthOn!),
+      if (user.joinedAt?.isNotEmpty == true)
+        ('На Shikimori с', _shortDate(user.joinedAt!)),
+      ('Оценок', '${user.scores}'),
+    ];
+    return AniMixSurface(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AniMixSectionHeader(
+            title: 'Профиль',
+            subtitle: 'Личная информация',
+            icon: Icons.badge_outlined,
+          ),
+          const SizedBox(height: 20),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = (constraints.maxWidth - 14) / 2;
+              return Wrap(
+                spacing: 14,
+                runSpacing: 16,
+                children: values
+                    .map(
+                      (item) => SizedBox(
+                        width: width,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.$1,
+                              style: const TextStyle(
+                                color: AniMixTheme.subtleText,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.$2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _shortDate(String value) {
+    final date = DateTime.tryParse(value)?.toLocal();
+    return date == null
+        ? value
+        : '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+}
+
+class _StatisticsCard extends StatelessWidget {
+  const _StatisticsCard({required this.user});
+  final ShikimoriUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = [
+      ('Смотрю', user.watching, CupertinoColors.systemBlue),
+      ('В планах', user.planned, CupertinoColors.systemGrey),
+      ('Просмотрено', user.watched, CupertinoColors.systemGreen),
+      ('Брошено', user.dropped, CupertinoColors.systemRed),
+      ('Пересмотрено', user.rewatched, CupertinoColors.systemPurple),
+    ];
+    final total = stats.fold<int>(0, (sum, item) => sum + item.$2);
+    return AniMixSurface(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AniMixSectionHeader(
+            title: 'Статистика',
+            subtitle: 'Вся медиатека',
+            icon: CupertinoIcons.chart_pie_fill,
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 12,
+              child: Row(
+                children: [
+                  for (final item in stats)
+                    if (item.$2 > 0)
+                      Expanded(
+                        flex: item.$2,
+                        child: ColoredBox(color: item.$3),
+                      ),
+                  if (total == 0)
+                    const Expanded(child: ColoredBox(color: Colors.white12)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 18,
+            runSpacing: 12,
+            children: stats
+                .where((item) => item.$2 > 0)
+                .map(
+                  (item) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: item.$3,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        '${item.$1} ${item.$2}',
+                        style: const TextStyle(
+                          color: AniMixTheme.subtleText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentActivity extends StatelessWidget {
+  const _RecentActivity({required this.items});
+  final List<ShikimoriHistory> items;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AniMixSectionHeader(
+          title: 'Недавняя активность',
+          subtitle: 'Последние изменения',
+          icon: CupertinoIcons.time_solid,
         ),
+        const SizedBox(height: 14),
+        for (final item in items.take(12)) ...[
+          _HistoryRow(item: item),
+          const SizedBox(height: 9),
+        ],
+      ],
+    ),
+  );
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.item});
+  final ShikimoriHistory item;
+
+  @override
+  Widget build(BuildContext context) {
+    final anime = item.anime;
+    return AniMixSurface(
+      radius: 18,
+      onTap: anime == null
+          ? null
+          : () => Navigator.push(
+              context,
+              CupertinoPageRoute<void>(
+                builder: (_) => AnimeDetailScreen(animeId: anime.id),
+              ),
+            ),
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 52,
+              height: 72,
+              child: anime == null
+                  ? ColoredBox(
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      child: const Icon(CupertinoIcons.sparkles),
+                    )
+                  : SmartAnimePoster(
+                      animeId: anime.id,
+                      imageUrl: anime.imageUrl,
+                      title: anime.name ?? '',
+                      russianTitle: anime.russian,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                if (anime != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    anime.russian ?? anime.name ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AniMixTheme.subtleText,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const Icon(
+            CupertinoIcons.chevron_right,
+            color: Colors.white24,
+            size: 14,
+          ),
+        ],
       ),
     );
   }

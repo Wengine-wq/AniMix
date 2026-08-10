@@ -1,16 +1,19 @@
-import 'dart:ui';
+import 'dart:convert';
 import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
-import '../../widgets/smart_anime_poster.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/animix_surface.dart';
+import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
 
-class RecommendationScreen extends StatefulHookConsumerWidget {
+class RecommendationScreen extends ConsumerStatefulWidget {
   const RecommendationScreen({super.key});
 
   @override
@@ -19,608 +22,561 @@ class RecommendationScreen extends StatefulHookConsumerWidget {
 }
 
 class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
-  final List<ShikimoriAnime> _queue = [];
-  bool _isLoading = false;
-
-  // Прогресс свайпа (от -1.0 до 1.0) для отображения градиентов
-  double _swipeProgress = 0.0;
-
-  // Настройки подборки
-  String _currentKind = 'tv'; // По умолчанию ищем сериалы
+  static const _rejectedKey = 'recommendation_rejected_ids_v1';
+  final List<ShikimoriAnime> _recommendations = [];
+  final Set<int> _rejected = {};
+  Offset _drag = Offset.zero;
+  bool _loading = false;
+  bool _saving = false;
+  String? _message;
+  Object? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _loadMoreAnime();
+    _initialize();
   }
 
-  // 🔥 УМНАЯ ОЧЕРЕДЬ С ОБХОДОМ КЭША
-  Future<void> _loadMoreAnime({bool reset = false}) async {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
+  Future<void> _initialize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_rejectedKey);
+    if (raw != null) {
+      try {
+        _rejected.addAll(
+          (jsonDecode(raw) as List).map((value) => value as int),
+        );
+      } catch (_) {}
+    }
+    await _loadRecommendations(reset: true);
+  }
 
+  Future<void> _loadRecommendations({bool reset = false}) async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+      if (reset) _message = null;
+    });
     try {
       final api = ref.read(apiClientProvider);
-
-      // Оценка строго целое число, иначе API выдает 422!
-      final filters = <String, dynamic>{
-        'order': 'random',
-        'score': 6,
-        if (_currentKind != 'all') 'kind': _currentKind,
-      };
-
-      // Обход кэша Shikimori
-      final randomPage = math.Random().nextInt(20) + 1;
-
-      final animes = await api.getAnimes(
-        page: randomPage,
-        limit: 15,
-        filters: filters,
-      );
-
-      if (mounted) {
-        setState(() {
-          if (reset) _queue.clear();
-          for (var a in animes) {
-            if (!_queue.any((existing) => existing.id == a.id)) {
-              _queue.add(a);
-            }
-          }
-        });
-
-        if (_queue.length > 1) {
-          final nextUrl = _queue[1].imageUrl ?? '';
-          if (nextUrl.isNotEmpty) {
-            precacheImage(
-              CachedNetworkImageProvider(nextUrl),
-              context,
-            ).catchError((_) {});
+      final results = <ShikimoriAnime>[];
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final page = math.Random().nextInt(24) + 1;
+        final items = await api.getAnimes(
+          page: page,
+          limit: 20,
+          filters: const {'order': 'random', 'score': 6},
+        );
+        results.addAll(items);
+      }
+      if (!mounted) return;
+      setState(() {
+        if (reset) _recommendations.clear();
+        for (final item in results) {
+          if (!_rejected.contains(item.id) &&
+              !_recommendations.any((existing) => existing.id == item.id)) {
+            _recommendations.add(item);
           }
         }
-      }
-    } catch (e) {
+      });
+    } catch (error) {
       if (mounted) {
-        showCupertinoDialog(
-          context: context,
-          builder: (ctx) => CupertinoAlertDialog(
-            title: const Text('Ошибка'),
-            content: Text('Не удалось загрузить рекомендации.\n$e'),
-            actions: [
-              CupertinoDialogAction(
-                child: const Text('OK'),
-                onPressed: () => Navigator.pop(ctx),
+        setState(() => _loadError = error);
+        if (_recommendations.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Не удалось обновить рекомендации'),
+              action: SnackBarAction(
+                label: 'Повторить',
+                onPressed: () => _loadRecommendations(reset: true),
               ),
-            ],
-          ),
-        );
+            ),
+          );
+        }
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  // 🔥 ЛОГИКА ДОБАВЛЕНИЯ В СПИСОК (СВАЙП ВПРАВО)
-  Future<void> _addToWatching(ShikimoriAnime anime) async {
+  Future<void> _reject() async {
+    if (_recommendations.isEmpty || _saving) return;
+    final anime = _recommendations.first;
+    _rejected.add(anime.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_rejectedKey, jsonEncode(_rejected.toList()));
+    _advance('Пропущено');
+  }
+
+  Future<void> _plan() async {
+    if (_recommendations.isEmpty || _saving) return;
+    setState(() => _saving = true);
+    final anime = _recommendations.first;
     try {
-      final api = ref.read(apiClientProvider);
       final user = await ref.read(currentUserProvider.future);
-
-      if (user != null) {
-        await api.setUserRate(anime.id, 'watching', userId: user.id);
-        ref.invalidate(currentUserProvider); // Обновляем профиль в фоне
+      if (user == null) throw StateError('auth');
+      await ref
+          .read(apiClientProvider)
+          .setUserRate(anime.id, 'planned', userId: user.id);
+      if (mounted) _advance('Добавлено в планы');
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _drag = Offset.zero;
+          _message = 'Не удалось добавить';
+        });
       }
-    } catch (e) {
-      debugPrint('Ошибка при добавлении в список: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  // Внутренняя функция продвижения очереди
-  void _advanceQueue() {
-    if (_queue.isEmpty) return;
-
+  void _advance(String message) {
     setState(() {
-      _queue.removeAt(0);
-      _swipeProgress = 0.0; // Сбрасываем оверлей для новой карточки
+      _drag = Offset.zero;
+      _message = message;
+      if (_recommendations.isNotEmpty) _recommendations.removeAt(0);
     });
-
-    if (_queue.length <= 3) {
-      _loadMoreAnime();
-    }
-
-    if (_queue.length > 1) {
-      final nextUrl = _queue[1].imageUrl ?? '';
-      if (nextUrl.isNotEmpty) {
-        precacheImage(
-          CachedNetworkImageProvider(nextUrl),
-          context,
-        ).catchError((_) {});
-      }
-    }
-  }
-
-  void _onSwipeRight(ShikimoriAnime anime) {
-    _addToWatching(anime);
-    _advanceQueue();
-  }
-
-  void _onSwipeLeft(ShikimoriAnime anime) {
-    _advanceQueue();
-  }
-
-  void _showFilters() {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: const Text('Что будем искать?'),
-        message: const Text(
-          'Алгоритм подберет случайные аниме с хорошим рейтингом.',
-        ),
-        actions: [
-          _buildFilterAction(ctx, 'Любой формат', 'all'),
-          _buildFilterAction(ctx, 'TV Сериалы', 'tv'),
-          _buildFilterAction(ctx, 'Полнометражные фильмы', 'movie'),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Отмена'),
-        ),
-      ),
-    );
-  }
-
-  CupertinoActionSheetAction _buildFilterAction(
-    BuildContext ctx,
-    String title,
-    String kind,
-  ) {
-    final isActive = _currentKind == kind;
-    return CupertinoActionSheetAction(
-      onPressed: () {
-        Navigator.pop(ctx);
-        if (!isActive) {
-          setState(() => _currentKind = kind);
-          _loadMoreAnime(reset: true);
-        }
-      },
-      child: Text(
-        title,
-        style: TextStyle(
-          color: isActive
-              ? const Color(0xFFFF5722)
-              : CupertinoColors.activeBlue,
-          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-    );
+    if (_recommendations.length < 5) _loadRecommendations();
+    Future<void>.delayed(const Duration(milliseconds: 1300), () {
+      if (mounted && _message == message) setState(() => _message = null);
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_queue.isEmpty && _isLoading) {
-      return const CupertinoPageScaffold(
-        backgroundColor: Color(0xFF0F0F0F),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CupertinoActivityIndicator(radius: 20),
-              SizedBox(height: 20),
-              Text(
-                'Подбираем шедевры...',
-                style: TextStyle(
-                  color: CupertinoColors.systemGrey,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_queue.isEmpty) {
-      return CupertinoPageScaffold(
-        backgroundColor: const Color(0xFF0F0F0F),
-        child: Center(
-          child: CupertinoButton(
-            color: const Color(0xFF1E1E1E),
-            onPressed: () => _loadMoreAnime(reset: true),
-            child: const Text(
-              'Попробовать снова',
-              style: TextStyle(color: Color(0xFFFF5722)),
-            ),
-          ),
-        ),
-      );
-    }
-
-    final topAnime = _queue.first;
-
-    return CupertinoPageScaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      // Нативная прозрачная навигационная панель с кнопкой фильтров
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text(
-          'Что посмотреть?',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.transparent,
-        border: null,
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: _showFilters,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              CupertinoIcons.slider_horizontal_3,
-              color: Colors.white,
-              size: 18,
-            ),
-          ),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    appBar: AppBar(title: const Text('Рекомендации')),
+    body: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Theme.of(context).colorScheme.primary.withValues(alpha: .10),
+            const Color(0xFF7C3AED).withValues(alpha: .06),
+            Colors.transparent,
+          ],
         ),
       ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ==================== 1. ИММЕРСИВНЫЙ БЛЮР-ФОН ====================
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 600),
-            child: SmartAnimePoster(
-              key: ValueKey(topAnime.id),
-              animeId: topAnime.id,
-              imageUrl: topAnime.imageUrl,
-              title: topAnime.name ?? '',
-              russianTitle: topAnime.russian,
-              fit: BoxFit.cover,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        child: Column(
+          children: [
+            _RecommendationHeader(
+              count: _recommendations.length,
+              loading: _loading,
+              onRefresh: () => _loadRecommendations(reset: true),
             ),
-          ),
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-              child: Container(color: Colors.black.withValues(alpha: 0.6)),
+            const SizedBox(height: 14),
+            Expanded(child: _buildContent()),
+            if (_recommendations.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _Controls(
+                saving: _saving,
+                message: _message,
+                onReject: _reject,
+                onPlan: _plan,
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _buildContent() {
+    if (_loading && _recommendations.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CupertinoActivityIndicator(radius: 15),
+            SizedBox(height: 14),
+            Text(
+              'Загружаем рекомендации…',
+              style: TextStyle(color: AniMixTheme.subtleText),
             ),
-          ),
-
-          // ==================== 2. АДАПТИВНАЯ ВЕРСТКА ====================
-          SafeArea(
-            bottom: false, // Отключаем нижнюю SafeArea для своего отступа
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Адаптация: Определяем, запущен ли апп на широком экране (Windows/iPad)
-                final isDesktop = constraints.maxWidth > 600;
-                // На ПК ограничиваем ширину карточки, чтобы она не была гигантской
-                final cardMaxWidth = isDesktop ? 420.0 : constraints.maxWidth;
-
-                return Column(
-                  children: [
-                    // --- ЗОНА КАРТОЧЕК (Занимает всё оставшееся свободное место) ---
-                    Expanded(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            child: Stack(
-                              children: [
-                                // ЗАДНЯЯ КАРТА (Индекс 1)
-                                if (_queue.length > 1)
-                                  Positioned.fill(
-                                    child: AnimatedScale(
-                                      scale: 0.92,
-                                      duration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      child: AnimatedOpacity(
-                                        opacity: 0.7,
-                                        duration: const Duration(
-                                          milliseconds: 300,
-                                        ),
-                                        child: _buildAnimeCard(
-                                          _queue[1],
-                                          swipeProgress: 0.0,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                // ПЕРЕДНЯЯ КАРТА (Интерактивная)
-                                Positioned.fill(
-                                  child: Dismissible(
-                                    key: ValueKey(topAnime.id),
-                                    direction: DismissDirection.horizontal,
-                                    onUpdate: (details) {
-                                      setState(() {
-                                        _swipeProgress =
-                                            details.direction ==
-                                                DismissDirection.startToEnd
-                                            ? details
-                                                  .progress // Свайп вправо (Смотрю)
-                                            : -details
-                                                  .progress; // Свайп влево (Пропуск)
-                                      });
-                                    },
-                                    onDismissed: (direction) {
-                                      if (direction ==
-                                          DismissDirection.startToEnd) {
-                                        _onSwipeRight(topAnime);
-                                      } else {
-                                        _onSwipeLeft(topAnime);
-                                      }
-                                    },
-                                    child: AnimatedScale(
-                                      scale: 1.0,
-                                      duration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      child: _buildAnimeCard(
-                                        topAnime,
-                                        swipeProgress: _swipeProgress,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+          ],
+        ),
+      );
+    }
+    if (_loadError != null && _recommendations.isEmpty) {
+      return AniMixEmptyState(
+        icon: CupertinoIcons.wifi_exclamationmark,
+        title: 'Не удалось загрузить рекомендации',
+        message: 'Проверьте подключение и повторите попытку.',
+        actionLabel: 'Повторить',
+        onAction: () => _loadRecommendations(reset: true),
+      );
+    }
+    if (_recommendations.isEmpty) {
+      return AniMixEmptyState(
+        icon: CupertinoIcons.sparkles,
+        title: 'Подборка закончилась',
+        message: 'Новые варианты появятся после обновления.',
+        actionLabel: 'Обновить',
+        onAction: () => _loadRecommendations(reset: true),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(constraints.maxWidth, 520.0);
+        final height = math.min(
+          constraints.maxHeight,
+          constraints.maxWidth >= 700 ? 610.0 : 520.0,
+        );
+        return Center(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                for (
+                  var index = math.min(2, _recommendations.length - 1);
+                  index >= 1;
+                  index--
+                )
+                  Transform.translate(
+                    offset: Offset(0, index * 14),
+                    child: Transform.scale(
+                      scale: 1 - index * .045,
+                      child: Opacity(
+                        opacity: 1 - index * .15,
+                        child: _RecommendationCard(
+                          anime: _recommendations[index],
+                        ),
+                      ),
+                    ),
+                  ),
+                GestureDetector(
+                  onPanUpdate: (details) =>
+                      setState(() => _drag += details.delta),
+                  onPanEnd: (_) {
+                    if (_drag.dx > 110) {
+                      _plan();
+                    } else if (_drag.dx < -110) {
+                      _reject();
+                    } else {
+                      setState(() => _drag = Offset.zero);
+                    }
+                  },
+                  child: Transform.translate(
+                    offset: Offset(_drag.dx, _drag.dy * .12),
+                    child: Transform.rotate(
+                      angle: _drag.dx / 900,
+                      child: _RecommendationCard(
+                        anime: _recommendations.first,
+                        drag: _drag.dx,
+                        onInfo: () => Navigator.push(
+                          context,
+                          CupertinoPageRoute<void>(
+                            builder: (_) => AnimeDetailScreen(
+                              animeId: _recommendations.first.id,
                             ),
                           ),
                         ),
                       ),
                     ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
-                    // --- ПАНЕЛЬ УПРАВЛЕНИЯ (Всегда прибита вниз и не уезжает) ---
-                    Container(
-                      width: double.infinity,
-                      // 🔥 КРИТИЧНЫЙ ФИКС: Отступ снизу для обхода LiquidGlassBar
-                      padding: EdgeInsets.only(
-                        bottom: MediaQuery.of(context).padding.bottom + 110,
-                        top: 16,
+class _RecommendationHeader extends StatelessWidget {
+  const _RecommendationHeader({
+    required this.count,
+    required this.loading,
+    required this.onRefresh,
+  });
+  final int count;
+  final bool loading;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(
+        CupertinoIcons.sparkles,
+        color: Theme.of(context).colorScheme.primary,
+        size: 19,
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Персональная лента',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              count == 0 ? 'Загрузка списка' : 'Ещё $count · вправо — в планы',
+              style: const TextStyle(
+                color: AniMixTheme.subtleText,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+      AniMixIconButton(
+        icon: CupertinoIcons.refresh,
+        tooltip: 'Обновить',
+        size: 40,
+        onPressed: loading ? null : onRefresh,
+      ),
+    ],
+  );
+}
+
+class _RecommendationCard extends StatelessWidget {
+  const _RecommendationCard({required this.anime, this.drag = 0, this.onInfo});
+  final ShikimoriAnime anime;
+  final double drag;
+  final VoidCallback? onInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    final positive = drag >= 0;
+    return AniMixSurface(
+      radius: 30,
+      elevated: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(29),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final imageHeight = math.min(
+              math.max(constraints.maxHeight * .68, 170.0),
+              math.min(400.0, constraints.maxHeight - 72),
+            );
+            return Column(
+              children: [
+                SizedBox(
+                  height: imageHeight,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      SmartAnimePoster(
+                        animeId: anime.id,
+                        imageUrl: anime.imageUrl,
+                        title: anime.name ?? '',
+                        russianTitle: anime.russian,
                       ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                          child: Row(
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.center,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0xB8000000)],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 18,
+                        right: 18,
+                        bottom: 18,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              anime.russian ?? anime.name ?? 'Без названия',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                height: 1.08,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 7,
+                              children: [
+                                if (anime.kind?.isNotEmpty == true)
+                                  AniMixMetadataPill(
+                                    label: anime.kind!.toUpperCase(),
+                                  ),
+                                if ((anime.score ?? 0) > 0)
+                                  AniMixMetadataPill(
+                                    label:
+                                        '★ ${anime.score!.toStringAsFixed(1)}',
+                                  ),
+                                if ((anime.episodes ?? 0) > 0)
+                                  AniMixMetadataPill(
+                                    label: '${anime.episodes} эп.',
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (drag.abs() > 10)
+                        Positioned(
+                          top: 24,
+                          left: positive ? 22 : null,
+                          right: positive ? null : 22,
+                          child: Transform.rotate(
+                            angle: positive ? -.12 : .12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: positive
+                                      ? CupertinoColors.systemGreen
+                                      : CupertinoColors.systemRed,
+                                  width: 3,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                positive ? 'В ПЛАНЫ' : 'ПРОПУСТИТЬ',
+                                style: TextStyle(
+                                  color: positive
+                                      ? CupertinoColors.systemGreen
+                                      : CupertinoColors.systemRed,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Кнопка СКИП (Крестик)
-                              _buildActionButton(
-                                icon: CupertinoIcons.xmark,
-                                color: CupertinoColors.systemRed,
-                                onTap: () => _onSwipeLeft(topAnime),
+                              Text(
+                                'Подобрано по вашей истории',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              const SizedBox(width: 24),
-                              // Кнопка СМОТРЮ (Сердечко)
-                              _buildActionButton(
-                                icon: CupertinoIcons.heart_fill,
-                                color: CupertinoColors.systemGreen,
-                                onTap: () => _onSwipeRight(topAnime),
-                                size: 76,
-                                iconSize: 36,
-                              ),
-                              const SizedBox(width: 24),
-                              // Кнопка ИНФО (Оранжевая)
-                              _buildActionButton(
-                                icon: CupertinoIcons.info,
-                                color: const Color(0xFFFF5722),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    CupertinoPageRoute(
-                                      builder: (_) => AnimeDetailScreen(
-                                        animeId: topAnime.id,
-                                      ),
-                                    ),
-                                  );
-                                },
+                              SizedBox(height: 3),
+                              Text(
+                                'Shikimori · персональная лента',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AniMixTheme.subtleText,
+                                  fontSize: 11,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: onInfo,
+                          icon: Icon(
+                            CupertinoIcons.info_circle_fill,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
+}
 
-  // 🔥 Карточка с поддержкой Оверлеев (Градиенты + Штампы)
-  Widget _buildAnimeCard(
-    ShikimoriAnime anime, {
-    required double swipeProgress,
-  }) {
-    final score = anime.score ?? 0.0;
+class _Controls extends StatelessWidget {
+  const _Controls({
+    required this.saving,
+    required this.message,
+    required this.onReject,
+    required this.onPlan,
+  });
+  final bool saving;
+  final String? message;
+  final VoidCallback onReject;
+  final VoidCallback onPlan;
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 30,
-            offset: const Offset(0, 15),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: Stack(
-          fit: StackFit.expand,
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 76,
+    child: Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SmartAnimePoster(
-              animeId: anime.id,
-              imageUrl: anime.imageUrl,
-              title: anime.name ?? '',
-              russianTitle: anime.russian,
-              fit: BoxFit.cover,
+            _ActionCircle(
+              icon: CupertinoIcons.xmark,
+              color: CupertinoColors.systemRed,
+              onTap: saving ? null : onReject,
             ),
-
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black87],
-                  stops: [0.5, 1.0],
-                ),
-              ),
+            const SizedBox(width: 34),
+            _ActionCircle(
+              icon: CupertinoIcons.bookmark_fill,
+              color: Theme.of(context).colorScheme.primary,
+              primary: true,
+              onTap: saving ? null : onPlan,
             ),
-
-            Positioned(
-              bottom: 24,
-              left: 24,
-              right: 24,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (score > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: score >= 8.0
-                            ? CupertinoColors.systemGreen
-                            : CupertinoColors.systemOrange,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '★ ${score.toStringAsFixed(1)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                  Text(
-                    anime.russian ?? anime.name ?? 'Без названия',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    anime.status == 'released'
-                        ? 'Вышло'
-                        : (anime.status == 'ongoing' ? 'Онгоинг' : 'Анонс'),
-                    style: const TextStyle(
-                      color: CupertinoColors.systemGrey2,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 🔥 ВИЗУАЛЬНЫЙ ОТКЛИК НА СВАЙП
-            if (swipeProgress != 0.0)
-              Positioned.fill(
-                child: Container(
-                  color:
-                      (swipeProgress > 0
-                              ? CupertinoColors.systemGreen
-                              : CupertinoColors.systemRed)
-                          .withValues(
-                            alpha: (swipeProgress.abs() * 0.4).clamp(0.0, 0.4),
-                          ), // Легкая заливка карточки
-                  child: Center(
-                    child: Transform.rotate(
-                      angle: swipeProgress > 0 ? -0.2 : 0.2, // Наклон штампа
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color:
-                                (swipeProgress > 0
-                                        ? CupertinoColors.systemGreen
-                                        : CupertinoColors.systemRed)
-                                    .withValues(
-                                      alpha: swipeProgress.abs().clamp(
-                                        0.0,
-                                        1.0,
-                                      ),
-                                    ),
-                            width: 5,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          swipeProgress > 0 ? 'СМОТРЮ' : 'ПРОПУСК',
-                          style: TextStyle(
-                            color:
-                                (swipeProgress > 0
-                                        ? CupertinoColors.systemGreen
-                                        : CupertinoColors.systemRed)
-                                    .withValues(
-                                      alpha: swipeProgress.abs().clamp(
-                                        0.0,
-                                        1.0,
-                                      ),
-                                    ),
-                            fontSize: 42,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
-      ),
-    );
-  }
+        if (message != null)
+          Positioned(top: -34, child: AniMixMetadataPill(label: message!)),
+      ],
+    ),
+  );
+}
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    double size = 64,
-    double iconSize = 28,
-  }) {
-    return GestureDetector(
+class _ActionCircle extends StatelessWidget {
+  const _ActionCircle({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.primary = false,
+  });
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: primary ? color : Theme.of(context).colorScheme.surface,
+    shape: CircleBorder(side: BorderSide(color: color.withValues(alpha: .28))),
+    elevation: primary ? 6 : 0,
+    shadowColor: color.withValues(alpha: .4),
+    child: InkWell(
+      customBorder: const CircleBorder(),
       onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
-          border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.2),
-              blurRadius: 20,
-              spreadRadius: 2,
-            ),
-          ],
+      child: SizedBox.square(
+        dimension: primary ? 62 : 56,
+        child: Icon(
+          icon,
+          color: primary ? Colors.white : color,
+          size: primary ? 27 : 24,
         ),
-        child: Icon(icon, color: color, size: iconSize),
       ),
-    );
-  }
+    ),
+  );
 }

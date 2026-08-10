@@ -28,7 +28,7 @@ class WatchMappingRepository {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString(_key) ?? '{}';
     final Map<String, dynamic> map = jsonDecode(jsonString);
-    
+
     final list = map.values.map((e) => WatchMapping.fromJson(e)).toList();
     // Сортируем: новые сверху
     list.sort((a, b) => b.savedAt.compareTo(a.savedAt));
