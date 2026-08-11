@@ -12,6 +12,15 @@ class Config {
 
   static String get shikimoriClientId =>
       _environment('SHIKIMORI_CLIENT_ID') ?? '';
+
+  /// Optional HTTPS endpoint that exchanges the Shikimori authorization code
+  /// on a trusted server. The server owns the OAuth client secret; the mobile
+  /// and desktop binaries only receive the resulting tokens.
+  static String get shikimoriOAuthProxyUrl =>
+      _environment('SHIKIMORI_OAUTH_PROXY_URL') ?? '';
+
+  /// Kept only as a backwards-compatible escape hatch for existing local
+  /// installations. Never put this value in a distributed `.env` or CI build.
   static String get shikimoriClientSecret =>
       _environment('SHIKIMORI_CLIENT_SECRET') ?? '';
   static String get shikimoriRedirectUri =>

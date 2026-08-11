@@ -25,6 +25,10 @@ jobs:
       - name: 🔐 Проверка конфигурации приложения
         run: |
           test -f .env
+          if grep -q '^SHIKIMORI_CLIENT_SECRET=' .env; then
+            echo '❌ client_secret нельзя включать в Flutter-сборку. Используйте OAuth proxy.'
+            exit 1
+          fi
           echo "✅ .env найден в checkout"
 
       - name: ⚙️ Генерация файлов Xcode
