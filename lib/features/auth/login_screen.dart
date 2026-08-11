@@ -3,10 +3,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' as services;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config.dart';
 import '../../core/shikimori_auth_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/animix_surface.dart';
@@ -122,8 +122,11 @@ class LoginScreen extends HookConsumerWidget {
     WidgetRef ref,
     ShikimoriAuthService authService,
   ) async {
-    final clientId = dotenv.env['SHIKIMORI_CLIENT_ID'];
-    if (clientId == null || clientId.isEmpty) return;
+    final clientId = Config.shikimoriClientId;
+    if (clientId.isEmpty) {
+      _showErrorDialog(context, 'Не настроен идентификатор Shikimori.');
+      return;
+    }
 
     if (Platform.isIOS || Platform.isAndroid) {
       // 📱 МОБИЛКИ: Встроенный WebView
