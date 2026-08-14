@@ -37,6 +37,7 @@ class EpisodeActionService {
     required String episodeId,
     required String animeTitle,
     required String episodeName,
+    int? animeId,
     String? posterUrl,
   }) async {
     final entries =
@@ -98,6 +99,7 @@ class EpisodeActionService {
       manager.startDownload(
         url: selected.value,
         episodeId: episodeId,
+        animeId: animeId ?? int.tryParse(episodeId.split('_').first) ?? 0,
         animeTitle: animeTitle,
         episodeName: episodeName,
         quality: selected.key,

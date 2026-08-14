@@ -94,9 +94,10 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
       fadeInDuration: const Duration(milliseconds: 180),
       placeholder: (_, _) => _placeholder(showProgress: true),
       errorWidget: (_, _, _) {
-        if (url == widget.imageUrl || url.contains('shikimori')) {
-          _requestFallback();
-        }
+        // Any provider image can expire or return a broken placeholder. Try
+        // the cached Yummy/AniLiberty poster once instead of leaving a grey
+        // block in lists such as Downloads.
+        _requestFallback();
         return _placeholder(showProgress: false);
       },
     );

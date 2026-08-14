@@ -261,6 +261,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     manager.startDownload(
       url: source,
       episodeId: _episodeId,
+      animeId: widget.animeId,
       animeTitle: widget.animeTitle ?? widget.episodeTitle,
       episodeName: widget.episodeTitle,
       posterUrl: widget.posterUrl,

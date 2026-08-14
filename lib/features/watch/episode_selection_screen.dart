@@ -250,6 +250,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
       context,
       sources: qualities,
       episodeId: item.downloadId,
+      animeId: widget.animeId,
       animeTitle: _animeTitle,
       episodeName: item.title,
     );

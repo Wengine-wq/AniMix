@@ -43,6 +43,7 @@ class HlsDownloadManager extends ChangeNotifier {
   Future<void> startDownload({
     required String url,
     required String episodeId,
+    int animeId = 0,
     required String animeTitle,
     required String episodeName,
     required String quality,
@@ -53,6 +54,9 @@ class HlsDownloadManager extends ChangeNotifier {
 
     final item = DownloadItem(
       episodeId: episodeId,
+      animeId: animeId > 0
+          ? animeId
+          : int.tryParse(episodeId.split('_').first) ?? 0,
       animeTitle: animeTitle,
       episodeName: episodeName,
       posterUrl: posterUrl,

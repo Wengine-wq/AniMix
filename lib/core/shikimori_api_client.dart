@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter/foundation.dart';
@@ -16,6 +18,8 @@ import '../main.dart';
 class ShikimoriApiClient {
   late final Dio _dio;
   final Ref ref;
+  final Map<String, _ShikimoriCacheEntry> _cache = {};
+  final Map<String, Future<dynamic>> _inFlight = {};
 
   // 🔥 ЗАЩИТА ОТ КРАША: Флаг для предотвращения спама диалогами при множественных 401 ошибках
   static bool _isSessionExpiredHandled = false;
@@ -80,10 +84,13 @@ class ShikimoriApiClient {
   // =====================================================================
 
   Future<ShikimoriUser> getCurrentUser() async {
-    final whoamiRes = await _dio.get('/api/users/whoami');
-    final userId = whoamiRes.data['id'] as int;
-    final fullRes = await _dio.get('/api/users/$userId');
-    return ShikimoriUser.fromJson(fullRes.data);
+    final data = await _cachedRequest('current-user', () async {
+      final whoamiRes = await _dio.get('/api/users/whoami');
+      final userId = whoamiRes.data['id'] as int;
+      final fullRes = await _dio.get('/api/users/$userId');
+      return fullRes.data;
+    }, freshFor: const Duration(seconds: 20));
+    return ShikimoriUser.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   Future<List<ShikimoriAnime>> getAnimes({
@@ -97,20 +104,33 @@ class ShikimoriApiClient {
       'order': 'popularity',
       ...filters,
     };
-    final res = await _dio.get('/api/animes', queryParameters: queryParams);
-    return (res.data as List)
-        .map((json) => ShikimoriAnime.fromJson(json))
-        .toList();
+    final data = await _cachedRequest(
+      'animes:${jsonEncode(queryParams)}',
+      () async =>
+          (await _dio.get('/api/animes', queryParameters: queryParams)).data,
+      freshFor: const Duration(minutes: 2),
+    );
+    return (data as List).map((json) => ShikimoriAnime.fromJson(json)).toList();
   }
 
   Future<ShikimoriAnimeDetail> getAnimeDetail(int id) async {
-    final res = await _dio.get('/api/animes/$id');
-    return ShikimoriAnimeDetail.fromJson(res.data);
+    final data = await _cachedRequest(
+      'anime-detail:$id',
+      () async => (await _dio.get('/api/animes/$id')).data,
+      freshFor: const Duration(minutes: 10),
+    );
+    return ShikimoriAnimeDetail.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
   }
 
   Future<List<String>> getAnimeScreenshots(int animeId) async {
-    final res = await _dio.get('/api/animes/$animeId/screenshots');
-    return (res.data as List? ?? [])
+    final data = await _cachedRequest(
+      'anime-screenshots:$animeId',
+      () async => (await _dio.get('/api/animes/$animeId/screenshots')).data,
+      freshFor: const Duration(hours: 1),
+    );
+    return (data as List? ?? [])
         .map((s) {
           final String path = s?['original'] ?? s?['preview'] ?? '';
           if (path.isEmpty) return '';
@@ -122,8 +142,12 @@ class ShikimoriApiClient {
 
   Future<List<ShikimoriAnime>> getSimilarAnimes(int animeId) async {
     try {
-      final res = await _dio.get('/api/animes/$animeId/similar');
-      return (res.data as List? ?? const [])
+      final data = await _cachedRequest(
+        'anime-similar:$animeId',
+        () async => (await _dio.get('/api/animes/$animeId/similar')).data,
+        freshFor: const Duration(hours: 1),
+      );
+      return (data as List? ?? const [])
           .map((json) => ShikimoriAnime.fromJson(json))
           .toList();
     } catch (_) {
@@ -210,8 +234,12 @@ class ShikimoriApiClient {
 
   Future<List<Map<String, dynamic>>> getRelatedAnimes(int animeId) async {
     try {
-      final res = await _dio.get('/api/animes/$animeId/related');
-      return List<Map<String, dynamic>>.from(res.data);
+      final data = await _cachedRequest(
+        'anime-related:$animeId',
+        () async => (await _dio.get('/api/animes/$animeId/related')).data,
+        freshFor: const Duration(hours: 1),
+      );
+      return List<Map<String, dynamic>>.from(data as List);
     } catch (e) {
       return [];
     }
@@ -258,4 +286,36 @@ class ShikimoriApiClient {
     );
     return ShikimoriComment.fromJson(res.data);
   }
+
+  Future<dynamic> _cachedRequest(
+    String key,
+    Future<dynamic> Function() loader, {
+    required Duration freshFor,
+  }) async {
+    final cached = _cache[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.savedAt) <= freshFor) {
+      return cached.data;
+    }
+    final pending = _inFlight[key];
+    if (pending != null) return pending;
+    final request = () async {
+      try {
+        final value = await loader();
+        _cache[key] = _ShikimoriCacheEntry(DateTime.now(), value);
+        return value;
+      } finally {
+        _inFlight.remove(key);
+      }
+    }();
+    _inFlight[key] = request;
+    return request;
+  }
+}
+
+class _ShikimoriCacheEntry {
+  const _ShikimoriCacheEntry(this.savedAt, this.data);
+
+  final DateTime savedAt;
+  final dynamic data;
 }

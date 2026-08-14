@@ -129,6 +129,14 @@ abstract final class AniMixTheme {
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: accent),
       iconTheme: const IconThemeData(color: Colors.white),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+        },
+      ),
     );
   }
 

@@ -615,6 +615,7 @@ class _YummyEpisodesScreenState extends State<_YummyEpisodesScreen> {
         context,
         sources: directSources,
         episodeId: item.downloadId,
+        animeId: widget.animeId,
         animeTitle: widget.animeTitle,
         episodeName: '${widget.translationName} • ${item.title}',
       );
@@ -635,6 +636,7 @@ class _YummyEpisodesScreenState extends State<_YummyEpisodesScreen> {
       context,
       sources: sources,
       episodeId: item.downloadId,
+      animeId: widget.animeId,
       animeTitle: widget.animeTitle,
       episodeName: '${widget.translationName} • ${item.title}',
     );
