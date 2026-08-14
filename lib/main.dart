@@ -36,8 +36,9 @@ void main() async {
   debugRepaintRainbowEnabled = false;
   debugProfilePaintsEnabled = false;
 
-  // Стандартная загрузка .env
-  await dotenv.load(fileName: ".env");
+  // Optional local override. Release builds receive public values through
+  // --dart-define, so no .env asset or secret is shipped with the app.
+  await dotenv.load(fileName: '.env', isOptional: true);
   await AppSettingsController.instance.initialize();
   runApp(const ProviderScope(child: MyApp()));
 }

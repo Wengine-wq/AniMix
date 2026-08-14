@@ -5,17 +5,6 @@ import 'config.dart';
 import 'secure_storage.dart';
 
 class ShikimoriAuthService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: 'https://shikimori.io',
-      headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 AniMix/1.0',
-        'Accept': 'application/json',
-      },
-    ),
-  );
-
   Future<bool> exchangeCodeManually(String authCode) async {
     return login(authCode);
   }
@@ -28,7 +17,6 @@ class ShikimoriAuthService {
       }
 
       final clientId = Config.shikimoriClientId;
-      final clientSecret = Config.shikimoriClientSecret;
 
       if (clientId.isEmpty) {
         debugPrint('Ошибка авторизации: SHIKIMORI_CLIENT_ID не найден.');
@@ -58,27 +46,10 @@ class ShikimoriAuthService {
             responseType: ResponseType.json,
           ),
         );
-      } else if (clientSecret.isNotEmpty) {
-        // Compatibility path for existing local development `.env` files.
-        // It is intentionally not used by the checked-in release config.
-        debugPrint(
-          'Предупреждение: используется legacy OAuth с client_secret. '
-          'Настройте SHIKIMORI_OAUTH_PROXY_URL для безопасной сборки.',
-        );
-        response = await _dio.post(
-          '/oauth/token',
-          data: {
-            'grant_type': 'authorization_code',
-            'client_id': clientId,
-            'client_secret': clientSecret,
-            'code': authCode,
-            'redirect_uri': actualRedirectUri,
-          },
-        );
       } else {
         debugPrint(
           'Ошибка авторизации: настройте SHIKIMORI_OAUTH_PROXY_URL. '
-          'Прямой client_secret в приложении небезопасен.',
+          'Обмен кода выполняется только через защищённый прокси.',
         );
         return false;
       }
