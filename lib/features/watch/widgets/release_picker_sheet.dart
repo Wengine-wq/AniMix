@@ -46,12 +46,32 @@ Future<void> showReleasePicker({
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(c['title'], style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                    Text('${c['year']} • ${c['episodes']} эп.', style: const TextStyle(fontSize: 13, color: CupertinoColors.systemGrey)),
+                    Text(
+                      c['title'],
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${c['year']} • ${c['episodes']} эп.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Text('$score%', style: TextStyle(color: score >= 90 ? const Color(0xFF4CAF50) : const Color(0xFFFF9800), fontWeight: FontWeight.bold)),
+              Text(
+                '$score%',
+                style: TextStyle(
+                  color: score >= 90
+                      ? const Color(0xFF4CAF50)
+                      : const Color(0xFFFF9800),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         );

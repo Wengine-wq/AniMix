@@ -4,6 +4,7 @@ import '../models/watch_mapping.dart';
 import '../repositories/watch_mapping_repository.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/config.dart';
+import '../../../core/app_settings.dart';
 import 'provider_response_cache.dart';
 
 class WatchResolverService {
@@ -26,6 +27,14 @@ class WatchResolverService {
     Map<String, dynamic>? headers,
     required Duration freshFor,
   }) async {
+    if (!AppSettingsController.instance.smartConnectionEnabled) {
+      final response = await _dio.get(
+        url,
+        queryParameters: queryParameters,
+        options: headers == null ? null : Options(headers: headers),
+      );
+      return response.data;
+    }
     final uri = Uri.parse(url).replace(
       queryParameters: queryParameters?.map(
         (key, value) => MapEntry(key, value.toString()),
@@ -68,9 +77,13 @@ class WatchResolverService {
     required String searchNameEn,
     bool forcePicker = false,
   }) async {
-    final mapping = await _repo.get('${shikimoriId}_$provider');
+    final smart = AppSettingsController.instance.smartConnectionEnabled;
+    final mapping = smart ? await _repo.get('${shikimoriId}_$provider') : null;
 
-    if (!forcePicker && mapping != null && mapping.releaseId.isNotEmpty) {
+    if (smart &&
+        !forcePicker &&
+        mapping != null &&
+        mapping.releaseId.isNotEmpty) {
       return _loadMappedRelease(
         provider: provider,
         releaseId: mapping.releaseId,
@@ -90,7 +103,7 @@ class WatchResolverService {
         .where((c) => (c['matchScore'] as int) >= 90)
         .toList();
 
-    if (!forcePicker && highScorers.length == 1) {
+    if (smart && !forcePicker && highScorers.length == 1) {
       final best = highScorers.first;
       final newMapping = WatchMapping(
         shikimoriId: shikimoriId,
@@ -130,7 +143,10 @@ class WatchResolverService {
     }
   }
 
-  Future<void> saveMapping(WatchMapping mapping) => _repo.save(mapping);
+  Future<void> saveMapping(WatchMapping mapping) =>
+      AppSettingsController.instance.smartConnectionEnabled
+      ? _repo.save(mapping)
+      : Future<void>.value();
 
   Future<dynamic> _loadMappedRelease({
     required String provider,
@@ -143,6 +159,7 @@ class WatchResolverService {
       return loadEpisodesDirect(provider, releaseId);
     }
     final groups = await loadYummyStudios(releaseId);
+    if (!AppSettingsController.instance.smartConnectionEnabled) return groups;
     return _enrichYummyWithAniLiberty(
       groups: groups,
       shikimoriId: shikimoriId,

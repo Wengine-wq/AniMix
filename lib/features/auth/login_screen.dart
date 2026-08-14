@@ -1,16 +1,30 @@
-import 'dart:io'; 
-import 'dart:ui'; // Для ImageFilter
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'; 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' as services;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:url_launcher/url_launcher.dart'; 
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config.dart';
 import '../../core/shikimori_auth_service.dart';
 import '../../providers/auth_provider.dart';
-import '../../main.dart'; // Подключаем наш AniMixGlass
+import '../../widgets/animix_surface.dart';
+
+class _LoginBackdrop extends StatelessWidget {
+  const _LoginBackdrop();
+
+  @override
+  Widget build(BuildContext context) => const DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF17172A), Color(0xFF251633), Color(0xFF11101A)],
+      ),
+    ),
+  );
+}
 
 class LoginScreen extends HookConsumerWidget {
   const LoginScreen({super.key});
@@ -20,113 +34,78 @@ class LoginScreen extends HookConsumerWidget {
     final authService = ref.watch(authServiceProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF050507),
+      backgroundColor: const Color(0xFF11101A),
       body: Stack(
         children: [
-          // 1. АТМОСФЕРНЫЙ ФОН С ПРЕЛОМЛЕНИЕМ
-          _buildAnimatedBackground(),
-
-          // 2. НАТИВНЫЙ БЛЮР ВМЕСТО AdaptiveLiquidGlassLayer
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40.0, sigmaY: 40.0),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-
-          // 3. ТВОЙ ОРИГИНАЛЬНЫЙ КОНТЕНТ БЕЗ ИЗМЕНЕНИЙ
+          const Positioned.fill(child: _LoginBackdrop()),
           SafeArea(
             child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420), // Идеально для Windows / iPad
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // ЛОГОТИП И ЗАГОЛОВОК
-                      const Icon(CupertinoIcons.play_circle_fill, size: 72, color: Colors.white),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'AniMix',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 56,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -2,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Открой мир аниме заново.\nСмотри любимые тайтлы без ограничений.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 17,
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 64),
-
-                      // 🔥 КНОПКА ВОЙТИ (Переведена на AniMixGlass)
-                      GestureDetector(
-                        onTap: () => _handleLogin(context, ref, authService),
-                        child: AniMixGlass(
-                          borderRadius: 24,
-                          blur: 15.0,
-                          child: Container(
-                            color: const Color(0x668B5CF6), // Фирменный фиолетовый тинт
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(CupertinoIcons.person_crop_circle_fill, color: Colors.white, size: 24),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Войти через Shikimori',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.5,
-                                  ),
-                                ),
-                              ],
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: AniMixSurface(
+                    radius: 24,
+                    elevated: true,
+                    padding: const EdgeInsets.all(30),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(23),
+                          child: Image.asset(
+                            'assets/icon/app_icon.png',
+                            width: 104,
+                            height: 104,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(
+                              CupertinoIcons.play_circle_fill,
+                              size: 86,
                             ),
                           ),
                         ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ВТОРИЧНАЯ КНОПКА (РУЧНОЙ ВВОД) - Переведена на AniMixGlass
-                      GestureDetector(
-                        onTap: () => _showManualCodeDialog(context, ref, authService),
-                        child: AniMixGlass(
-                          borderRadius: 24,
-                          blur: 20.0,
-                          child: Container(
-                            color: const Color(0x1AFFFFFF), // Легкий светлый тинт
-                            padding: const EdgeInsets.symmetric(vertical: 18),
-                            child: const Text(
-                              'Ввести код вручную',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                        const SizedBox(height: 12),
+                        const Text(
+                          'AniMix',
+                          style: TextStyle(
+                            fontSize: 48,
+                            height: 1.05,
+                            letterSpacing: -1.4,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Вход и синхронизация списков Shikimori',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white60, fontSize: 16),
+                        ),
+                        const SizedBox(height: 30),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () =>
+                                _handleLogin(context, ref, authService),
+                            icon: const Icon(
+                              CupertinoIcons.person_crop_circle_fill,
+                            ),
+                            label: const Text('Войти через Shikimori'),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(54),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: () =>
+                              _showManualCodeDialog(context, ref, authService),
+                          child: const Text('Ввести код вручную'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -137,47 +116,17 @@ class LoginScreen extends HookConsumerWidget {
     );
   }
 
-  // ===================== АТМОСФЕРНЫЙ ФОН =====================
-  Widget _buildAnimatedBackground() {
-    return Stack(
-      children: [
-        Positioned(
-          top: -100,
-          right: -50,
-          child: Container(
-            width: 300,
-            height: 300,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0x408B5CF6), // Фиолетовое свечение
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: -50,
-          left: -100,
-          child: Container(
-            width: 400,
-            height: 400,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0x30FF2D55), // Розовое свечение (iOS стиль)
-            ),
-          ),
-        ),
-        // Размываем пятна для эффекта объемного тумана
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-          child: Container(color: Colors.transparent),
-        ),
-      ],
-    );
-  }
-
   // ===================== ЛОГИКА АВТОРИЗАЦИИ =====================
-  Future<void> _handleLogin(BuildContext context, WidgetRef ref, ShikimoriAuthService authService) async {
-    final clientId = dotenv.env['SHIKIMORI_CLIENT_ID'];
-    if (clientId == null || clientId.isEmpty) return;
+  Future<void> _handleLogin(
+    BuildContext context,
+    WidgetRef ref,
+    ShikimoriAuthService authService,
+  ) async {
+    final clientId = Config.shikimoriClientId;
+    if (clientId.isEmpty) {
+      _showErrorDialog(context, 'Не настроен идентификатор Shikimori.');
+      return;
+    }
 
     if (Platform.isIOS || Platform.isAndroid) {
       // 📱 МОБИЛКИ: Встроенный WebView
@@ -190,11 +139,19 @@ class LoginScreen extends HookConsumerWidget {
 
       final code = await Navigator.push<String>(
         context,
-        CupertinoPageRoute(builder: (_) => ShikimoriWebViewScreen(url: authUrl)),
+        CupertinoPageRoute(
+          builder: (_) => ShikimoriWebViewScreen(url: authUrl),
+        ),
       );
 
       if (code != null && code.isNotEmpty && context.mounted) {
-        _performTokenExchange(context, ref, authService, code, 'https://animix.app/callback');
+        _performTokenExchange(
+          context,
+          ref,
+          authService,
+          code,
+          'https://animix.app/callback',
+        );
       }
     } else {
       // 💻 ПК (Windows): Запускаем умный локальный сервер
@@ -203,7 +160,12 @@ class LoginScreen extends HookConsumerWidget {
   }
 
   // 🔥 МАГИЯ ДЛЯ ПК: ЛОКАЛЬНЫЙ СЕРВЕР ПЕРЕХВАТА ОАУТ-РЕДИРЕКТА
-  Future<void> _startDesktopAuth(BuildContext context, WidgetRef ref, ShikimoriAuthService authService, String clientId) async {
+  Future<void> _startDesktopAuth(
+    BuildContext context,
+    WidgetRef ref,
+    ShikimoriAuthService authService,
+    String clientId,
+  ) async {
     final redirectUri = 'http://localhost:33333/callback';
     final authUri = Uri.https('shikimori.io', '/oauth/authorize', {
       'client_id': clientId,
@@ -220,7 +182,9 @@ class LoginScreen extends HookConsumerWidget {
     }
 
     if (server == null) {
-      await services.Clipboard.setData(services.ClipboardData(text: authUri.toString()));
+      await services.Clipboard.setData(
+        services.ClipboardData(text: authUri.toString()),
+      );
       if (context.mounted) _showManualCodeDialog(context, ref, authService);
       return;
     }
@@ -228,7 +192,9 @@ class LoginScreen extends HookConsumerWidget {
     try {
       await launchUrl(authUri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      await services.Clipboard.setData(services.ClipboardData(text: authUri.toString()));
+      await services.Clipboard.setData(
+        services.ClipboardData(text: authUri.toString()),
+      );
     }
 
     if (!context.mounted) return;
@@ -244,7 +210,9 @@ class LoginScreen extends HookConsumerWidget {
             children: [
               CupertinoActivityIndicator(),
               SizedBox(height: 16),
-              Text('Мы открыли браузер.\nАвторизуйся там, и приложение само подхватит твой аккаунт! ✨'),
+              Text(
+                'Мы открыли браузер.\nАвторизуйся там, и приложение само подхватит твой аккаунт! ✨',
+              ),
             ],
           ),
         ),
@@ -293,28 +261,35 @@ class LoginScreen extends HookConsumerWidget {
         await server.close(force: true);
 
         if (context.mounted && code != null) {
-          Navigator.pop(context); 
-          _performTokenExchange(context, ref, authService, code, redirectUri); 
+          Navigator.pop(context);
+          _performTokenExchange(context, ref, authService, code, redirectUri);
         }
-        break; 
+        break;
       }
     }
   }
 
   // ===================== ОБМЕН КОДА НА ТОКЕНЫ =====================
-  Future<void> _performTokenExchange(BuildContext context, WidgetRef ref, ShikimoriAuthService authService, String code, [String? redirectUri]) async {
+  Future<void> _performTokenExchange(
+    BuildContext context,
+    WidgetRef ref,
+    ShikimoriAuthService authService,
+    String code, [
+    String? redirectUri,
+  ]) async {
     showCupertinoDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CupertinoActivityIndicator(radius: 20)),
+      builder: (_) =>
+          const Center(child: CupertinoActivityIndicator(radius: 20)),
     );
 
     try {
       final success = await authService.login(code, redirectUri);
-      
+
       if (context.mounted) {
         Navigator.pop(context);
-        
+
         if (success) {
           // Инвалидируем провайдер (ref теперь передан и доступен)
           ref.invalidate(isLoggedInProvider);
@@ -331,7 +306,11 @@ class LoginScreen extends HookConsumerWidget {
   }
 
   // ===================== ОКНО РУЧНОГО ВВОДА КОДА =====================
-  void _showManualCodeDialog(BuildContext context, WidgetRef ref, ShikimoriAuthService authService) {
+  void _showManualCodeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ShikimoriAuthService authService,
+  ) {
     final controller = TextEditingController();
 
     showCupertinoDialog(
@@ -353,8 +332,11 @@ class LoginScreen extends HookConsumerWidget {
             const SizedBox(height: 12),
             CupertinoButton(
               onPressed: () async {
-                final clipboardData = await services.Clipboard.getData(services.Clipboard.kTextPlain);
-                if (clipboardData?.text != null && clipboardData!.text!.isNotEmpty) {
+                final clipboardData = await services.Clipboard.getData(
+                  services.Clipboard.kTextPlain,
+                );
+                if (clipboardData?.text != null &&
+                    clipboardData!.text!.isNotEmpty) {
                   String text = clipboardData.text!.trim();
                   if (text.contains('code=')) {
                     final uri = Uri.tryParse(text);
@@ -381,7 +363,7 @@ class LoginScreen extends HookConsumerWidget {
               Navigator.pop(dialogContext);
               final code = controller.text.trim();
               if (code.isNotEmpty) {
-                _performTokenExchange(context, ref, authService, code); 
+                _performTokenExchange(context, ref, authService, code);
               }
             },
           ),
@@ -396,7 +378,12 @@ class LoginScreen extends HookConsumerWidget {
       builder: (errorContext) => CupertinoAlertDialog(
         title: const Text('Ошибка'),
         content: Text(message),
-        actions: [CupertinoDialogAction(child: const Text('OK'), onPressed: () => Navigator.pop(errorContext))],
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('OK'),
+            onPressed: () => Navigator.pop(errorContext),
+          ),
+        ],
       ),
     );
   }
@@ -420,7 +407,9 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF050507)) // Адаптировано под новый темный фон
+      ..setBackgroundColor(
+        const Color(0xFF050507),
+      ) // Адаптировано под новый темный фон
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
@@ -461,7 +450,8 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
         child: Stack(
           children: [
             WebViewWidget(controller: _controller),
-            if (_isLoading) const Center(child: CupertinoActivityIndicator(radius: 20)),
+            if (_isLoading)
+              const Center(child: CupertinoActivityIndicator(radius: 20)),
           ],
         ),
       ),

@@ -4,17 +4,23 @@ import '../models/shikimori_user.dart';
 import 'package:flutter/foundation.dart';
 
 // 🔥 Передаем ref внутрь клиента, чтобы он мог управлять глобальным состоянием (например, при 401)
-final apiClientProvider = Provider<ShikimoriApiClient>((ref) => ShikimoriApiClient(ref));
+final apiClientProvider = Provider<ShikimoriApiClient>(
+  (ref) => ShikimoriApiClient(ref),
+);
 
-final currentUserProvider = FutureProvider.autoDispose<ShikimoriUser?>((ref) async {
+final currentUserProvider = FutureProvider.autoDispose<ShikimoriUser?>((
+  ref,
+) async {
   try {
-    debugPrint('📡 ЗАПРОС К SHIKIMORI: /api/users/whoami'); 
+    debugPrint('📡 ЗАПРОС К SHIKIMORI: /api/users/whoami');
     final api = ref.watch(apiClientProvider);
     final user = await api.getCurrentUser();
-    debugPrint('✅ ПОЛУЧЕН ПОЛЬЗОВАТЕЛЬ: ${user.nickname} | watched: ${user.watched}');
+    debugPrint(
+      '✅ ПОЛУЧЕН ПОЛЬЗОВАТЕЛЬ: ${user.nickname} | watched: ${user.watched}',
+    );
     return user;
   } catch (e) {
     debugPrint('❌ ОШИБКА ЗАГРУЗКИ ПРОФИЛЯ: $e');
-    return null;
+    rethrow;
   }
 });

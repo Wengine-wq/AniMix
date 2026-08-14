@@ -22,13 +22,23 @@ jobs:
       - name: 📦 Установка зависимостей пакетов
         run: flutter pub get
 
-      - name: 🔐 Проверка конфигурации приложения
-        run: |
-          test -f .env
-          echo "✅ .env найден в checkout"
+      - name: 🔐 Подготовка публичной конфигурации
+        env:
+          SHIKIMORI_CLIENT_ID: ${{ vars.SHIKIMORI_CLIENT_ID }}
+          SHIKIMORI_REDIRECT_URI: ${{ vars.SHIKIMORI_REDIRECT_URI }}
+          SHIKIMORI_OAUTH_PROXY_URL: ${{ vars.SHIKIMORI_OAUTH_PROXY_URL }}
+        run: echo "✅ Используем GitHub Variables; OAuth secret в сборку не попадает"
 
       - name: ⚙️ Генерация файлов Xcode
-        run: flutter build ios --config-only --no-codesign
+        env:
+          SHIKIMORI_CLIENT_ID: ${{ vars.SHIKIMORI_CLIENT_ID }}
+          SHIKIMORI_REDIRECT_URI: ${{ vars.SHIKIMORI_REDIRECT_URI }}
+          SHIKIMORI_OAUTH_PROXY_URL: ${{ vars.SHIKIMORI_OAUTH_PROXY_URL }}
+        run: |
+          flutter build ios --config-only --no-codesign \
+            --dart-define=SHIKIMORI_CLIENT_ID="$SHIKIMORI_CLIENT_ID" \
+            --dart-define=SHIKIMORI_REDIRECT_URI="${SHIKIMORI_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}" \
+            --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL"
 
       - name: 🍏 Установка CocoaPods
         run: |

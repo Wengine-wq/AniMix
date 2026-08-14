@@ -10,6 +10,7 @@ import 'package:webview_windows/webview_windows.dart';
 
 import '../../core/animix_theme.dart';
 import '../../core/config.dart';
+import '../../core/app_settings.dart';
 import '../../widgets/animix_surface.dart';
 import 'services/hls_playlist_service.dart';
 import 'services/resolved_stream_cache.dart';
@@ -227,7 +228,9 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
   }
 
   Future<void> _startResolver() async {
-    final cached = await ResolvedStreamCache.get(_normalizedUrl);
+    final cached = AppSettingsController.instance.smartConnectionEnabled
+        ? await ResolvedStreamCache.get(_normalizedUrl)
+        : null;
     if (!mounted) return;
     if (cached != null && cached.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -463,7 +466,9 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
         return;
       }
       _timeout?.cancel();
-      await ResolvedStreamCache.put(_normalizedUrl, sources);
+      if (AppSettingsController.instance.smartConnectionEnabled) {
+        await ResolvedStreamCache.put(_normalizedUrl, sources);
+      }
       if (!mounted) return;
       _finishWithSources(sources);
     } catch (error) {

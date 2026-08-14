@@ -1,173 +1,161 @@
-<h1 align="center">🍿 AniMix</h1>
+<div align="center">
 
-<p align="center">
-  <b>The ultimate iOS anime tracking and viewing experience.</b><br>
-  Идеальное приложение для отслеживания и просмотра аниме на iOS.
+<img src="assets/icon/app_icon.png" width="112" alt="AniMix icon">
+
+# AniMix
+
+**Кроссплатформенный Flutter-клиент для поиска, просмотра и ведения списков аниме.**
+
+Shikimori · YummyAnime · Kodik HLS · AniLiberty · iOS · Windows
+
+<p>
+  <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter">
+  <img src="https://img.shields.io/badge/Dart-3.x-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart">
+  <img src="https://img.shields.io/badge/iOS-supported-111111?style=flat-square&logo=apple&logoColor=white" alt="iOS">
+  <img src="https://img.shields.io/badge/Windows-supported-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/license-MIT-35A854?style=flat-square" alt="MIT license">
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-iOS-black?style=for-the-badge&logo=apple">
-  <img src="https://img.shields.io/badge/language-Dart-blue?style=for-the-badge&logo=dart">
-  <img src="https://img.shields.io/badge/framework-Flutter-02569B?style=for-the-badge&logo=flutter">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge">
-  <img src="https://img.shields.io/badge/status-active-success?style=for-the-badge">
-</p>
+</div>
 
----
+AniMix переносит идеи Swift-версии в единый Flutter-клиент: спокойный тёмный интерфейс, нативная iOS-композиция, быстрый каталог, синхронизация с Shikimori и просмотр через прямые медиапотоки вместо рекламных iframe.
 
-## 🇺🇸 English
+## Возможности
 
-### ✨ About
-**AniMix** is an iOS application designed to seamlessly integrate with your Shikimori account and provide a smooth, ad-free anime viewing experience.
+### Каталог и персонализация
 
----
+- главная с онгоингами, новинками, популярным и топом рейтинга;
+- бесконечная пагинация раздела «Все аниме»;
+- мгновенное переключение карточек и списка;
+- поиск с фильтрами по статусу и формату;
+- персональная лента с жестами «в планы» и «пропустить»;
+- полноценный detail-экран: описание, жанры, кадры, связанные и похожие тайтлы.
 
-### 📸 Screenshots
+### Shikimori
 
-<p align="center">
-  <img src="assets/screen1.png" width="250"/>
-  <img src="assets/screen2.png" width="250"/>
-  <img src="assets/screen3.png" width="250"/>
-</p>
+- OAuth-вход и безопасное хранение токена;
+- списки «Смотрю», «В планах», «Просмотрено», «Отложено» и «Брошено»;
+- оценки, прогресс серий и статистика профиля;
+- история активности и граф просмотра;
+- ручное изменение статуса прямо из закладок или detail.
 
-> ⚠️ Replace image paths with your actual screenshots.
+### Просмотр и загрузки
 
----
+- YummyAnime как источник релиза и озвучки;
+- перехват прямого HLS-потока Kodik без рекламного iframe;
+- выбор качества и автоматический fallback на доступный поток;
+- AniLiberty как прямой резервный источник;
+- умные привязки релизов и кеширование ответов провайдеров;
+- скачивание HLS-плейлистов с доступными качествами для офлайн-просмотра;
+- сохранение позиции просмотра и отметка просмотренных серий.
 
-### 🚀 Features
+### Внешний вид
 
-- 🔄 **Full Shikimori Synchronization**  
-  Manage your anime lists (Watching, Planned, Completed, Dropped) directly in the app.
+- лёгкая плавающая навигация в iOS-стиле без liquid glass;
+- произвольный акцентный цвет через HSV-пикер;
+- темы «Графит», «Полночь» и OLED;
+- глобальное переключение карточек/списка;
+- адаптивная компоновка для телефона и широкого экрана;
+- единые loading, empty и retry-состояния.
 
-- ⚡ **Automatic Search**  
-  Smart episode/source detection for instant watching.
+## Умное соединение
 
-- 🎛 **Manual Selection**  
-  Choose your preferred source, translation, or subtitles manually.
+Настройка находится в `Настройки → Умное соединение`.
 
-- 🎯 **Personalized Recommendations**  
-  Discover new anime with custom filters.
+| Режим | Поведение |
+| --- | --- |
+| Включено | AniMix повторно использует проверенный релиз, кеш провайдеров, найденные HLS-ссылки и автоматически обогащает Yummy-серии прямыми потоками AniLiberty. |
+| Выключено | Привязки и кеш не используются: перед запуском можно каждый раз вручную выбрать релиз, источник и озвучку. |
 
-- 📊 **Detailed Statistics**  
-  Track your progress, time spent, and activity.
+Включайте режим для быстрого ежедневного просмотра одной и той же озвучки. Выключайте его, если релиз определяется неверно, нужно сравнить источники или провайдер обновил свою базу.
 
----
+## Быстрый старт
 
-### 📦 Installation
+### Требования
 
-AniMix is not available on the App Store yet, so you need to sideload the `.ipa`.
+- Flutter 3.x;
+- Dart 3.x;
+- Xcode 15+ для iOS;
+- Visual Studio с Desktop development with C++ для Windows.
 
-1. Go to **Releases**
-2. Download the latest `AniMix.ipa`
-3. Install using:
+### Конфигурация
 
-- ⭐ **TrollStore** *(Recommended)* — no 7-day limit  
-- 💻 **AltStore / SideStore** — requires weekly refresh  
-- 🛠 **Sideloadly** — PC-based alternative  
+`.env` удалён из репозитория и Git-истории. Локально можно скопировать
+[`.env.example`](.env.example) в `.env`; для CI и релизов значения передаются
+через `--dart-define` из GitHub Variables:
 
-📱 Requires **iOS 14.0+**
+```dotenv
+SHIKIMORI_CLIENT_ID=...
+SHIKIMORI_REDIRECT_URI=urn:ietf:wg:oauth:2.0:oob
+SHIKIMORI_OAUTH_PROXY_URL=https://your-worker.example.workers.dev
+```
 
----
+`SHIKIMORI_CLIENT_SECRET` намеренно отсутствует: Flutter-приложение нельзя
+использовать как защищённое хранилище секрета, потому что IPA/APK и Windows
+сборки можно распаковать. Для входа разверните готовый прокси из
+[`server/shikimori-oauth-proxy`](server/shikimori-oauth-proxy) и храните secret
+только в secrets хостинга и никогда не попадает в репозиторий или CI-артефакт.
 
-### 🤝 Contributing
+Важно: если секрет уже когда-либо был опубликован, его нужно отозвать и
+создать новый в Shikimori. Удаление строки из последнего коммита не делает
+старое значение безопасным в истории Git.
 
-Contributions, issues, and feature requests are welcome!
+### Запуск
 
-- Open an **Issue**
-- Submit a **Pull Request**
-- Suggest features
+```bash
+flutter pub get
+flutter run -d windows
+```
 
----
+Для iOS откройте `ios/Runner.xcworkspace` в Xcode или используйте:
 
-### 📄 License
+```bash
+flutter run -d ios
+```
 
-This project is licensed under the **MIT License**.
+### Проверки и сборка
 
----
+```bash
+flutter analyze
+flutter test
+flutter build windows --release
+flutter build ipa --release
+```
 
-### ⚠️ Disclaimer
+## Структура проекта
 
-This app is provided **"as is"**.  
-The developer is not responsible for content provided by third-party sources.
+```text
+lib/
+├─ core/                 # тема, настройки, OAuth, API и кеш
+├─ features/
+│  ├─ home/              # главная и каталог
+│  ├─ anime_detail/      # detail, похожие, кадры и прогресс
+│  ├─ profile/           # профиль и подэкраны настроек
+│  ├─ recommendation/    # персональная лента
+│  ├─ watch/             # провайдеры, HLS-перехват и плеер
+│  └─ downloads/         # офлайн HLS-загрузки
+├─ models/               # модели Shikimori
+├─ providers/            # Riverpod-состояния
+└─ widgets/              # общие поверхности и компоненты AniMix
+test/                    # HLS, offline server и UI-регрессии
+```
 
----
+## Разработка
 
-## 🇷🇺 Русский
+Перед отправкой изменений запускайте `flutter analyze` и `flutter test`. Для новых экранов добавляйте проверку узкого мобильного размера и состояния ошибки с повторной загрузкой.
 
-### ✨ О проекте
+Issues и pull requests приветствуются. Пожалуйста, описывайте платформу, шаги воспроизведения и источник видео, если проблема связана с плеером.
 
-**AniMix** — это iOS-приложение с полной интеграцией с Shikimori и удобным просмотром аниме без рекламы.
+## Дисклеймер
 
----
+AniMix не размещает и не распространяет видеоконтент. Источники, ссылки и озвучки предоставляются сторонними сервисами. Используйте приложение в соответствии с законодательством вашей страны и правилами соответствующих сервисов.
 
-### 📸 Скриншоты
+## Лицензия
 
-<p align="center">
-  <img src="assets/screen1.png" width="250"/>
-  <img src="assets/screen2.png" width="250"/>
-  <img src="assets/screen3.png" width="250"/>
-</p>
+Проект распространяется под лицензией [MIT](LICENSE).
 
-> ⚠️ Замените пути к изображениям на реальные.
+<div align="center">
 
----
+Made with care for anime fans.
 
-### 🚀 Основные возможности
-
-- 🔄 **Полная синхронизация с Shikimori**  
-  Управление списками (Смотрю, В планах, Просмотрено, Брошено)
-
-- ⚡ **Автоматический поиск**  
-  Быстрый подбор источников для просмотра
-
-- 🎛 **Ручной выбор**  
-  Выбор озвучки, субтитров и источника
-
-- 🎯 **Рекомендации**  
-  Подбор аниме по фильтрам
-
-- 📊 **Статистика**  
-  Детальная аналитика по просмотру
-
----
-
-### 📦 Установка
-
-Пока AniMix не доступен в App Store, установка происходит через `.ipa`:
-
-1. Перейдите в **Releases**
-2. Скачайте `AniMix.ipa`
-3. Установите через:
-
-- ⭐ **TrollStore** *(рекомендуется)*  
-- 💻 **AltStore / SideStore**  
-- 🛠 **Sideloadly**
-
-📱 Требуется **iOS 14.0+**
-
----
-
-### 🤝 Как помочь проекту
-
-- Сообщайте о багах через **Issues**
-- Предлагайте идеи
-- Делайте **Pull Request**
-
----
-
-### 📄 Лицензия
-
-Проект распространяется под лицензией **MIT**.
-
----
-
-### ⚠️ Дисклеймер
-
-Приложение предоставляется **«как есть»**.  
-Разработчик не несёт ответственности за сторонний контент.
-
----
-
-<p align="center">
-  Made with ❤️ for anime community
-</p>
+</div>

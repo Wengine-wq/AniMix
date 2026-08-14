@@ -1,8 +1,8 @@
 class AnimeTranslation {
-  final String id;           // уникальный id озвучки
-  final String name;         // "AniLibria", "Yummy", "StudioBand" и т.д.
-  final String? author;      // автор озвучки
-  final int episodesCount;   // сколько серий доступно
+  final String id; // уникальный id озвучки
+  final String name; // "AniLibria", "Yummy", "StudioBand" и т.д.
+  final String? author; // автор озвучки
+  final int episodesCount; // сколько серий доступно
 
   AnimeTranslation({
     required this.id,

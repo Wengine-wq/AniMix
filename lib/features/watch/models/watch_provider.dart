@@ -9,6 +9,14 @@ class WatchProviderInfo {
 }
 
 final List<WatchProviderInfo> availableProviders = [
-  WatchProviderInfo(WatchProvider.yummyKodik, 'YummyAnime (Kodik)', 'https://yummyanime.tv/favicon.ico'),
-  WatchProviderInfo(WatchProvider.anilibria, 'Anilibria (встроенный)', 'https://anilibria.tv/favicon.ico'),
+  WatchProviderInfo(
+    WatchProvider.yummyKodik,
+    'YummyAnime (Kodik)',
+    'https://yummyanime.tv/favicon.ico',
+  ),
+  WatchProviderInfo(
+    WatchProvider.anilibria,
+    'Anilibria (встроенный)',
+    'https://anilibria.tv/favicon.ico',
+  ),
 ];

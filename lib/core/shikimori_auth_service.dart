@@ -1,20 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'config.dart';
 import 'secure_storage.dart';
 
 class ShikimoriAuthService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: 'https://shikimori.io',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 AniMix/1.0',
-        'Accept': 'application/json',
-      },
-    ),
-  );
-
   Future<bool> exchangeCodeManually(String authCode) async {
     return login(authCode);
   }
@@ -26,33 +16,54 @@ class ShikimoriAuthService {
         return false;
       }
 
-      final clientId = dotenv.env['SHIKIMORI_CLIENT_ID'];
-      final clientSecret = dotenv.env['SHIKIMORI_CLIENT_SECRET'];
+      final clientId = Config.shikimoriClientId;
 
-      if (clientId == null || clientSecret == null) {
-        debugPrint('ОШИБКА: Ключи не найдены в .env');
+      if (clientId.isEmpty) {
+        debugPrint('Ошибка авторизации: SHIKIMORI_CLIENT_ID не найден.');
         return false;
       }
 
       // Выбираем правильный редирект в зависимости от того, откуда пришел запрос
-      final actualRedirectUri = redirectUri ?? 'https://animix.app/callback';
+      final actualRedirectUri = redirectUri?.trim().isNotEmpty == true
+          ? redirectUri!.trim()
+          : (Config.shikimoriRedirectUri.isNotEmpty
+                ? Config.shikimoriRedirectUri
+                : 'https://animix.app/callback');
 
-      final response = await _dio.post(
-        '/oauth/token',
-        data: {
-          'grant_type': 'authorization_code',
-          'client_id': clientId,
-          'client_secret': clientSecret,
-          'code': authCode,
-          'redirect_uri': actualRedirectUri, // 🔥 Отправляем нужный URI
-        },
-      );
+      final Response<dynamic> response;
+      final proxyUrl = Config.shikimoriOAuthProxyUrl.trim();
+      if (proxyUrl.isNotEmpty) {
+        // Preferred path: the OAuth secret never enters the application.
+        response = await Dio().post(
+          proxyUrl,
+          data: {
+            'code': authCode,
+            'redirect_uri': actualRedirectUri,
+            'client_id': clientId,
+          },
+          options: Options(
+            contentType: Headers.jsonContentType,
+            responseType: ResponseType.json,
+          ),
+        );
+      } else {
+        debugPrint(
+          'Ошибка авторизации: настройте SHIKIMORI_OAUTH_PROXY_URL. '
+          'Обмен кода выполняется только через защищённый прокси.',
+        );
+        return false;
+      }
 
       if (response.statusCode == 200) {
-        final data = response.data;
+        final data = response.data is Map
+            ? Map<String, dynamic>.from(response.data as Map)
+            : const <String, dynamic>{};
+        final accessToken = data['access_token']?.toString();
+        final refreshToken = data['refresh_token']?.toString() ?? '';
+        if (accessToken == null || accessToken.isEmpty) return false;
         await SecureStorage.saveTokens(
-          accessToken: data['access_token'],
-          refreshToken: data['refresh_token'],
+          accessToken: accessToken,
+          refreshToken: refreshToken,
         );
         return true;
       }

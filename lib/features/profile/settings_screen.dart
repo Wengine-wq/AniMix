@@ -1,1079 +1,1625 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../providers/auth_provider.dart';
-import '../../core/secure_storage.dart';
-import '../../core/app_settings.dart';
 import '../../core/animix_theme.dart';
+import '../../core/app_settings.dart';
 import '../../core/poster_fallback_service.dart';
+import '../../core/secure_storage.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/animix_surface.dart';
 import '../auth/login_screen.dart';
+import '../downloads/downloads_screen.dart';
+import '../downloads/hls_download_manager.dart';
 import '../watch/models/watch_mapping.dart';
 import '../watch/repositories/watch_mapping_repository.dart';
-import '../downloads/downloads_screen.dart';
 import '../watch/services/provider_response_cache.dart';
 import '../watch/services/resolved_stream_cache.dart';
 
-// =====================================================================
-// ЦВЕТОВАЯ ПАЛИТРА И СТИЛИ
-// =====================================================================
-Color get _accentColor => AppSettingsController.instance.accentColor;
-Color get _accentLight =>
-    Color.lerp(_accentColor, Colors.white, 0.24) ?? _accentColor;
-const Color _bgColor = Color(0xFF050507); // Максимально глубокий темный фон
-
-// =====================================================================
-// 1. ГЛАВНЫЙ ЭКРАН НАСТРОЕК (ХАБ)
-// =====================================================================
-class SettingsScreen extends HookConsumerWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
-
-  // 🔥 Универсальный чекер для обхода ошибки non_bool_condition
-  bool _checkIsLoggedIn(dynamic val) {
-    if (val is bool) return val;
-    try {
-      return val.value == true;
-    } catch (_) {
-      return false;
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bool isLoggedIn = _checkIsLoggedIn(ref.watch(isLoggedInProvider));
-    final appearance = AppSettingsController.instance;
-
-    return Scaffold(
-      backgroundColor: _bgColor,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 120,
-            backgroundColor: _bgColor.withValues(alpha: 0.8),
-            pinned: true,
-            flexibleSpace: const FlexibleSpaceBar(
-              titlePadding: EdgeInsets.only(left: 20, bottom: 16),
-              title: Text(
-                'Настройки',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionTitle('Внешний вид'),
-                  _buildSettingsGroup([
-                    _SettingsTile(
-                      icon: CupertinoIcons.paintbrush,
-                      title: 'Акцентный цвет',
-                      subtitle: appearance.accent.label,
-                      iconColor: appearance.accentColor,
-                      onTap: () => _showAccentPicker(context),
-                    ),
-                    _SettingsTile(
-                      icon: CupertinoIcons.rectangle_grid_2x2,
-                      title: 'Отображение контента',
-                      subtitle: appearance.contentLayout.label,
-                      onTap: () => _showLayoutPicker(context),
-                      isLast: true,
-                    ),
-                  ]),
-
-                  const SizedBox(height: 32),
-                  _buildSectionTitle('Основные'),
-                  _buildSettingsGroup([
-                    _SettingsTile(
-                      icon: CupertinoIcons.arrow_down_circle,
-                      title: 'Загрузки',
-                      onTap: () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (_) => const DownloadsScreen(),
-                        ),
-                      ),
-                    ),
-                    _SettingsTile(
-                      icon: CupertinoIcons.delete_left,
-                      title: 'Очистить временный кэш',
-                      subtitle: 'API, восстановленные обложки и HLS-ссылки',
-                      onTap: () => _clearTemporaryCache(context),
-                    ),
-                    _SettingsTile(
-                      icon: CupertinoIcons.play_rectangle,
-                      title: 'Привязки плеера',
-                      onTap: () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (_) => const _WatchMappingsSubScreen(),
-                        ),
-                      ),
-                      isLast: true,
-                    ),
-                  ]),
-
-                  const SizedBox(height: 32),
-                  _buildSectionTitle('О приложении'),
-                  _buildSettingsGroup([
-                    _SettingsTile(
-                      icon: CupertinoIcons.doc_text,
-                      title: 'Список изменений',
-                      onTap: () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (_) => const _ChangelogSubScreen(),
-                        ),
-                      ),
-                    ),
-                    _SettingsTile(
-                      icon: CupertinoIcons.info_circle,
-                      title: 'О приложении',
-                      onTap: () => Navigator.push(
-                        context,
-                        CupertinoPageRoute(
-                          builder: (_) => const _AboutSubScreen(),
-                        ),
-                      ),
-                      isLast: true,
-                    ),
-                  ]),
-
-                  const SizedBox(height: 32),
-                  _buildSectionTitle('Аккаунт'),
-                  _buildSettingsGroup([
-                    isLoggedIn
-                        ? _SettingsTile(
-                            icon: CupertinoIcons.square_arrow_right,
-                            title: 'Выйти из аккаунта',
-                            iconColor: CupertinoColors.destructiveRed,
-                            textColor: CupertinoColors.destructiveRed,
-                            onTap: () => _handleLogout(context, ref),
-                            isLast: true,
-                          )
-                        : _SettingsTile(
-                            icon: CupertinoIcons.person_crop_circle_badge_plus,
-                            title: 'Войти в Shikimori',
-                            iconColor: _accentLight,
-                            textColor: _accentLight,
-                            onTap: () => Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                builder: (_) => const LoginScreen(),
-                              ),
-                            ),
-                            isLast: true,
-                          ),
-                  ]),
-
-                  const SizedBox(height: 64),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, bottom: 8),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.5),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.0,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsGroup(List<Widget> children) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AniMixTheme.surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AniMixTheme.divider),
-      ),
-      child: Column(children: children),
-    );
-  }
-
-  Future<void> _showAccentPicker(BuildContext context) async {
-    final settings = AppSettingsController.instance;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF111116),
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final authenticated = ref
+        .watch(isLoggedInProvider)
+        .maybeWhen(data: (value) => value, orElse: () => false);
+    return AnimatedBuilder(
+      animation: AppSettingsController.instance,
+      builder: (context, _) {
+        final settings = AppSettingsController.instance;
+        return AniMixPage(
+          title: 'Настройки',
+          child: ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
             children: [
-              const Text(
-                'Акцентный цвет',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 14,
-                runSpacing: 14,
+              _SettingsHero(accent: settings.accentColor),
+              const SizedBox(height: 30),
+              const _SettingsSectionLabel('AniMix'),
+              _SettingsGroup(
                 children: [
-                  for (final accent in AniMixAccent.values)
-                    Tooltip(
-                      message: accent.label,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () async {
-                          await settings.setAccent(accent);
-                          if (sheetContext.mounted) Navigator.pop(sheetContext);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          width: 54,
-                          height: 54,
-                          decoration: BoxDecoration(
-                            color: accent.color,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: settings.accent == accent
-                                  ? Colors.white
-                                  : Colors.transparent,
-                              width: 3,
-                            ),
-                          ),
-                          child: settings.accent == accent
-                              ? const Icon(
-                                  CupertinoIcons.check_mark,
-                                  color: Colors.white,
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showLayoutPicker(BuildContext context) async {
-    final settings = AppSettingsController.instance;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF111116),
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text(
-                  'Отображение контента',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  'Автоматический режим использует список на телефоне и карточки на широком экране.',
-                ),
-              ),
-              for (final layout in AniMixContentLayout.values)
-                ListTile(
-                  leading: Icon(
-                    settings.contentLayout == layout
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.radio_button_off_rounded,
-                    color: settings.contentLayout == layout
-                        ? settings.accentColor
-                        : Colors.white38,
+                  _SettingsRow(
+                    icon: CupertinoIcons.person_crop_circle_fill,
+                    color: const Color(0xFFFF5E8A),
+                    title: 'Мой профиль',
+                    subtitle: authenticated
+                        ? 'Shikimori подключён, списки синхронизируются'
+                        : 'Войдите, чтобы синхронизировать списки',
+                    onTap: authenticated
+                        ? () => Navigator.maybePop(context)
+                        : () => _push(context, const LoginScreen()),
                   ),
-                  title: Text(layout.label),
-                  onTap: () async {
-                    await settings.setContentLayout(layout);
-                    if (sheetContext.mounted) Navigator.pop(sheetContext);
-                  },
-                ),
+                  _SettingsRow(
+                    icon: CupertinoIcons.paintbrush_fill,
+                    color: settings.accentColor,
+                    title: 'Оформление',
+                    subtitle:
+                        '${settings.hasCustomAccent ? 'Свой цвет' : settings.accent.label} · ${settings.themeStyle.label}',
+                    onTap: () => _push(context, const _AppearanceScreen()),
+                  ),
+                  _SettingsRow(
+                    icon: CupertinoIcons.link_circle_fill,
+                    color: const Color(0xFF43C6FF),
+                    title: 'Умное соединение',
+                    subtitle: settings.smartConnectionEnabled
+                        ? 'Автовыбор включён'
+                        : 'Ручной выбор включён',
+                    onTap: () => _push(context, const _ConnectionScreen()),
+                  ),
+                  _SettingsRow(
+                    icon: CupertinoIcons.archivebox_fill,
+                    color: const Color(0xFF35D07F),
+                    title: 'Данные и кеш',
+                    subtitle: 'Загрузки, привязки и временные файлы',
+                    onTap: () => _push(context, const _DataScreen()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
+              const _SettingsSectionLabel('Приложение'),
+              _SettingsGroup(
+                children: [
+                  _SettingsRow(
+                    icon: CupertinoIcons.info_circle_fill,
+                    color: const Color(0xFF8D8D98),
+                    title: 'О приложении',
+                    subtitle: 'Возможности, изменения и разработчик',
+                    onTap: () => _push(context, const _AboutScreen()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 26),
+              const _SettingsSectionLabel('Аккаунт'),
+              _SettingsGroup(
+                children: [
+                  _SettingsRow(
+                    icon: authenticated
+                        ? CupertinoIcons.square_arrow_right_fill
+                        : CupertinoIcons.person_badge_plus,
+                    color: authenticated
+                        ? const Color(0xFFFF4E58)
+                        : settings.accentColor,
+                    title: authenticated
+                        ? 'Выйти из аккаунта'
+                        : 'Войти через Shikimori',
+                    subtitle: authenticated
+                        ? 'Загрузки останутся на устройстве'
+                        : 'Синхронизация закладок и прогресса',
+                    destructive: authenticated,
+                    onTap: authenticated
+                        ? () => _logout(context, ref)
+                        : () => _push(context, const LoginScreen()),
+                  ),
+                ],
+              ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Future<void> _handleLogout(BuildContext context, WidgetRef ref) async {
-    showCupertinoDialog(
+  static void _push(BuildContext context, Widget page) =>
+      Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => page));
+
+  static Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final accepted = await showCupertinoDialog<bool>(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Выход из аккаунта'),
-        content: const Text('Вы уверены, что хотите выйти?'),
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Выйти из аккаунта?'),
+        content: const Text(
+          'История и списки перестанут синхронизироваться. Локальные загрузки сохранятся.',
+        ),
         actions: [
           CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Отмена'),
-            onPressed: () => Navigator.pop(ctx),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await SecureStorage.clear();
-              ref.invalidate(isLoggedInProvider);
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Выйти'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _clearTemporaryCache(BuildContext context) async {
-    await Future.wait<void>([
-      ProviderResponseCache.instance.clear(),
-      PosterFallbackService.instance.clear(),
-      ResolvedStreamCache.clear(),
-    ]);
-    if (!context.mounted) return;
-    showCupertinoDialog<void>(
-      context: context,
-      builder: (dialogContext) => CupertinoAlertDialog(
-        title: const Text('Кэш очищен'),
-        content: const Text(
-          'Загрузки и история просмотра сохранены. Данные провайдеров будут обновлены при следующем открытии.',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Готово'),
-          ),
-        ],
-      ),
-    );
+    if (accepted != true) return;
+    await SecureStorage.clear();
+    ref.invalidate(isLoggedInProvider);
   }
 }
 
-// =====================================================================
-// ГЕНЕРИРУЕМЫЙ ЭЛЕМЕНТ СПИСКА
-// =====================================================================
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-  final bool isLast;
-  final Color? iconColor;
-  final Color? textColor;
-  final String? subtitle;
-
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.isLast = false,
-    this.iconColor,
-    this.textColor,
-    this.subtitle,
-  });
+class _SettingsHero extends StatelessWidget {
+  const _SettingsHero({required this.accent});
+  final Color accent;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget build(BuildContext context) => AniMixSurface(
+    elevated: true,
+    padding: const EdgeInsets.all(22),
+    child: Row(
       children: [
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: iconColor ?? Colors.white.withValues(alpha: 0.8),
-                  size: 22,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: textColor ?? Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.46),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Icon(
-                  CupertinoIcons.chevron_right,
-                  color: Colors.white.withValues(alpha: 0.3),
-                  size: 16,
-                ),
-              ],
+        Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [accent, Color.lerp(accent, Colors.black, .32)!],
             ),
+            borderRadius: BorderRadius.circular(19),
+          ),
+          alignment: Alignment.center,
+          child: const Text(
+            'A',
+            style: TextStyle(fontSize: 31, fontWeight: FontWeight.w900),
           ),
         ),
-        if (!isLast)
-          Padding(
-            padding: const EdgeInsets.only(left: 54),
-            child: Divider(
-              height: 1,
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
+        const SizedBox(width: 17),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'AniMix',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Воспроизведение, данные и внешний вид',
+                style: TextStyle(color: AniMixTheme.subtleText, fontSize: 14),
+              ),
+            ],
           ),
+        ),
       ],
-    );
-  }
+    ),
+  );
 }
 
-// =====================================================================
-// 2. ПОДЭКРАН: ПРИВЯЗКИ ПЛЕЕРА
-// =====================================================================
-class _WatchMappingsSubScreen extends StatefulWidget {
-  const _WatchMappingsSubScreen();
+class _AppearanceScreen extends StatelessWidget {
+  const _AppearanceScreen();
 
   @override
-  State<_WatchMappingsSubScreen> createState() =>
-      _WatchMappingsSubScreenState();
-}
-
-class _WatchMappingsSubScreenState extends State<_WatchMappingsSubScreen> {
-  final WatchMappingRepository _repository = WatchMappingRepository();
-  List<WatchMapping> _mappings = [];
-  String? _errorMsg;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMappings();
-  }
-
-  Future<void> _loadMappings() async {
-    try {
-      // Строго используем метод getAll(), который был в предоставленном репозитории
-      final list = await _repository.getAll();
-      if (mounted) {
-        setState(() {
-          _mappings = list;
-          _errorMsg = null;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _errorMsg = "Ошибка загрузки: $e");
-    }
-  }
-
-  Future<void> _deleteMapping(String key) async {
-    try {
-      // Строго используем метод delete(), который был в предоставленном репозитории
-      await _repository.delete(key);
-      _loadMappings();
-    } catch (e) {
-      debugPrint('Ошибка удаления привязки плеера: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bgColor,
-      body: AdaptiveLiquidGlassLayer(
-        settings: const LiquidGlassSettings(blur: 25.0, thickness: 10.0),
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverAppBar(
-              expandedHeight: 100,
-              backgroundColor: _bgColor.withValues(alpha: 0.8),
-              pinned: true,
-              leading: CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: const FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(left: 48, bottom: 16),
-                title: Text(
-                  'Привязки плеера',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-              ),
-            ),
-            if (_errorMsg != null && _mappings.isEmpty)
-              SliverFillRemaining(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          CupertinoIcons.exclamationmark_triangle,
-                          size: 48,
-                          color: CupertinoColors.systemRed.withValues(
-                            alpha: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Не удалось загрузить',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _errorMsg!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else if (_mappings.isEmpty)
-              SliverFillRemaining(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        CupertinoIcons.play_rectangle,
-                        size: 64,
-                        color: Colors.white.withValues(alpha: 0.2),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Нет сохраненных привязок',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final mapping = _mappings[index];
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
-                    child: GlassContainer(
-                      quality: GlassQuality.standard,
-                      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
-                      settings: const LiquidGlassSettings(
-                        glassColor: Color(0x1AFFFFFF),
-                        blur: 15,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            _buildFallbackPoster(),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    mapping.releaseTitle,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _accentColor.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      mapping.provider.toUpperCase(),
-                                      style: TextStyle(
-                                        color: _accentLight,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            CupertinoButton(
-                              padding: const EdgeInsets.all(12),
-                              onPressed: () => _deleteMapping(mapping.key),
-                              child: const Icon(
-                                CupertinoIcons.trash,
-                                color: CupertinoColors.destructiveRed,
-                                size: 22,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }, childCount: _mappings.length),
-              ),
-
-            // 🔥 ЗАЩИТА ОТ ПЕРЕКРЫТИЯ НИЖНИМ НАВБАРОМ
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFallbackPoster() {
-    return Container(
-      width: 50,
-      height: 70,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Icon(CupertinoIcons.play_rectangle, color: Colors.grey),
-    );
-  }
-}
-
-// =====================================================================
-// 3. ПОДЭКРАН: СПИСОК ИЗМЕНЕНИЙ (CHANGELOG)
-// =====================================================================
-class _ChangelogSubScreen extends StatelessWidget {
-  const _ChangelogSubScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bgColor,
-      body: AdaptiveLiquidGlassLayer(
-        settings: const LiquidGlassSettings(blur: 25.0, thickness: 10.0),
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverAppBar(
-              expandedHeight: 100,
-              backgroundColor: _bgColor.withValues(alpha: 0.8),
-              pinned: true,
-              leading: CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: const FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(left: 48, bottom: 16),
-                title: Text(
-                  'История версий',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildVersionCard(
-                      version: 'AniMix Reborn',
-                      date: 'Текущая версия',
-                      features: [
-                        'Лёгкий адаптивный интерфейс: нижняя навигация на телефоне и боковая панель на широком экране.',
-                        'Прямой нативный HLS-плеер без рекламного iframe с выбором доступного качества.',
-                        'Загрузка отдельных серий, локальное HLS-воспроизведение и управление загрузками.',
-                        'Восстановление сломанных обложек через YummyAnime и AniLiberty с кэшированием.',
-                        'Акцентные цвета и режимы отображения карточками или списком.',
-                        'Кэш ответов провайдеров, привязок релизов и перехваченных потоков.',
-                      ],
-                      fixes: [
-                        'Исправлен запуск плеера после перехвата Kodik на Windows.',
-                        'Убраны тяжёлые размытия из списков и полноэкранных скролл-слоёв.',
-                        'Исправлены переполнения и сломанная пустая страница загрузок на широком экране.',
-                        'Добавлена корректная iOS-интеграция WebKit и AVPlayer-плагинов.',
-                        'Обновлена обработка ошибок API, HLS и повреждённых постеров.',
-                      ],
-                      isLatest: true,
-                    ),
-                    const SizedBox(height: 64),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVersionCard({
-    required String version,
-    required String date,
-    required List<String> features,
-    required List<String> fixes,
-    bool isLatest = false,
-  }) {
-    return GlassContainer(
-      quality: GlassQuality.premium,
-      shape: const LiquidRoundedSuperellipse(borderRadius: 24),
-      settings: const LiquidGlassSettings(
-        glassColor: Color(0x1AFFFFFF),
-        blur: 20,
-        specularSharpness: GlassSpecularSharpness.sharp,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: AppSettingsController.instance,
+    builder: (context, _) {
+      final settings = AppSettingsController.instance;
+      return AniMixPage(
+        title: 'Оформление',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  version,
-                  style: TextStyle(
-                    color: isLatest ? _accentLight : Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
+            AniMixSurface(
+              elevated: true,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AniMixSectionHeader(
+                    title: 'Предпросмотр',
+                    subtitle: 'Изменения применяются ко всему приложению',
                   ),
-                ),
-                if (isLatest)
+                  const SizedBox(height: 18),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                    height: 145,
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _accentColor.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(
-                      'NEW',
-                      style: TextStyle(
-                        color: _accentColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              date,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Text(
-              '🚀 Новшества:',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...features.map(
-              (f) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '• ',
-                      style: TextStyle(
-                        color: _accentColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        f,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Text(
-              '🔧 Исправления:',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...fixes.map(
-              (f) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '• ',
-                      style: TextStyle(
-                        color: CupertinoColors.activeGreen,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        f,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =====================================================================
-// 4. ПОДЭКРАН: О ПРИЛОЖЕНИИ
-// =====================================================================
-class _AboutSubScreen extends StatelessWidget {
-  const _AboutSubScreen();
-
-  Future<void> _openGitHub() async {
-    final url = Uri.parse('https://github.com/Wengine-wq/AniMix');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bgColor,
-      body: AdaptiveLiquidGlassLayer(
-        settings: const LiquidGlassSettings(blur: 25.0, thickness: 10.0),
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverAppBar(
-              expandedHeight: 100,
-              backgroundColor: _bgColor.withValues(alpha: 0.8),
-              pinned: true,
-              leading: CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: const FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(left: 48, bottom: 16),
-                title: Text(
-                  'О приложении',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 32,
-                ),
-                child: Column(
-                  children: [
-                    // 🔥 ЛОГОТИП ПРИЛОЖЕНИЯ
-                    GlassContainer(
-                      shape: const LiquidRoundedSuperellipse(borderRadius: 36),
-                      settings: const LiquidGlassSettings(
-                        glassColor: Color(0x1AFFFFFF),
-                        blur: 20,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.asset(
-                            'assets/icon/app_icon.png',
-                            width: 80,
-                            height: 80,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Icon(
-                                CupertinoIcons.play_circle_fill,
-                                size: 80,
-                                color: Colors.white,
-                              );
-                            },
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 76,
+                          decoration: BoxDecoration(
+                            color: settings.accentColor.withValues(alpha: .22),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            CupertinoIcons.play_fill,
+                            color: settings.accentColor,
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'AniMix',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Версия 1.1.0 Reborn',
-                      style: TextStyle(
-                        color: _accentLight.withValues(alpha: 0.8),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Твой премиальный портал в мир аниме.\nСоздано с любовью к деталям, плавной анимации и безупречному дизайну.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 48),
-
-                    // 🔥 ИСПРАВЛЕНА КНОПКА GITHUB: широкая, нормальный размер
-                    SizedBox(
-                      width: double.infinity,
-                      child: GlassButton(
-                        onTap: _openGitHub,
-                        quality: GlassQuality.premium,
-                        shape: const LiquidRoundedSuperellipse(
-                          borderRadius: 20,
-                        ),
-                        settings: const LiquidGlassSettings(
-                          glassColor: Color(0x1AFFFFFF),
-                          blur: 15,
-                        ),
-                        icon: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 18),
-                          child: Row(
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                CupertinoIcons.link,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Проект на GitHub',
-                                style: TextStyle(
+                              Container(
+                                height: 13,
+                                width: 150,
+                                decoration: BoxDecoration(
                                   color: Colors.white,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                height: 9,
+                                width: 105,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Container(
+                                height: 32,
+                                width: 108,
+                                decoration: BoxDecoration(
+                                  color: settings.accentColor,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            const _SettingsSectionLabel('Акцентный цвет'),
+            AniMixSurface(
+              padding: const EdgeInsets.all(18),
+              child: Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  for (final accent in AniMixAccent.values)
+                    Builder(
+                      builder: (context) {
+                        final selected =
+                            !settings.hasCustomAccent &&
+                            settings.accent == accent;
+                        return Semantics(
+                          button: true,
+                          selected: selected,
+                          label: accent.label,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () => settings.setAccent(accent),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              width: 58,
+                              height: 58,
+                              decoration: BoxDecoration(
+                                color: accent.color,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  width: 3,
+                                  color: selected
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                ),
+                              ),
+                              child: selected
+                                  ? const Icon(
+                                      CupertinoIcons.check_mark,
+                                      size: 22,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  _CustomColorButton(
+                    color: settings.accentColor,
+                    selected: settings.hasCustomAccent,
+                    onTap: () => _pickCustomAccent(context, settings),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            const _SettingsSectionLabel('Тема интерфейса'),
+            _SettingsGroup(
+              children: AniMixThemeStyle.values
+                  .map(
+                    (style) => _ChoiceRow(
+                      icon: switch (style) {
+                        AniMixThemeStyle.graphite =>
+                          CupertinoIcons.circle_grid_hex_fill,
+                        AniMixThemeStyle.midnight =>
+                          CupertinoIcons.moon_stars_fill,
+                        AniMixThemeStyle.oled =>
+                          CupertinoIcons.circle_lefthalf_fill,
+                      },
+                      title: style.label,
+                      subtitle: style.description,
+                      selected: settings.themeStyle == style,
+                      onTap: () => settings.setThemeStyle(style),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 28),
+            const _SettingsSectionLabel('Вид коллекций'),
+            _SettingsGroup(
+              children: AniMixContentLayout.values
+                  .map(
+                    (layout) => _ChoiceRow(
+                      icon: switch (layout) {
+                        AniMixContentLayout.automatic =>
+                          CupertinoIcons.wand_stars,
+                        AniMixContentLayout.cards =>
+                          CupertinoIcons.rectangle_grid_2x2,
+                        AniMixContentLayout.list => CupertinoIcons.list_bullet,
+                      },
+                      title: layout.label,
+                      subtitle: switch (layout) {
+                        AniMixContentLayout.automatic =>
+                          'Список на телефоне, карточки на широком экране',
+                        AniMixContentLayout.cards =>
+                          'Постеры и визуальная сетка',
+                        AniMixContentLayout.list =>
+                          'Компактно, больше информации',
+                      },
+                      selected: settings.contentLayout == layout,
+                      onTap: () => settings.setContentLayout(layout),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Future<void> _pickCustomAccent(
+    BuildContext context,
+    AppSettingsController settings,
+  ) async {
+    final color = await showModalBottomSheet<Color>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _CustomAccentSheet(initial: settings.accentColor),
+    );
+    if (color != null) await settings.setCustomAccent(color);
+  }
+}
+
+class _CustomColorButton extends StatelessWidget {
+  const _CustomColorButton({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Свой цвет',
+    child: InkWell(
+      key: const ValueKey('custom_accent_button'),
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          gradient: const SweepGradient(
+            colors: [
+              Colors.red,
+              Colors.yellow,
+              Colors.green,
+              Colors.cyan,
+              Colors.blue,
+              Colors.purple,
+              Colors.red,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            width: 3,
+            color: selected ? Colors.white : Colors.transparent,
+          ),
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.black54,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white70),
+          ),
+          child: selected
+              ? const Icon(CupertinoIcons.check_mark, size: 15)
+              : const Icon(CupertinoIcons.plus, size: 15),
+        ),
+      ),
+    ),
+  );
+}
+
+class _CustomAccentSheet extends StatefulWidget {
+  const _CustomAccentSheet({required this.initial});
+  final Color initial;
+
+  @override
+  State<_CustomAccentSheet> createState() => _CustomAccentSheetState();
+}
+
+class _CustomAccentSheetState extends State<_CustomAccentSheet> {
+  late HSVColor _hsv;
+
+  @override
+  void initState() {
+    super.initState();
+    _hsv = HSVColor.fromColor(widget.initial);
+  }
+
+  Color get _color => _hsv.toColor();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      22,
+      12,
+      22,
+      22 + MediaQuery.viewInsetsOf(context).bottom,
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Container(
+            width: 38,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Свой акцентный цвет',
+          style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Цвет кнопок, выделений, навигации и индикаторов.',
+          style: TextStyle(color: AniMixTheme.subtleText),
+        ),
+        const SizedBox(height: 22),
+        Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: _color,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '#${_color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _ColorSlider(
+          label: 'Оттенок',
+          value: _hsv.hue,
+          max: 360,
+          gradient: const LinearGradient(
+            colors: [
+              Colors.red,
+              Colors.yellow,
+              Colors.green,
+              Colors.cyan,
+              Colors.blue,
+              Colors.purple,
+              Colors.red,
+            ],
+          ),
+          onChanged: (value) => setState(() => _hsv = _hsv.withHue(value)),
+        ),
+        _ColorSlider(
+          label: 'Насыщенность',
+          value: _hsv.saturation,
+          max: 1,
+          gradient: LinearGradient(
+            colors: [
+              HSVColor.fromAHSV(1, _hsv.hue, 0, _hsv.value).toColor(),
+              HSVColor.fromAHSV(1, _hsv.hue, 1, _hsv.value).toColor(),
+            ],
+          ),
+          onChanged: (value) =>
+              setState(() => _hsv = _hsv.withSaturation(value)),
+        ),
+        _ColorSlider(
+          label: 'Яркость',
+          value: _hsv.value,
+          max: 1,
+          gradient: LinearGradient(
+            colors: [Colors.black, _hsv.withValue(1).toColor()],
+          ),
+          onChanged: (value) => setState(() => _hsv = _hsv.withValue(value)),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: () => Navigator.pop(context, _color),
+            child: const Text('Применить'),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ColorSlider extends StatelessWidget {
+  const _ColorSlider({
+    required this.label,
+    required this.value,
+    required this.max,
+    required this.gradient,
+    required this.onChanged,
+  });
+  final String label;
+  final double value;
+  final double max;
+  final Gradient gradient;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 7),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              height: 12,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                gradient: gradient,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            Slider(value: value, max: max, onChanged: onChanged),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _ConnectionScreen extends StatefulWidget {
+  const _ConnectionScreen();
+
+  @override
+  State<_ConnectionScreen> createState() => _ConnectionScreenState();
+}
+
+class _ConnectionScreenState extends State<_ConnectionScreen> {
+  var _mappingCount = 0;
+  Object? _mappingError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    try {
+      final mappings = await WatchMappingRepository().getAll();
+      if (mounted) {
+        setState(() {
+          _mappingCount = mappings.length;
+          _mappingError = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _mappingError = error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: AppSettingsController.instance,
+    builder: (context, _) {
+      final settings = AppSettingsController.instance;
+      final enabled = settings.smartConnectionEnabled;
+      return AniMixPage(
+        title: 'Умное соединение',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          children: [
+            AniMixSurface(
+              selected: enabled,
+              padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+              child: Row(
+                children: [
+                  _SettingsIcon(
+                    icon: enabled
+                        ? CupertinoIcons.bolt_horizontal_circle_fill
+                        : CupertinoIcons.hand_raised_fill,
+                    color: enabled
+                        ? Theme.of(context).colorScheme.primary
+                        : AniMixTheme.subtleText,
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          enabled
+                              ? 'Автовыбор включён'
+                              : 'Ручной выбор включён',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          enabled
+                              ? 'AniMix повторно использует проверенные релизы и потоки.'
+                              : 'Приложение каждый раз спросит, какой релиз открыть.',
+                          style: const TextStyle(
+                            color: AniMixTheme.subtleText,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: enabled,
+                    onChanged: settings.setSmartConnectionEnabled,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_mappingError != null) ...[
+              AniMixSurface(
+                padding: const EdgeInsets.all(15),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Не удалось прочитать сохранённые привязки'),
+                    ),
+                    TextButton(
+                      onPressed: _reload,
+                      child: const Text('Повторить'),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+            ],
+            AniMixSurface(
+              elevated: true,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                children: [
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      CupertinoIcons.link,
+                      size: 30,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 17),
+                  Text(
+                    enabled
+                        ? 'Меньше повторных действий'
+                        : 'Полный контроль перед запуском',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    enabled
+                        ? 'Подходит, если вы обычно смотрите одну озвучку: сохраняются привязка релиза, ответы провайдеров и найденный HLS.'
+                        : 'Подходит, если релизы часто определяются неверно или вы хотите вручную выбирать источник. Кеш и автосопоставление не используются.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AniMixTheme.subtleText,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            const _SettingsSectionLabel('Что делает автовыбор'),
+            const _SettingsGroup(
+              children: [
+                _ConnectionStep(
+                  index: '1',
+                  title: 'YummyAnime',
+                  subtitle: 'Находит релиз по данным Shikimori',
+                ),
+                _ConnectionStep(
+                  index: '2',
+                  title: 'Kodik HLS',
+                  subtitle: 'Получает прямую HLS-ссылку вместо iframe',
+                ),
+                _ConnectionStep(
+                  index: '3',
+                  title: 'AniLiberty',
+                  subtitle: 'Подставляет резервный прямой поток',
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            const _SettingsSectionLabel('Сохранённые решения'),
+            _SettingsGroup(
+              children: [
+                _SettingsRow(
+                  icon: CupertinoIcons.rectangle_stack_fill,
+                  color: const Color(0xFF43C6FF),
+                  title: 'Управление привязками',
+                  subtitle: '$_mappingCount сопоставлений аниме и релизов',
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      CupertinoPageRoute<void>(
+                        builder: (_) => const _BindingsScreen(),
+                      ),
+                    );
+                    await _reload();
+                  },
+                ),
+              ],
             ),
           ],
         ),
+      );
+    },
+  );
+}
+
+class _DataScreen extends StatefulWidget {
+  const _DataScreen();
+
+  @override
+  State<_DataScreen> createState() => _DataScreenState();
+}
+
+class _DataScreenState extends State<_DataScreen> {
+  var _downloads = 0;
+  var _downloadBytes = 0;
+  var _mappings = 0;
+  var _busy = false;
+  Object? _dataError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    if (mounted) setState(() => _dataError = null);
+    try {
+      await HlsDownloadManager.instance.initialize();
+      final items = HlsDownloadManager.instance.downloads;
+      final mappings = await WatchMappingRepository().getAll();
+      if (!mounted) return;
+      setState(() {
+        _downloads = items.length;
+        _downloadBytes = items.fold<int>(
+          0,
+          (sum, item) => sum + (item.fileSizeBytes ?? 0),
+        );
+        _mappings = mappings.length;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _dataError = error);
+    }
+  }
+
+  Future<void> _clearCache() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await Future.wait<void>([
+      ProviderResponseCache.instance.clear(),
+      PosterFallbackService.instance.clear(),
+      ResolvedStreamCache.clear(),
+    ]);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Временный кеш очищен')));
+  }
+
+  @override
+  Widget build(BuildContext context) => AniMixPage(
+    title: 'Данные и кеш',
+    child: ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+      children: [
+        if (_dataError != null) ...[
+          AniMixSurface(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Не удалось прочитать локальные данные'),
+                ),
+                TextButton.icon(
+                  onPressed: _reload,
+                  icon: const Icon(CupertinoIcons.refresh),
+                  label: const Text('Повторить'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: _DataStat(
+                value: '$_downloads',
+                label: 'загрузок',
+                icon: CupertinoIcons.arrow_down_circle_fill,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _DataStat(
+                value: _formatBytes(_downloadBytes),
+                label: 'на устройстве',
+                icon: CupertinoIcons.folder_fill,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _DataStat(
+                value: '$_mappings',
+                label: 'привязок',
+                icon: CupertinoIcons.link_circle_fill,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const _SettingsSectionLabel('Медиатека'),
+        _SettingsGroup(
+          children: [
+            _SettingsRow(
+              icon: CupertinoIcons.arrow_down_circle_fill,
+              color: const Color(0xFF35D07F),
+              title: 'Загрузки',
+              subtitle: 'Скачанные серии и активные задачи',
+              onTap: () => Navigator.push(
+                context,
+                CupertinoPageRoute<void>(
+                  builder: (_) => const DownloadsScreen(),
+                ),
+              ).then((_) => _reload()),
+            ),
+            _SettingsRow(
+              icon: CupertinoIcons.link_circle_fill,
+              color: const Color(0xFF43C6FF),
+              title: 'Привязки плеера',
+              subtitle: 'Изменить сохранённый выбор релиза',
+              onTap: () => Navigator.push(
+                context,
+                CupertinoPageRoute<void>(
+                  builder: (_) => const _BindingsScreen(),
+                ),
+              ).then((_) => _reload()),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const _SettingsSectionLabel('Временные данные'),
+        _SettingsGroup(
+          children: [
+            _SettingsRow(
+              icon: CupertinoIcons.sparkles,
+              color: const Color(0xFFFFB23E),
+              title: _busy ? 'Очищаем…' : 'Очистить кеш',
+              subtitle: 'Ответы API, обложки и перехваченные HLS-ссылки',
+              onTap: _busy ? null : _clearCache,
+            ),
+          ],
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 14, 4, 0),
+          child: Text(
+            'Скачанные серии и вход в аккаунт при очистке кеша не удаляются.',
+            style: TextStyle(color: AniMixTheme.subtleText, fontSize: 12),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  static String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 МБ';
+    final mb = bytes / (1024 * 1024);
+    if (mb < 1024) return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} МБ';
+    return '${(mb / 1024).toStringAsFixed(1)} ГБ';
+  }
+}
+
+class _BindingsScreen extends StatefulWidget {
+  const _BindingsScreen();
+
+  @override
+  State<_BindingsScreen> createState() => _BindingsScreenState();
+}
+
+class _BindingsScreenState extends State<_BindingsScreen> {
+  final _repository = WatchMappingRepository();
+  late Future<List<WatchMapping>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() => _future = _repository.getAll();
+
+  Future<void> _delete(WatchMapping mapping) async {
+    await _repository.delete(mapping.key);
+    if (mounted) setState(_reload);
+  }
+
+  Future<void> _clearAll() async {
+    final accepted = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Удалить все привязки?'),
+        content: const Text(
+          'При следующем запуске серии AniMix снова найдёт релизы.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
       ),
     );
+    if (accepted != true) return;
+    await _repository.clearAll();
+    if (mounted) setState(_reload);
   }
+
+  @override
+  Widget build(BuildContext context) => AniMixPage(
+    title: 'Управление привязками',
+    actions: [
+      IconButton(
+        tooltip: 'Удалить все',
+        onPressed: _clearAll,
+        icon: const Icon(CupertinoIcons.trash),
+      ),
+    ],
+    child: FutureBuilder<List<WatchMapping>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CupertinoActivityIndicator(radius: 14));
+        }
+        if (snapshot.hasError) {
+          return AniMixEmptyState(
+            icon: CupertinoIcons.exclamationmark_triangle,
+            title: 'Не удалось загрузить привязки',
+            message: 'Локальное хранилище временно недоступно.',
+            actionLabel: 'Повторить',
+            onAction: () => setState(_reload),
+          );
+        }
+        final mappings = snapshot.data ?? const <WatchMapping>[];
+        if (mappings.isEmpty) {
+          return const AniMixEmptyState(
+            icon: CupertinoIcons.link,
+            title: 'Привязок пока нет',
+            message: 'Они появятся после первого выбора релиза в плеере.',
+          );
+        }
+        return ListView.separated(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          itemCount: mappings.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final mapping = mappings[index];
+            return Dismissible(
+              key: ValueKey(mapping.key),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBB2935),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(CupertinoIcons.trash_fill),
+              ),
+              onDismissed: (_) => _delete(mapping),
+              child: AniMixSurface(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    _SettingsIcon(
+                      icon: mapping.provider.contains('yummy')
+                          ? CupertinoIcons.play_rectangle_fill
+                          : CupertinoIcons.tv_fill,
+                      color: mapping.provider.contains('yummy')
+                          ? const Color(0xFFFF8B43)
+                          : const Color(0xFF43C6FF),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            mapping.releaseTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_providerName(mapping.provider)} · Shikimori #${mapping.shikimoriId}',
+                            style: const TextStyle(
+                              color: AniMixTheme.subtleText,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Удалить',
+                      onPressed: () => _delete(mapping),
+                      icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                      color: AniMixTheme.subtleText,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+
+  static String _providerName(String provider) => provider.contains('yummy')
+      ? 'YummyAnime / Kodik'
+      : provider.contains('anilibr')
+      ? 'AniLiberty'
+      : provider;
+}
+
+class _AboutScreen extends StatelessWidget {
+  const _AboutScreen();
+
+  @override
+  Widget build(BuildContext context) => AniMixPage(
+    title: 'О приложении',
+    child: ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 86,
+              height: 86,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Color.lerp(
+                      Theme.of(context).colorScheme.primary,
+                      Colors.black,
+                      .38,
+                    )!,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(26),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'A',
+                style: TextStyle(fontSize: 43, fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'AniMix',
+              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Каталог, списки и просмотр в одном приложении',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AniMixTheme.subtleText),
+            ),
+          ],
+        ),
+        const SizedBox(height: 30),
+        const _SettingsSectionLabel('Возможности'),
+        const _FeatureGrid(),
+        const SizedBox(height: 28),
+        const _SettingsSectionLabel('Что нового'),
+        const AniMixSurface(
+          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+          child: Column(
+            children: [
+              _ChangeRow(
+                icon: CupertinoIcons.rectangle_stack_fill,
+                title: 'Обновлённый интерфейс',
+                subtitle: 'Новая структура экранов и адаптивная навигация',
+              ),
+              _ChangeRow(
+                icon: CupertinoIcons.play_rectangle_fill,
+                title: 'Прямой HLS-плеер',
+                subtitle: 'Перехват Kodik, качества и резервные источники',
+              ),
+              _ChangeRow(
+                icon: CupertinoIcons.arrow_down_circle_fill,
+                title: 'Умные загрузки',
+                subtitle: 'Выбор серии и качества, офлайн-воспроизведение',
+                divider: false,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        const _SettingsSectionLabel('Разработчик'),
+        _SettingsGroup(
+          children: [
+            _SettingsRow(
+              icon: CupertinoIcons.chevron_left_slash_chevron_right,
+              color: Theme.of(context).colorScheme.primary,
+              title: 'Wengine-wq',
+              subtitle: 'Исходный код AniMix на GitHub',
+              onTap: () => launchUrl(
+                Uri.parse('https://github.com/Wengine-wq/AniMix'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'AniMix — независимый клиент для просмотра и ведения списков.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AniMixTheme.subtleText, fontSize: 12),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FeatureGrid extends StatelessWidget {
+  const _FeatureGrid();
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 720 ? 4 : 2;
+      const items = [
+        (CupertinoIcons.person_crop_circle_fill, 'Профиль', 'Shikimori sync'),
+        (CupertinoIcons.play_rectangle_fill, 'Плеер', 'Прямой HLS'),
+        (CupertinoIcons.arrow_down_circle_fill, 'Офлайн', 'Серии с собой'),
+        (CupertinoIcons.sparkles, 'Для вас', 'Личная лента'),
+      ];
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.45,
+        ),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return AniMixSurface(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  item.$1,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(height: 11),
+                Text(
+                  item.$2,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  item.$3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AniMixTheme.subtleText,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+class _ConnectionStep extends StatelessWidget {
+  const _ConnectionStep({
+    required this.index,
+    required this.title,
+    required this.subtitle,
+  });
+  final String index;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
+    child: Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: .16),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            index,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AniMixTheme.subtleText,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Icon(
+          CupertinoIcons.check_mark_circled_solid,
+          color: Color(0xFF35D07F),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DataStat extends StatelessWidget {
+  const _DataStat({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => AniMixSurface(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+    child: Column(
+      children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 21),
+        const SizedBox(height: 9),
+        FittedBox(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: AniMixTheme.subtleText, fontSize: 10),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ChangeRow extends StatelessWidget {
+  const _ChangeRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.divider = true,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(vertical: 15),
+    decoration: BoxDecoration(
+      border: divider
+          ? const Border(bottom: BorderSide(color: AniMixTheme.divider))
+          : null,
+    ),
+    child: Row(
+      children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 21),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AniMixTheme.subtleText,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => _SettingsRow(
+    icon: icon,
+    color: selected
+        ? Theme.of(context).colorScheme.primary
+        : AniMixTheme.subtleText,
+    title: title,
+    subtitle: subtitle,
+    onTap: onTap,
+    trailing: Icon(
+      selected
+          ? CupertinoIcons.check_mark_circled_solid
+          : CupertinoIcons.circle,
+      color: selected ? Theme.of(context).colorScheme.primary : Colors.white24,
+    ),
+  );
+}
+
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(5, 0, 5, 9),
+    child: Text(
+      label.toUpperCase(),
+      style: const TextStyle(
+        color: AniMixTheme.subtleText,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: .8,
+      ),
+    ),
+  );
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => AniMixSurface(
+    child: Column(
+      children: [
+        for (var index = 0; index < children.length; index++) ...[
+          children[index],
+          if (index != children.length - 1)
+            const Padding(
+              padding: EdgeInsets.only(left: 66),
+              child: Divider(height: 1, color: AniMixTheme.divider),
+            ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.color,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+    this.trailing,
+    this.destructive = false,
+  });
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            _SettingsIcon(icon: icon, color: color),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: destructive
+                          ? const Color(0xFFFF606A)
+                          : Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (subtitle?.isNotEmpty == true) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AniMixTheme.subtleText,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            trailing ??
+                const Icon(
+                  CupertinoIcons.chevron_forward,
+                  size: 16,
+                  color: Colors.white30,
+                ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _SettingsIcon extends StatelessWidget {
+  const _SettingsIcon({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 37,
+    height: 37,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .16),
+      borderRadius: BorderRadius.circular(11),
+    ),
+    alignment: Alignment.center,
+    child: Icon(icon, color: color, size: 20),
+  );
 }

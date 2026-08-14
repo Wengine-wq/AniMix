@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_settings.dart';
+
 abstract final class AniMixTheme {
   static const background = Color(0xFF09090C);
   static const elevated = Color(0xFF101014);
@@ -9,18 +11,44 @@ abstract final class AniMixTheme {
   static const subtleText = Color(0xFFA7A7B1);
   static const divider = Color(0x18FFFFFF);
 
-  static ThemeData material(Color accent) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: accent,
-      brightness: Brightness.dark,
-      surface: surface,
-    );
+  static ThemeData material(Color accent, AniMixThemeStyle style) {
+    final palette = switch (style) {
+      AniMixThemeStyle.graphite => const (
+        background: Color(0xFF09090C),
+        elevated: Color(0xFF101014),
+        surface: Color(0xFF17171C),
+        surfaceHigh: Color(0xFF202027),
+      ),
+      AniMixThemeStyle.midnight => const (
+        background: Color(0xFF070A12),
+        elevated: Color(0xFF0C1220),
+        surface: Color(0xFF121A2A),
+        surfaceHigh: Color(0xFF1A263A),
+      ),
+      AniMixThemeStyle.oled => const (
+        background: Color(0xFF000000),
+        elevated: Color(0xFF080808),
+        surface: Color(0xFF101010),
+        surfaceHigh: Color(0xFF191919),
+      ),
+    };
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: accent,
+          brightness: Brightness.dark,
+          surface: palette.surface,
+        ).copyWith(
+          surface: palette.surface,
+          surfaceContainer: palette.elevated,
+          surfaceContainerHigh: palette.surfaceHigh,
+          surfaceContainerHighest: palette.surfaceHigh,
+        );
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: scheme,
-      scaffoldBackgroundColor: background,
-      canvasColor: background,
+      scaffoldBackgroundColor: palette.background,
+      canvasColor: palette.background,
       dividerColor: divider,
       splashFactory: InkSparkle.splashFactory,
       textTheme: const TextTheme(
@@ -53,7 +81,7 @@ abstract final class AniMixTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: surface,
+        color: palette.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
@@ -64,7 +92,7 @@ abstract final class AniMixTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
         elevation: 0,
-        backgroundColor: elevated,
+        backgroundColor: palette.elevated,
         indicatorColor: accent.withValues(alpha: 0.16),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
@@ -78,12 +106,6 @@ abstract final class AniMixTheme {
           ),
         ),
       ),
-      navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: elevated,
-        indicatorColor: accent.withValues(alpha: 0.16),
-        selectedIconTheme: IconThemeData(color: accent),
-        unselectedIconTheme: const IconThemeData(color: subtleText),
-      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(48, 48),
@@ -95,7 +117,7 @@ abstract final class AniMixTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: palette.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: divider),
@@ -110,25 +132,34 @@ abstract final class AniMixTheme {
     );
   }
 
-  static CupertinoThemeData cupertino(Color accent) => CupertinoThemeData(
-    brightness: Brightness.dark,
-    primaryColor: accent,
-    scaffoldBackgroundColor: background,
-    barBackgroundColor: background.withValues(alpha: 0.88),
-    textTheme: const CupertinoTextThemeData(
-      textStyle: TextStyle(fontSize: 15, height: 1.35, color: Colors.white),
-      navTitleTextStyle: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: Colors.white,
-      ),
-      navLargeTitleTextStyle: TextStyle(
-        fontSize: 30,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.7,
-        color: Colors.white,
-      ),
-      actionTextStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-    ),
-  );
+  static CupertinoThemeData cupertino(Color accent, AniMixThemeStyle style) =>
+      CupertinoThemeData(
+        brightness: Brightness.dark,
+        primaryColor: accent,
+        scaffoldBackgroundColor: switch (style) {
+          AniMixThemeStyle.graphite => background,
+          AniMixThemeStyle.midnight => const Color(0xFF070A12),
+          AniMixThemeStyle.oled => Colors.black,
+        },
+        barBackgroundColor: switch (style) {
+          AniMixThemeStyle.graphite => background.withValues(alpha: 0.96),
+          AniMixThemeStyle.midnight => const Color(0xFF070A12),
+          AniMixThemeStyle.oled => Colors.black,
+        },
+        textTheme: const CupertinoTextThemeData(
+          textStyle: TextStyle(fontSize: 15, height: 1.35, color: Colors.white),
+          navTitleTextStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+          navLargeTitleTextStyle: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.7,
+            color: Colors.white,
+          ),
+          actionTextStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      );
 }
