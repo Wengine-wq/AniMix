@@ -8,16 +8,15 @@ three Worker secrets below, and put its HTTPS URL into the app's
 `SHIKIMORI_OAUTH_PROXY_URL` value.
 
 ```bash
-npm install -g wrangler
-wrangler secret put SHIKIMORI_CLIENT_SECRET
-wrangler secret put SHIKIMORI_CLIENT_ID
-wrangler secret put ANIMIX_PROXY_ORIGIN
-wrangler deploy worker.ts
+cd server/shikimori-oauth-proxy
+npx wrangler secret put SHIKIMORI_CLIENT_SECRET
+npx wrangler deploy
 ```
 
-`ANIMIX_PROXY_ORIGIN` is the public app origin used for CORS (for example
-`https://animix.app`). Local desktop callbacks are allowed by the worker and do
-not require a browser origin.
+The public client id and the CORS origin are versioned in `wrangler.jsonc`.
+`SHIKIMORI_CLIENT_SECRET` exists only as an encrypted Cloudflare Worker secret.
+Local desktop callbacks are allowed by the worker and do not require a browser
+origin.
 
 The worker validates the client id and redirect URI, forwards only the code
 exchange to Shikimori, and returns the token response without logging secrets.

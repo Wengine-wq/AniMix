@@ -34,6 +34,15 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler/
+.wrangler-dry-run/
+
 # Symbolication related
 app.*.symbols
 

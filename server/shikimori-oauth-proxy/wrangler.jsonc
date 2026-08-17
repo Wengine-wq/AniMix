@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "animix-shikimori-oauth",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SHIKIMORI_CLIENT_ID": "NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM",
+    "ANIMIX_PROXY_ORIGIN": "https://animix.app"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

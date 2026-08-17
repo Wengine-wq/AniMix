@@ -6,13 +6,11 @@ const ALLOWED_REDIRECT_URIS = new Set([
   'urn:ietf:wg:oauth:2.0:oob',
 ]);
 
-interface Env {
-  SHIKIMORI_CLIENT_ID: string;
+interface WorkerEnv extends Env {
   SHIKIMORI_CLIENT_SECRET: string;
-  ANIMIX_PROXY_ORIGIN?: string;
 }
 
-function corsHeaders(request: Request, env: Env): Headers {
+function corsHeaders(request: Request, env: WorkerEnv): Headers {
   const origin = request.headers.get('Origin');
   const allowedOrigin = env.ANIMIX_PROXY_ORIGIN?.trim();
   const headers = new Headers({
@@ -30,7 +28,7 @@ function corsHeaders(request: Request, env: Env): Headers {
 
 function json(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   body: Record<string, unknown>,
   status = 200,
 ): Response {
@@ -41,7 +39,7 @@ function json(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request, env) });
     if (request.method !== 'POST') return json(request, env, { error: 'method_not_allowed' }, 405);
 
