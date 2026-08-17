@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/animix_theme.dart';
-import '../../../core/app_settings.dart';
 import '../../../widgets/animix_surface.dart';
 import '../../downloads/download_item.dart';
 import '../../downloads/hls_download_manager.dart';
@@ -36,54 +35,20 @@ class EpisodeCollectionView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = AppSettingsController.instance;
     final downloads = HlsDownloadManager.instance;
     return AnimatedBuilder(
-      animation: Listenable.merge([settings, downloads]),
-      builder: (context, _) => LayoutBuilder(
-        builder: (context, constraints) {
-          final useCards = switch (settings.contentLayout) {
-            AniMixContentLayout.cards => true,
-            AniMixContentLayout.list => false,
-            AniMixContentLayout.automatic => constraints.maxWidth >= 720,
-          };
-          if (useCards) {
-            final count = constraints.maxWidth >= 1040
-                ? 4
-                : constraints.maxWidth >= 720
-                ? 3
-                : 2;
-            return GridView.builder(
-              padding: const EdgeInsets.all(20),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: count,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 2.05,
-              ),
-              itemCount: episodes.length,
-              itemBuilder: (context, index) => _EpisodeCard(
-                episode: episodes[index],
-                download: downloads.itemFor(episodes[index].downloadId),
-                onPlay: onPlay,
-                onDownload: onDownload,
-                compact: true,
-              ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: episodes.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) => _EpisodeCard(
-              episode: episodes[index],
-              download: downloads.itemFor(episodes[index].downloadId),
-              onPlay: onPlay,
-              onDownload: onDownload,
-              compact: false,
-            ),
-          );
-        },
+      animation: downloads,
+      builder: (context, _) => ListView.separated(
+        key: const PageStorageKey<String>('episode-list'),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: episodes.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, index) => _EpisodeCard(
+          episode: episodes[index],
+          download: downloads.itemFor(episodes[index].downloadId),
+          onPlay: onPlay,
+          onDownload: onDownload,
+        ),
       ),
     );
   }
@@ -95,24 +60,19 @@ class _EpisodeCard extends StatelessWidget {
     required this.download,
     required this.onPlay,
     required this.onDownload,
-    required this.compact,
   });
 
   final EpisodeViewData episode;
   final DownloadItem? download;
   final ValueChanged<EpisodeViewData> onPlay;
   final ValueChanged<EpisodeViewData> onDownload;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     final state = download?.state;
     return AniMixSurface(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 14 : 18,
-        vertical: compact ? 12 : 14,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       onTap: episode.available ? () => onPlay(episode) : null,
       child: Row(
         children: [
@@ -138,7 +98,7 @@ class _EpisodeCard extends StatelessWidget {
               children: [
                 Text(
                   episode.title,
-                  maxLines: compact ? 2 : 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,

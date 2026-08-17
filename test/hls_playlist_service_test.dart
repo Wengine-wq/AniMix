@@ -48,6 +48,21 @@ video/720/index.m3u8?token=abc
       expect(variants.single.uri.path, '/720-high.m3u8');
     });
 
+    test('does not invent a resolution from bandwidth alone', () {
+      const playlist = '''
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=2200000
+video/index.m3u8
+''';
+
+      final variants = HlsPlaylistService().parseMasterPlaylist(
+        playlist,
+        Uri.parse('https://cdn.example.org/master.m3u8'),
+      );
+
+      expect(variants.single.label, 'Поток · 2.2 Мбит/с');
+    });
+
     test('parses PlayerJS quality expression from Kodik', () {
       final sources = HlsPlaylistService().parsePlayerJsExpression(
         r'[1080p]https:\/\/cdn.example.org\/1080.mp4?token=x,'

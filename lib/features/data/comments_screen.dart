@@ -1,218 +1,234 @@
-import 'dart:math' as math;
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_logging.dart';
+import '../../core/animix_theme.dart';
+import '../../core/media_cache.dart';
+import '../../core/shikimori_smileys.dart';
 import '../../models/shikimori_comment.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/animix_media_viewer.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 
-// Актуальный домен Шикимори
-const String _shikiUrl = 'https://shikimori.io';
+const _shikimoriUrl = 'https://shikimori.io';
 
-// =========================================================================================
-// СЕРВИС МЕДИА (КЭШИРОВАНИЕ И ПОИСК ИЗОБРАЖЕНИЙ)
-// =========================================================================================
-class ShikiMediaService {
-  static final Map<String, String> _cache = {};
+enum CommentOrder { newest, oldest }
 
-  static Future<String?> resolveImageUrl(
-    String id, {
-    bool isPoster = false,
-  }) async {
-    if (_cache.containsKey(id)) return _cache[id];
+enum CommentFilter { all, discussion, offtopic, replies, media }
 
-    final dio = Dio();
-
-    // 1. Попытка API запроса (Концепция извлечения JSON данных)
-    try {
-      final res = await dio.get(
-        '$_shikiUrl/api/forum/critiques/image=$id',
-        options: Options(validateStatus: (s) => true),
-      );
-      if (res.statusCode == 200 && res.data != null) {
-        final data = res.data is String ? jsonDecode(res.data) : res.data;
-        final url = data['preview_url'] ?? data['original_url'] ?? data['url'];
-        if (url != null) {
-          final fullUrl = url.toString().startsWith('http')
-              ? url
-              : '$_shikiUrl$url';
-          _cache[id] = fullUrl;
-          return fullUrl;
-        }
-      }
-    } catch (_) {}
-
-    // 2. Умный HEAD-поиск (Если API не отдал ссылку, ищем по расширениям)
-    final paths = isPoster
-        ? [
-            '/system/images/original/$id.jpg',
-            '/system/images/original/$id.png',
-            '/system/images/original/$id.gif',
-          ]
-        : [
-            '/system/forum/images/$id.jpg',
-            '/system/forum/images/$id.png',
-            '/system/forum/images/$id.gif',
-          ];
-
-    for (final path in paths) {
-      try {
-        final testUrl = '$_shikiUrl$path';
-        final res = await dio.head(
-          testUrl,
-          options: Options(validateStatus: (s) => true),
-        );
-        if (res.statusCode == 200 ||
-            res.statusCode == 301 ||
-            res.statusCode == 302) {
-          _cache[id] = testUrl;
-          return testUrl;
-        }
-      } catch (_) {}
-    }
-
-    return null;
-  }
+extension on CommentOrder {
+  String get label => switch (this) {
+    CommentOrder.newest => 'Сначала новые',
+    CommentOrder.oldest => 'Сначала старые',
+  };
 }
 
-// =========================================================================================
-// ГЛАВНЫЙ ЭКРАН КОММЕНТАРИЕВ
-// =========================================================================================
-class CommentsScreen extends StatefulHookConsumerWidget {
-  final int topicId;
+extension on CommentFilter {
+  String get label => switch (this) {
+    CommentFilter.all => 'Все',
+    CommentFilter.discussion => 'По теме',
+    CommentFilter.offtopic => 'Оффтоп',
+    CommentFilter.replies => 'Ответы',
+    CommentFilter.media => 'С медиа',
+  };
+}
+
+class CommentsScreen extends ConsumerStatefulWidget {
   const CommentsScreen({required this.topicId, super.key});
+
+  final int topicId;
 
   @override
   ConsumerState<CommentsScreen> createState() => _CommentsScreenState();
 }
 
 class _CommentsScreenState extends ConsumerState<CommentsScreen> {
-  List<ShikimoriComment> commentsList = [];
-  int _commentsPage = 1;
-  int _totalCommentsCount = 0;
-  bool _isLoading = true;
-  bool _isLoadingMore = false;
+  final List<ShikimoriComment> _comments = [];
+  final ScrollController _scrollController = ScrollController();
+  int _page = 1;
+  int? _totalCount;
+  bool _loading = true;
+  bool _loadingMore = false;
   bool _hasMore = true;
   Object? _loadError;
-
+  Object? _loadMoreError;
   ShikimoriComment? _replyingTo;
+  CommentOrder _order = CommentOrder.newest;
+  CommentFilter _filter = CommentFilter.all;
+  bool _apiExhausted = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchTopicInfo();
-    _loadComments();
+    _scrollController.addListener(_onScroll);
+    unawaited(_loadTopicCount());
+    unawaited(_loadFirstPage());
   }
 
-  Future<void> _fetchTopicInfo() async {
-    try {
-      final res = await Dio().get('$_shikiUrl/api/topics/${widget.topicId}');
-      if (mounted) {
-        setState(() {
-          _totalCommentsCount = res.data['comments_count'] ?? 0;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load topic info: $e');
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.extentAfter < 560) {
+      unawaited(_loadMore());
     }
   }
 
-  Future<void> _loadComments() async {
+  Future<void> _loadTopicCount() async {
+    try {
+      final response = await Dio().get<Map<String, dynamic>>(
+        '$_shikimoriUrl/api/topics/${widget.topicId}',
+        options: Options(receiveTimeout: const Duration(seconds: 12)),
+      );
+      if (!mounted) return;
+      setState(() {
+        _totalCount = int.tryParse(
+          response.data?['comments_count']?.toString() ?? '',
+        );
+        if (!_apiExhausted && _totalCount != null) {
+          _hasMore = _comments.length < _totalCount!;
+        }
+      });
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments',
+        context: 'Не удалось получить счётчик темы ${widget.topicId}',
+      );
+      // The list remains fully usable when the optional total is unavailable.
+    }
+  }
+
+  Future<void> _loadFirstPage() async {
     setState(() {
-      _isLoading = true;
+      _loading = true;
       _loadError = null;
+      _loadMoreError = null;
+      _page = 1;
+      _apiExhausted = false;
     });
     try {
-      final api = ref.read(apiClientProvider);
-      final comms = await api.getComments(widget.topicId, page: 1);
-      if (mounted) {
-        setState(() {
-          commentsList = comms;
-          _hasMore = comms.length >= 30;
-          _isLoading = false;
-          _loadError = null;
-        });
-      }
-    } catch (e) {
-      debugPrint('Ошибка загрузки комментов: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _loadError = e;
-        });
-      }
+      final comments = await ref
+          .read(apiClientProvider)
+          .getComments(
+            widget.topicId,
+            descending: _order == CommentOrder.newest,
+          );
+      if (!mounted) return;
+      setState(() {
+        _comments
+          ..clear()
+          ..addAll(comments);
+        _apiExhausted = comments.isEmpty;
+        _hasMore =
+            comments.isNotEmpty &&
+            (_totalCount == null || _comments.length < _totalCount!);
+      });
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments',
+        context: 'Не удалось загрузить тему ${widget.topicId}',
+      );
+      if (mounted) setState(() => _loadError = error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _loadMoreComments() async {
-    if (_isLoadingMore || !_hasMore) return;
-    setState(() => _isLoadingMore = true);
-
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreError = null;
+    });
     try {
-      final api = ref.read(apiClientProvider);
-      final more = await api.getComments(
-        widget.topicId,
-        page: _commentsPage + 1,
+      final nextPage = _page + 1;
+      final next = await ref
+          .read(apiClientProvider)
+          .getComments(
+            widget.topicId,
+            page: nextPage,
+            descending: _order == CommentOrder.newest,
+          );
+      if (!mounted) return;
+      final knownIds = _comments.map((comment) => comment.id).toSet();
+      final unique = next.where((comment) => knownIds.add(comment.id)).toList();
+      setState(() {
+        _page = nextPage;
+        _comments.addAll(unique);
+        // An empty page or a page fully duplicated by a drifting API cursor is
+        // the real end. Without this guard auto-pagination can request forever.
+        _apiExhausted = next.isEmpty || unique.isEmpty;
+        _hasMore =
+            !_apiExhausted &&
+            (_totalCount == null || _comments.length < _totalCount!);
+      });
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments',
+        context: 'Не удалось загрузить страницу ${_page + 1}',
+      );
+      if (mounted) setState(() => _loadMoreError = error);
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<bool> _send(String text) async {
+    final body = text.trim();
+    if (body.isEmpty) return false;
+    final target = _replyingTo;
+    final payload = target == null
+        ? body
+        : '[comment=${target.id};${target.userId ?? 0}]'
+              '${target.userNickname ?? 'Пользователь'}[/comment], $body';
+    try {
+      final created = await ref
+          .read(apiClientProvider)
+          .postComment(widget.topicId, payload);
+      if (!mounted) return true;
+      setState(() {
+        if (_order == CommentOrder.newest) {
+          _comments.insert(0, created);
+        } else {
+          _comments.add(created);
+        }
+        _replyingTo = null;
+        _totalCount = (_totalCount ?? _comments.length - 1) + 1;
+      });
+      return true;
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments',
+        context: 'Не удалось отправить комментарий',
       );
       if (mounted) {
-        setState(() {
-          _commentsPage++;
-          commentsList.addAll(more);
-          _hasMore = more.length >= 30;
-        });
-      }
-    } catch (e) {
-      debugPrint('Ошибка подгрузки комментов: $e');
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Не удалось загрузить следующую страницу'),
-            action: SnackBarAction(
-              label: 'Повторить',
-              onPressed: _loadMoreComments,
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoadingMore = false);
-    }
-  }
-
-  Future<bool> _postComment(String text) async {
-    if (text.trim().isEmpty) return false;
-
-    try {
-      final api = ref.read(apiClientProvider);
-      String finalBody = text.trim();
-
-      if (_replyingTo != null) {
-        finalBody =
-            '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
-      }
-
-      final newComment = await api.postComment(widget.topicId, finalBody);
-
-      if (mounted) {
-        setState(() {
-          commentsList.insert(0, newComment);
-          _totalCommentsCount++;
-          _replyingTo = null;
-        });
-      }
-      return true;
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка отправки: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
+          const SnackBar(content: Text('Не удалось отправить комментарий')),
         );
       }
       return false;
@@ -221,942 +237,129 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Set<int> loadedCommentIds = commentsList.map((c) => c.id).toSet();
-    final Map<int, List<ShikimoriComment>> repliesMap = {};
-
-    for (var c in commentsList) {
-      final match = RegExp(r'\[comment=[^\]]+\]').firstMatch(c.body);
-      if (match != null) {
-        final idMatch = RegExp(r'\d+').firstMatch(match.group(0)!);
-        if (idMatch != null) {
-          final parentId = int.tryParse(idMatch.group(0)!);
-          if (parentId != null) {
-            repliesMap[parentId] ??= [];
-            repliesMap[parentId]!.add(c);
-          }
-        }
-      }
-    }
-
-    final rootComments = commentsList.where((c) {
-      final match = RegExp(r'\[comment=[^\]]+\]').firstMatch(c.body);
-      if (match != null) {
-        final idMatch = RegExp(r'\d+').firstMatch(match.group(0)!);
-        if (idMatch != null) {
-          final parentId = int.tryParse(idMatch.group(0)!);
-          if (loadedCommentIds.contains(parentId)) return false;
-        }
-      }
-      return true;
-    }).toList();
-
+    final visibleComments = _comments.where(_matchesFilter).toList();
+    final tree = CommentTree.from(visibleComments);
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Theme.of(
-          context,
-        ).scaffoldBackgroundColor.withValues(alpha: 0.98),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Комментарии',
+            const Text('Комментарии'),
+            Text(
+              _totalCount == null
+                  ? 'Обсуждение'
+                  : '$_totalCount ${_commentWord(_totalCount!)}',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            if (_totalCommentsCount > 0)
-              Text(
-                'Всего: $_totalCommentsCount',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.systemGrey,
-                ),
-              ),
           ],
-        ),
-        leading: IconButton(
-          icon: const Icon(CupertinoIcons.back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CupertinoActivityIndicator(radius: 16))
-                : _loadError != null
-                ? AniMixEmptyState(
-                    icon: CupertinoIcons.wifi_exclamationmark,
-                    title: 'Не удалось загрузить комментарии',
-                    message: 'Проверьте подключение и повторите попытку.',
-                    actionLabel: 'Повторить',
-                    onAction: _loadComments,
-                  )
-                : rootComments.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Здесь пока пусто. Станьте первым!',
-                      style: TextStyle(color: CupertinoColors.systemGrey),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                    itemCount: rootComments.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == rootComments.length) {
-                        if (!_hasMore) return const SizedBox(height: 40);
-
-                        final remaining = math.max(
-                          0,
-                          _totalCommentsCount - commentsList.length,
-                        );
-                        final btnText = remaining > 0
-                            ? 'Загрузить ещё (осталось $remaining)'
-                            : 'Загрузить предыдущие';
-
-                        return Padding(
-                          padding: const EdgeInsets.only(
-                            top: 10.0,
-                            bottom: 40.0,
-                          ),
-                          child: CupertinoButton(
-                            color: const Color(0xFF1C1C1E),
-                            borderRadius: BorderRadius.circular(14),
-                            onPressed: _loadMoreComments,
-                            child: _isLoadingMore
-                                ? const CupertinoActivityIndicator()
-                                : Text(
-                                    btnText,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                        );
-                      }
-
-                      final c = rootComments[index];
-                      final replies = repliesMap[c.id] ?? [];
-
-                      return _CommentCard(
-                        topicId: widget.topicId,
-                        comment: c,
-                        replies: replies,
-                        allComments: commentsList,
-                        onReplyTap: () => setState(() => _replyingTo = c),
-                        onNewReplyAdded: (newC) => setState(() {
-                          commentsList.insert(0, newC);
-                          _totalCommentsCount++;
-                        }),
-                      );
-                    },
-                  ),
-          ),
-
-          _CommentInputBar(
-            replyTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-            onSend: _postComment,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =========================================================================================
-// КАРТОЧКА КОММЕНТАРИЯ
-// =========================================================================================
-class _CommentCard extends StatelessWidget {
-  final int topicId;
-  final ShikimoriComment comment;
-  final List<ShikimoriComment> replies;
-  final List<ShikimoriComment> allComments;
-  final VoidCallback onReplyTap;
-  final Function(ShikimoriComment)? onNewReplyAdded;
-  final bool isInsideThread;
-
-  const _CommentCard({
-    required this.topicId,
-    required this.comment,
-    required this.replies,
-    required this.allComments,
-    required this.onReplyTap,
-    this.onNewReplyAdded,
-    this.isInsideThread = false,
-  });
-
-  String _formatDate(String isoDate) {
-    if (isoDate.isEmpty) return '';
-    try {
-      final date = DateTime.parse(isoDate).toLocal();
-      final now = DateTime.now();
-      final diff = now.difference(date);
-      if (diff.inDays == 0) {
-        return 'сегодня в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      }
-      if (diff.inDays == 1) {
-        return 'вчера в ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      }
-      if (diff.inDays < 7) return '${diff.inDays} дн. назад';
-      final months = [
-        'янв',
-        'фев',
-        'мар',
-        'апр',
-        'май',
-        'июн',
-        'июл',
-        'авг',
-        'сен',
-        'окт',
-        'ноя',
-        'дек',
-      ];
-      return '${date.day} ${months[date.month - 1]} ${date.year}';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = comment;
-    final cleanBBCode = _BBCodeParser.cleanHtmlToBBCode(c.body);
-    if (cleanBBCode.isEmpty) return const SizedBox();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF18181B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFF2A2A2A),
-            backgroundImage: c.userAvatar != null
-                ? CachedNetworkImageProvider(c.userAvatar!)
-                : null,
-            child: c.userAvatar == null
-                ? const Icon(
-                    CupertinoIcons.person_fill,
-                    color: Colors.grey,
-                    size: 20,
-                  )
-                : null,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        c.userNickname ?? 'Аноним',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      _formatDate(c.createdAt),
-                      style: const TextStyle(
-                        color: CupertinoColors.systemGrey2,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-
-                // Рендер текста
-                Text.rich(
-                  TextSpan(
-                    children: _BBCodeParser.buildSpans(context, cleanBBCode),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: onReplyTap,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(
-                              CupertinoIcons.reply,
-                              color: CupertinoColors.systemGrey,
-                              size: 14,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Ответить',
-                              style: TextStyle(
-                                color: CupertinoColors.systemGrey,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (replies.isNotEmpty && !isInsideThread)
-                      GestureDetector(
-                        onTap: () =>
-                            Navigator.of(context, rootNavigator: true).push(
-                              CupertinoPageRoute(
-                                builder: (_) => _CommentThreadScreen(
-                                  topicId: topicId,
-                                  parentComment: c,
-                                  allComments: allComments,
-                                  onNewReplyAdded: onNewReplyAdded,
-                                ),
-                              ),
-                            ),
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 6,
-                            horizontal: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFFF5722,
-                            ).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                '${replies.length} ответ(а)',
-                                style: const TextStyle(
-                                  color: Color(0xFFFF5722),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Icon(
-                                CupertinoIcons.chevron_right,
-                                color: Color(0xFFFF5722),
-                                size: 12,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =========================================================================================
-// ЭКРАН ВЕТКИ ОТВЕТОВ
-// =========================================================================================
-class _CommentThreadScreen extends StatefulWidget {
-  final int topicId;
-  final ShikimoriComment parentComment;
-  final List<ShikimoriComment> allComments;
-  final Function(ShikimoriComment)? onNewReplyAdded;
-
-  const _CommentThreadScreen({
-    required this.topicId,
-    required this.parentComment,
-    required this.allComments,
-    this.onNewReplyAdded,
-  });
-
-  @override
-  State<_CommentThreadScreen> createState() => _CommentThreadScreenState();
-}
-
-class _CommentThreadScreenState extends State<_CommentThreadScreen> {
-  late List<ShikimoriComment> localAllComments;
-  ShikimoriComment? _replyingTo;
-
-  @override
-  void initState() {
-    super.initState();
-    localAllComments = List.from(widget.allComments);
-    _replyingTo = widget.parentComment;
-  }
-
-  Future<bool> _postComment(String text) async {
-    if (text.trim().isEmpty) return false;
-
-    try {
-      final api = ProviderScope.containerOf(context).read(apiClientProvider);
-      String finalBody = text.trim();
-
-      if (_replyingTo != null) {
-        finalBody =
-            '[comment=${_replyingTo!.id};${_replyingTo!.userId ?? 0}]${_replyingTo!.userNickname}[/comment], $finalBody';
-      }
-
-      final newComment = await api.postComment(widget.topicId, finalBody);
-
-      if (mounted) {
-        setState(() {
-          localAllComments.insert(0, newComment);
-          _replyingTo = widget.parentComment;
-        });
-        widget.onNewReplyAdded?.call(newComment);
-      }
-      return true;
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-      }
-      return false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final replies = localAllComments.where((c) {
-      final match = RegExp(r'\[comment=[^\]]+\]').firstMatch(c.body);
-      if (match != null) {
-        final idMatch = RegExp(r'\d+').firstMatch(match.group(0)!);
-        return idMatch != null &&
-            idMatch.group(0) == widget.parentComment.id.toString();
-      }
-      return false;
-    }).toList();
-
-    final sortedReplies = replies.reversed.toList();
-
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: Theme.of(
-          context,
-        ).scaffoldBackgroundColor.withValues(alpha: 0.98),
-        title: const Text(
-          'Ветка ответов',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(CupertinoIcons.back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _CommentCard(
-                  topicId: widget.topicId,
-                  comment: widget.parentComment,
-                  replies: const [],
-                  allComments: const [],
-                  onReplyTap: () =>
-                      setState(() => _replyingTo = widget.parentComment),
-                  isInsideThread: true,
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  child: Divider(color: Color(0xFF2A2A2A), thickness: 1),
-                ),
-
-                if (sortedReplies.isEmpty)
-                  const Text(
-                    'Больше нет ответов',
-                    style: TextStyle(color: CupertinoColors.systemGrey),
-                    textAlign: TextAlign.center,
-                  )
-                else
-                  ...sortedReplies.map(
-                    (r) => Padding(
-                      padding: const EdgeInsets.only(left: 32),
-                      child: _CommentCard(
-                        topicId: widget.topicId,
-                        comment: r,
-                        replies: const [],
-                        allComments: const [],
-                        onReplyTap: () => setState(() => _replyingTo = r),
-                        isInsideThread: true,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          _CommentInputBar(
-            replyTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-            onSend: _postComment,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =========================================================================================
-// ПАНЕЛЬ ВВОДА С ИНСТРУМЕНТАМИ
-// =========================================================================================
-class _CommentInputBar extends StatefulWidget {
-  final ShikimoriComment? replyTo;
-  final VoidCallback onCancelReply;
-  final Future<bool> Function(String) onSend;
-
-  const _CommentInputBar({
-    required this.replyTo,
-    required this.onCancelReply,
-    required this.onSend,
-  });
-
-  @override
-  State<_CommentInputBar> createState() => _CommentInputBarState();
-}
-
-class _CommentInputBarState extends State<_CommentInputBar> {
-  final _controller = TextEditingController();
-  final _focusNode = FocusNode();
-  bool _isSending = false;
-  bool _showEmoji = false;
-
-  void _insertTag(String tag) {
-    final text = _controller.text;
-    final selection = _controller.selection;
-    if (selection.start == -1) return;
-
-    final selectedText = selection.textInside(text);
-    final newText = text.replaceRange(
-      selection.start,
-      selection.end,
-      '[$tag]$selectedText[/$tag]',
-    );
-    _controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset:
-            selection.start +
-            tag.length +
-            2 +
-            selectedText.length +
-            tag.length +
-            3,
-      ),
-    );
-  }
-
-  void _insertText(String str) {
-    final text = _controller.text;
-    final selection = _controller.selection;
-    final offset = selection.start == -1 ? text.length : selection.start;
-
-    final newText = text.replaceRange(
-      offset,
-      selection.end == -1 ? text.length : selection.end,
-      str,
-    );
-    _controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: offset + str.length),
-    );
-  }
-
-  void _insertImagePrompt() {
-    final urlController = TextEditingController();
-    showCupertinoDialog(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Вставить медиа'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: CupertinoTextField(
-            controller: urlController,
-            placeholder: 'URL картинки или видео...',
-            style: const TextStyle(color: Colors.white),
-          ),
         ),
         actions: [
-          CupertinoDialogAction(
-            child: const Text('Отмена'),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-          CupertinoDialogAction(
-            child: const Text(
-              'Добавить',
-              style: TextStyle(color: Color(0xFFFF5722)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              final url = urlController.text.trim();
-              if (url.isNotEmpty) {
-                if (url.contains('youtube.com') || url.contains('youtu.be')) {
-                  _insertText('[video]$url[/video]');
-                } else if (url.endsWith('.jpg') ||
-                    url.endsWith('.png') ||
-                    url.endsWith('.gif') ||
-                    url.endsWith('.webp')) {
-                  _insertText('[img]$url[/img]');
-                } else {
-                  _insertText('[url=$url]Ссылка[/url]');
-                }
-              }
+          PopupMenuButton<CommentOrder>(
+            key: const ValueKey('comments_order'),
+            tooltip: 'Порядок комментариев',
+            initialValue: _order,
+            onSelected: (value) {
+              if (value == _order) return;
+              setState(() => _order = value);
+              unawaited(_loadFirstPage());
             },
+            itemBuilder: (context) => CommentOrder.values
+                .map(
+                  (value) => CheckedPopupMenuItem<CommentOrder>(
+                    value: value,
+                    checked: value == _order,
+                    child: Text(value.label),
+                  ),
+                )
+                .toList(),
+            icon: const Icon(CupertinoIcons.sort_down),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        children: [
+          _CommentsFilterBar(
+            selected: _filter,
+            onSelected: (value) => setState(() => _filter = value),
+          ),
+          Expanded(child: _buildContent(tree)),
+          CommentComposer(
+            replyTo: _replyingTo,
+            onCancelReply: () => setState(() => _replyingTo = null),
+            onSend: _send,
           ),
         ],
       ),
     );
   }
 
-  Future<void> _handleSend() async {
-    if (_controller.text.trim().isEmpty) return;
-    setState(() => _isSending = true);
+  bool _matchesFilter(ShikimoriComment comment) => switch (_filter) {
+    CommentFilter.all => true,
+    CommentFilter.discussion => !comment.isOfftopic,
+    CommentFilter.offtopic => comment.isOfftopic,
+    CommentFilter.replies => comment.isReply,
+    CommentFilter.media => comment.hasMedia,
+  };
 
-    final success = await widget.onSend(_controller.text);
-
-    if (mounted) {
-      setState(() => _isSending = false);
-      if (success) {
-        _controller.clear();
-        _showEmoji = false;
-        _focusNode.unfocus();
-      }
+  Widget _buildContent(CommentTree tree) {
+    if (_loading) {
+      return const AniMixCommentsSkeleton();
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF18181B),
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+    if (_loadError != null) {
+      return _CommentsEmptyState(
+        icon: CupertinoIcons.wifi_exclamationmark,
+        title: 'Комментарии не загрузились',
+        message: 'Проверьте соединение и повторите попытку.',
+        actionLabel: 'Повторить',
+        onAction: _loadFirstPage,
+      );
+    }
+    if (tree.roots.isEmpty) {
+      final canLoadMore = _hasMore || _loadMoreError != null;
+      return _CommentsEmptyState(
+        icon: CupertinoIcons.chat_bubble_2,
+        title: _comments.isEmpty
+            ? 'Обсуждение пока пустое'
+            : 'По фильтру ничего нет',
+        message: _comments.isEmpty
+            ? 'Можно оставить первый комментарий.'
+            : 'Попробуйте другой фильтр или загрузите больше комментариев.',
+        actionLabel: canLoadMore
+            ? (_loadMoreError == null ? 'Загрузить ещё' : 'Повторить загрузку')
+            : null,
+        onAction: canLoadMore ? _loadMore : null,
+      );
+    }
+    return RefreshIndicator.adaptive(
+      onRefresh: _loadFirstPage,
+      child: ListView.builder(
+        key: const ValueKey('comments_list'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.replyTo != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                color: const Color(0xFFFF5722).withValues(alpha: 0.1),
-                child: Row(
-                  children: [
-                    const Icon(
-                      CupertinoIcons.reply,
-                      color: Color(0xFFFF5722),
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Ответ ${widget.replyTo!.userNickname}',
-                        style: const TextStyle(
-                          color: Color(0xFFFF5722),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: widget.onCancelReply,
-                      child: const Icon(
-                        CupertinoIcons.clear_thick,
-                        color: Color(0xFFFF5722),
-                        size: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Container(
-                      constraints: const BoxConstraints(maxHeight: 120),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF27272A),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
-                        onTap: () {
-                          if (_showEmoji) setState(() => _showEmoji = false);
-                        },
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: 'Написать комментарий...',
-                          hintStyle: TextStyle(
-                            color: CupertinoColors.systemGrey,
-                          ),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: _isSending ? null : _handleSend,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF5722), Color(0xFFFF8A65)],
-                        ),
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFFFF5722,
-                            ).withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _isSending
-                          ? const CupertinoActivityIndicator(
-                              color: Colors.white,
-                            )
-                          : const Icon(
-                              CupertinoIcons.paperplane_fill,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              child: Row(
-                children: [
-                  _ToolBtn(
-                    icon: CupertinoIcons.bold,
-                    onTap: () => _insertTag('b'),
-                  ),
-                  const SizedBox(width: 8),
-                  _ToolBtn(
-                    icon: CupertinoIcons.italic,
-                    onTap: () => _insertTag('i'),
-                  ),
-                  const SizedBox(width: 8),
-                  _ToolBtn(
-                    icon: CupertinoIcons.strikethrough,
-                    onTap: () => _insertTag('s'),
-                  ),
-                  const SizedBox(width: 8),
-                  _ToolBtn(
-                    icon: CupertinoIcons.link,
-                    onTap: _insertImagePrompt,
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => _insertTag('spoiler'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'СПОЙЛЕР',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () {
-                      if (_showEmoji) {
-                        _focusNode.requestFocus();
-                        setState(() => _showEmoji = false);
-                      } else {
-                        _focusNode.unfocus();
-                        setState(() => _showEmoji = true);
-                      }
-                    },
-                    child: Icon(
-                      _showEmoji
-                          ? CupertinoIcons.keyboard
-                          : CupertinoIcons.smiley,
-                      color: _showEmoji
-                          ? const Color(0xFFFF5722)
-                          : CupertinoColors.systemGrey,
-                      size: 26,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            if (_showEmoji)
-              SizedBox(
-                height: 260,
-                child: _EmojiGrid(onEmojiSelected: (e) => _insertText(e)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _ToolBtn({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF27272A),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: Colors.white70, size: 16),
-      ),
-    );
-  }
-}
-
-// =========================================================================================
-// АКТУАЛЬНАЯ БАЗА ЭМОДЗИ С НАТИВНЫМ ОТОБРАЖЕНИЕМ
-// =========================================================================================
-class _EmojiGrid extends StatelessWidget {
-  final Function(String) onEmojiSelected;
-  const _EmojiGrid({required this.onEmojiSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    final standardEmojis = [
-      ':pepe:',
-      ':aww:',
-      ':lol:',
-      ':facepalm:',
-      ':kiss:',
-      ':cry:',
-      ':evil:',
-      ':hopeless:',
-      ':yummy:',
-      ':smirk:',
-      ':bored:',
-      ':ololo:',
-      ':shy:',
-      ':wow:',
-      ':smile:',
-      ':D',
-      ':(',
-      '+_(',
-      ':|',
-      ':\\',
-    ];
-
-    // Генерируем с запасом. Несуществующие скроются сами
-    final onionEmojis = List.generate(200, (i) => ':v${200 + i}:');
-    final allEmojis = [...standardEmojis, ...onionEmojis];
-
-    return Container(
-      color: const Color(0xFF18181B),
-      child: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 5,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-        ),
-        itemCount: allEmojis.length,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        itemCount: tree.roots.length + 1,
         itemBuilder: (context, index) {
-          final code = allEmojis[index];
-          final url = _BBCodeParser.getEmojiUrl(code);
-
-          return GestureDetector(
-            onTap: () => onEmojiSelected(code),
-            // Используем Image.network напрямую, он лучше крутит гифки и проще глушит 404
-            child: Image.network(
-              url,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
-            ),
+          if (index == tree.roots.length) {
+            return _CommentsFooter(
+              hasMore: _hasMore,
+              loading: _loadingMore,
+              failed: _loadMoreError != null,
+              onLoad: _loadMore,
+            );
+          }
+          final comment = tree.roots[index];
+          return CommentThread(
+            key: ValueKey('comment_thread_${comment.id}'),
+            comment: comment,
+            replies: tree.replies[comment.id] ?? const [],
+            onReply: (target) => setState(() => _replyingTo = target),
           );
         },
       ),
@@ -1164,666 +367,1427 @@ class _EmojiGrid extends StatelessWidget {
   }
 }
 
-// =========================================================================================
-// УЛУЧШЕННЫЙ ПАРСЕР (HTML, СПОЙЛЕРЫ, ЦИТАТЫ, КАРТИНКИ, ВИДЕО, УПОМИНАНИЯ)
-// =========================================================================================
-class _BBCodeParser {
-  static String cleanHtmlToBBCode(String html) {
-    String t = html;
+class _CommentsEmptyState extends StatelessWidget {
+  const _CommentsEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
 
-    // 1. Извлекаем прямые ссылки на эмодзи из HTML (чтобы не ломать их реальные расширения .gif / .png)
-    t = t.replaceAllMapped(
-      RegExp(r'<img[^>]*src="([^"]*smileys[^"]+)"[^>]*>', caseSensitive: false),
-      (m) {
-        String url = m.group(1)!;
-        if (url.startsWith('/')) url = '$_shikiUrl$url';
-        return '[emoji_url=$url]';
-      },
-    );
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
-    // 2. Игнорируем замену [image=...] и [poster=...], чтобы затем передать их в виджет
-    // Оставляем их текстом: [image=123] -> [image=123]
-
-    t = t
-        .replaceAll('<br>', '\n')
-        .replaceAll('<br/>', '\n')
-        .replaceAll('<br />', '\n');
-    t = t
-        .replaceAll('</p><p>', '\n\n')
-        .replaceAll('<p>', '')
-        .replaceAll('</p>', '');
-    t = t.replaceAll(
-      RegExp(r'<div class="b-text_with_paragraphs">|<\/div>'),
-      '',
-    );
-
-    // 3. Спойлеры
-    t = t.replaceAllMapped(
-      RegExp(
-        r'<div class="b-spoiler_block"[^>]*>.*?<span>(.*?)</span>.*?<div class="inside">(.*?)</div>\s*</div>',
-        dotAll: true,
-      ),
-      (m) => '[spoiler=${m.group(1)}]${m.group(2)}[/spoiler]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(
-        r'<div class="b-spoiler_block"[^>]*>.*?<div class="inside">(.*?)</div>\s*</div>',
-        dotAll: true,
-      ),
-      (m) => '[spoiler]${m.group(1)}[/spoiler]',
-    );
-
-    // 4. Форматирование
-    t = t.replaceAllMapped(
-      RegExp(
-        r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-        caseSensitive: false,
-        dotAll: true,
-      ),
-      (m) => '[url=${m.group(1)}]${m.group(2)}[/url]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(
-        r'<strong[^>]*>(.*?)</strong>',
-        caseSensitive: false,
-        dotAll: true,
-      ),
-      (m) => '[b]${m.group(1)}[/b]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(r'<b[^>]*>(.*?)</b>', caseSensitive: false, dotAll: true),
-      (m) => '[b]${m.group(1)}[/b]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(r'<em[^>]*>(.*?)</em>', caseSensitive: false, dotAll: true),
-      (m) => '[i]${m.group(1)}[/i]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(r'<i[^>]*>(.*?)</i>', caseSensitive: false, dotAll: true),
-      (m) => '[i]${m.group(1)}[/i]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(r'<del[^>]*>(.*?)</del>', caseSensitive: false, dotAll: true),
-      (m) => '[s]${m.group(1)}[/s]',
-    );
-    t = t.replaceAllMapped(
-      RegExp(r'<s[^>]*>(.*?)</s>', caseSensitive: false, dotAll: true),
-      (m) => '[s]${m.group(1)}[/s]',
-    );
-
-    t = t.replaceAll(RegExp(r'<[^>]*>'), '');
-    t = t
-        .replaceAll('&quot;', '"')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
-
-    // 5. Упоминания и системный мусор
-    t = t.replaceAllMapped(
-      RegExp(r'\[comment=[^\]]+\](.*?)\[/comment\],?\s*', caseSensitive: false),
-      (m) => '[mention]${m.group(1)}[/mention] ',
-    );
-    t = t.replaceAll(RegExp(r'\[/?solid\]', caseSensitive: false), '');
-    t = t.replaceAll(RegExp(r'\[replies=[^\]]+\]'), '');
-    t = t.replaceAll(RegExp(r'>\?c\d+;\d+;[^\s\n]+'), '');
-    t = t.replaceAllMapped(
-      RegExp(
-        r'\[(?:character|anime|manga|person|user)(?:=[^\]]+)?\](.*?)\[/(?:character|anime|manga|person|user)\]',
-        caseSensitive: false,
-      ),
-      (m) => '[b]${m.group(1)}[/b]',
-    );
-
-    return t.trim();
-  }
-
-  // Генерация ссылок для смайлов при ручном вводе
-  static String getEmojiUrl(String code) {
-    final map = {
-      ':pepe:': 'pepe.png',
-      ':aww:': 'aww.gif',
-      ':lol:': 'lol.gif',
-      ':facepalm:': 'facepalm.gif',
-      ':kiss:': 'kiss.gif',
-      ':cry:': 'cry.gif',
-      ':evil:': 'evil.gif',
-      ':hopeless:': 'hopeless.gif',
-      ':yummy:': 'yummy.gif',
-      ':smirk:': 'smirk.gif',
-      ':bored:': 'bored.gif',
-      ':ololo:': 'ololo.gif',
-      ':shy:': 'shy.gif',
-      ':wow:': 'wow.gif',
-      ':smile:': 'smile.gif',
-      ':D': 'D.gif',
-      ':(': 'sad.gif',
-      '+_(': 'plus_sad.gif',
-      ':|': 'mda.gif',
-      ':\\': 'mda.gif',
-    };
-    final file = map[code] ?? '${code.replaceAll(':', '')}.gif';
-    return '$_shikiUrl/images/smileys/$file';
-  }
-
-  static List<InlineSpan> buildSpans(BuildContext context, String text) {
-    final spans = <InlineSpan>[];
-
-    final pattern = RegExp(
-      r'(\[mention\](.*?)\[/mention\])|' // 1, 2
-      r'(\[quote(?:=(?:c\d+;\d+;)?([^\]]+))?\](.*?)\[/quote\])|' // 3, 4, 5
-      r'(\[spoiler(?:=([^\]]*))?\](.*?)\[/spoiler\])|' // 6, 7, 8
-      r'(\[img(?:=[^\]]+)?\](.*?)\[/img\])|' // 9, 10
-      r'(\[img=(.*?)\])|' // 11, 12
-      r'(\[image=(\d+)\])|' // 13, 14 (Асинхронные вложения Шикимори)
-      r'(\[poster=(\d+)\])|' // 15, 16 (Асинхронные постеры)
-      r'(\[video\](.*?)\[/video\])|' // 17, 18
-      r'(\[video=(.*?)\])|' // 19, 20
-      r'(\[emoji_url=([^\]]+)\])|' // 21, 22 (Точный URL из HTML)
-      r'((?<=^|\s)(:[a-zA-Z0-9_+-]+:)(?=\s|$))|' // 23, 24 (Ручной ввод :v200:)
-      r'(\[url=([^\]]+)\](.*?)\[/url\])|' // 25, 26, 27
-      r'(\[b\](.*?)\[/b\])|' // 28, 29
-      r'(\[i\](.*?)\[/i\])|' // 30, 31
-      r'(\[s\](.*?)\[/s\])', // 32, 33
-      dotAll: true,
-      caseSensitive: false,
-    );
-
-    int lastIndex = 0;
-    for (final match in pattern.allMatches(text)) {
-      if (match.start > lastIndex) {
-        spans.add(
-          TextSpan(
-            text: text.substring(lastIndex, match.start),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              height: 1.4,
-            ),
-          ),
-        );
-      }
-
-      if (match.group(1) != null) {
-        spans.add(
-          TextSpan(
-            text: '@${match.group(2)} ',
-            style: const TextStyle(
-              color: Color(0xFFFF5722),
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        );
-      } else if (match.group(3) != null) {
-        final name = match.group(4) ?? 'Цитата';
-        spans.add(
-          WidgetSpan(
-            child: _QuoteBlock(name: name, content: match.group(5)!),
-          ),
-        );
-      } else if (match.group(6) != null) {
-        final title = match.group(7) ?? 'Спойлер';
-        spans.add(
-          WidgetSpan(
-            child: _InlineSpoiler(title: title, content: match.group(8)!),
-          ),
-        );
-      } else if (match.group(9) != null || match.group(11) != null) {
-        final url = match.group(10) ?? match.group(12)!;
-        spans.add(WidgetSpan(child: _ImageThumbnail(url: url)));
-      } else if (match.group(13) != null) {
-        // Рендер асинхронного изображения (Форумные вложения)
-        spans.add(
-          WidgetSpan(child: _AsyncShikiImage(imageId: match.group(14)!)),
-        );
-      } else if (match.group(15) != null) {
-        // Рендер асинхронного постера
-        spans.add(
-          WidgetSpan(
-            child: _AsyncShikiImage(imageId: match.group(16)!, isPoster: true),
-          ),
-        );
-      } else if (match.group(17) != null || match.group(19) != null) {
-        final url = match.group(18) ?? match.group(20)!;
-        spans.add(WidgetSpan(child: _VideoThumbnail(url: url)));
-      } else if (match.group(21) != null) {
-        // 100% точный URL из оригинального HTML Шикимори
-        final url = match.group(22)!;
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Image.network(
-                url,
-                height: 32,
-                errorBuilder: (_, _, _) => const Icon(Icons.error, size: 16),
-              ),
-            ),
-          ),
-        );
-      } else if (match.group(23) != null) {
-        // Если пользователь сам напечатал :v200:
-        final code = match.group(24)!;
-        final url = getEmojiUrl(code);
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Image.network(
-                url,
-                height: 32,
-                errorBuilder: (_, _, _) =>
-                    Text(code, style: const TextStyle(color: Colors.white)),
-              ),
-            ),
-          ),
-        );
-      } else if (match.group(25) != null) {
-        final url = match.group(26)!;
-        spans.add(
-          WidgetSpan(
-            child: GestureDetector(
-              onTap: () => _launchURL(url),
-              child: Text(
-                match.group(27)!,
-                style: const TextStyle(
-                  color: Color(0xFFFF5722),
-                  decoration: TextDecoration.underline,
-                  fontSize: 15,
-                  height: 1.4,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(icon, size: 24, color: colors.primary),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (actionLabel != null && onAction != null) ...[
+                      const SizedBox(height: 14),
+                      FilledButton.tonal(
+                        onPressed: onAction,
+                        child: Text(actionLabel!),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
           ),
-        );
-      } else if (match.group(28) != null) {
-        spans.add(
-          TextSpan(
-            children: buildSpans(context, match.group(29)!),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        );
-      } else if (match.group(30) != null) {
-        spans.add(
-          TextSpan(
-            children: buildSpans(context, match.group(31)!),
-            style: const TextStyle(fontStyle: FontStyle.italic),
-          ),
-        );
-      } else if (match.group(32) != null) {
-        spans.add(
-          TextSpan(
-            children: buildSpans(context, match.group(33)!),
-            style: const TextStyle(decoration: TextDecoration.lineThrough),
-          ),
-        );
-      }
-
-      lastIndex = match.end;
-    }
-
-    if (lastIndex < text.length) {
-      spans.add(
-        TextSpan(
-          text: text.substring(lastIndex),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            height: 1.4,
-          ),
         ),
-      );
-    }
-    return spans;
-  }
-
-  static Future<void> _launchURL(String url) async {
-    final uri = Uri.tryParse(url.startsWith('http') ? url : '$_shikiUrl$url');
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-}
-
-// =========================================================================================
-// АСИНХРОННЫЙ ВИДЖЕТ ИЗОБРАЖЕНИЯ (Для [image=123] / [poster=123])
-// =========================================================================================
-class _AsyncShikiImage extends StatefulWidget {
-  final String imageId;
-  final bool isPoster;
-  const _AsyncShikiImage({required this.imageId, this.isPoster = false});
-
-  @override
-  State<_AsyncShikiImage> createState() => _AsyncShikiImageState();
-}
-
-class _AsyncShikiImageState extends State<_AsyncShikiImage> {
-  String? _resolvedUrl;
-  bool _hasError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolveImage();
-  }
-
-  Future<void> _resolveImage() async {
-    final url = await ShikiMediaService.resolveImageUrl(
-      widget.imageId,
-      isPoster: widget.isPoster,
-    );
-    if (mounted) {
-      if (url != null) {
-        setState(() => _resolvedUrl = url);
-      } else {
-        setState(() => _hasError = true);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hasError) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF27272A),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.broken_image, color: Colors.grey),
-            SizedBox(width: 8),
-            Text('Вложение недоступно', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
-    if (_resolvedUrl == null) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        height: 150,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: const Color(0xFF27272A),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(child: CupertinoActivityIndicator()),
-      );
-    }
-
-    return _ImageThumbnail(url: _resolvedUrl!);
-  }
-}
-
-// ЦИТАТА
-class _QuoteBlock extends StatelessWidget {
-  final String name;
-  final String content;
-  const _QuoteBlock({required this.name, required this.content});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: Color(0xFFFF5722), width: 3)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+class _CommentsFilterBar extends StatelessWidget {
+  const _CommentsFilterBar({required this.selected, required this.onSelected});
+
+  final CommentFilter selected;
+  final ValueChanged<CommentFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: AniMixTheme.divider)),
+    ),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: Row(
         children: [
-          Text(
-            name,
-            style: const TextStyle(
-              color: Color(0xFFFF5722),
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+          for (final filter in CommentFilter.values) ...[
+            ChoiceChip(
+              key: ValueKey('comment_filter_${filter.name}'),
+              label: Text(filter.label),
+              selected: filter == selected,
+              onSelected: (_) => onSelected(filter),
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text.rich(
-            TextSpan(children: _BBCodeParser.buildSpans(context, content)),
-          ),
+            if (filter != CommentFilter.values.last) const SizedBox(width: 8),
+          ],
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-// СПОЙЛЕР
-class _InlineSpoiler extends StatefulWidget {
-  final String title;
-  final String content;
-  const _InlineSpoiler({required this.title, required this.content});
-
-  @override
-  State<_InlineSpoiler> createState() => _InlineSpoilerState();
+String _commentWord(int count) {
+  final lastTwo = count % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'комментариев';
+  return switch (count % 10) {
+    1 => 'комментарий',
+    2 || 3 || 4 => 'комментария',
+    _ => 'комментариев',
+  };
 }
 
-class _InlineSpoilerState extends State<_InlineSpoiler> {
-  bool _revealed = false;
+class CommentTree {
+  const CommentTree({required this.roots, required this.replies});
 
-  @override
-  Widget build(BuildContext context) {
-    if (_revealed) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFF27272A),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text.rich(
-          TextSpan(children: _BBCodeParser.buildSpans(context, widget.content)),
-        ),
-      );
+  final List<ShikimoriComment> roots;
+  final Map<int, List<ShikimoriComment>> replies;
+
+  factory CommentTree.from(List<ShikimoriComment> comments) {
+    final ids = comments.map((comment) => comment.id).toSet();
+    final roots = <ShikimoriComment>[];
+    final replies = <int, List<ShikimoriComment>>{};
+    for (final comment in comments) {
+      final parent = commentParentId(comment.body);
+      if (parent != null && ids.contains(parent)) {
+        replies.putIfAbsent(parent, () => []).add(comment);
+      } else {
+        roots.add(comment);
+      }
     }
-    return GestureDetector(
-      onTap: () => setState(() => _revealed = true),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFF27272A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              CupertinoIcons.eye_slash_fill,
-              color: Color(0xFFFF5722),
-              size: 16,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              widget.title.isNotEmpty ? widget.title : 'Спойлер',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return CommentTree(roots: roots, replies: replies);
   }
 }
 
-// СТАНДАРТНАЯ КАРТИНКА ПРЯМЫМ URL
-class _ImageThumbnail extends StatelessWidget {
-  final String url;
-  const _ImageThumbnail({required this.url});
+int? commentParentId(String body) {
+  final match = RegExp(
+    r'\[comment=(\d+)(?:;[^\]]*)?\]',
+    caseSensitive: false,
+  ).firstMatch(body);
+  return match == null ? null : int.tryParse(match.group(1)!);
+}
+
+class CommentThread extends StatefulWidget {
+  const CommentThread({
+    required this.comment,
+    required this.replies,
+    required this.onReply,
+    super.key,
+  });
+
+  final ShikimoriComment comment;
+  final List<ShikimoriComment> replies;
+  final ValueChanged<ShikimoriComment> onReply;
+
+  @override
+  State<CommentThread> createState() => _CommentThreadState();
+}
+
+class _CommentThreadState extends State<CommentThread> {
+  bool _showAllReplies = false;
 
   @override
   Widget build(BuildContext context) {
-    final safeUrl = url.startsWith('http') ? url : '$_shikiUrl$url';
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context, rootNavigator: true).push(
-          MaterialPageRoute(
-            builder: (_) => Scaffold(
-              backgroundColor: Colors.black,
-              appBar: AppBar(
-                backgroundColor: Colors.black,
-                iconTheme: const IconThemeData(color: Colors.white),
-              ),
-              body: Center(
-                child: InteractiveViewer(
-                  child: CachedNetworkImage(
-                    imageUrl: safeUrl,
-                    fit: BoxFit.contain,
-                    placeholder: (_, _) =>
-                        const CupertinoActivityIndicator(color: Colors.white),
-                    errorWidget: (_, _, _) => const Icon(
-                      Icons.broken_image,
-                      color: Colors.white,
-                      size: 50,
+    final visibleReplies = _showAllReplies
+        ? widget.replies
+        : widget.replies.take(2).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AniMixSurface(
+        radius: 20,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CommentTile(comment: widget.comment, onReply: widget.onReply),
+            if (visibleReplies.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                margin: const EdgeInsets.only(left: 18),
+                padding: const EdgeInsets.only(left: 12),
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .32),
+                      width: 2,
                     ),
                   ),
                 ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < visibleReplies.length; i++) ...[
+                      if (i > 0) const Divider(height: 18),
+                      CommentTile(
+                        comment: visibleReplies[i],
+                        onReply: widget.onReply,
+                        compact: true,
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        constraints: const BoxConstraints(
-          maxHeight: 250,
-          maxWidth: double.infinity,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: CachedNetworkImage(
-            imageUrl: safeUrl,
-            fit: BoxFit.cover,
-            placeholder: (_, _) => Container(
-              height: 150,
-              width: double.infinity,
-              color: const Color(0xFF27272A),
-              child: const Center(child: CupertinoActivityIndicator()),
-            ),
-            errorWidget: (_, _, _) => Container(
-              padding: const EdgeInsets.all(16),
-              color: const Color(0xFF27272A),
-              child: const Row(
-                children: [
-                  Icon(Icons.broken_image, color: Colors.grey),
-                  SizedBox(width: 8),
-                  Text(
-                    'Изображение недоступно',
-                    style: TextStyle(color: Colors.grey),
+            ],
+            if (widget.replies.length > 2) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: ValueKey('replies_toggle_${widget.comment.id}'),
+                  onPressed: () =>
+                      setState(() => _showAllReplies = !_showAllReplies),
+                  icon: Icon(
+                    _showAllReplies
+                        ? CupertinoIcons.chevron_up
+                        : CupertinoIcons.chevron_down,
+                    size: 14,
                   ),
-                ],
+                  label: Text(
+                    _showAllReplies
+                        ? 'Скрыть ответы'
+                        : 'Показать ещё ${widget.replies.length - 2}',
+                  ),
+                ),
               ),
-            ),
-          ),
+            ],
+          ],
         ),
       ),
     );
   }
 }
 
-// ВИДЕО ПЛЕЕР (ПРЕВЬЮ YouTube)
-class _VideoThumbnail extends StatelessWidget {
-  final String url;
-  const _VideoThumbnail({required this.url});
+class CommentTile extends StatelessWidget {
+  const CommentTile({
+    required this.comment,
+    required this.onReply,
+    this.compact = false,
+    super.key,
+  });
 
-  String? _extractYoutubeId(String url) {
-    final regExp = RegExp(
-      r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
-      caseSensitive: false,
-    );
-    return regExp.firstMatch(url)?.group(1);
-  }
+  final ShikimoriComment comment;
+  final ValueChanged<ShikimoriComment> onReply;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final ytId = _extractYoutubeId(url);
-
-    if (ytId == null) {
-      return GestureDetector(
-        onTap: () => _BBCodeParser._launchURL(url),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF27272A),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Row(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CommentAvatar(comment: comment, small: compact),
+        SizedBox(width: compact ? 9 : 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                CupertinoIcons.play_rectangle_fill,
-                color: Color(0xFFFF5722),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      comment.userNickname?.trim().isNotEmpty == true
+                          ? comment.userNickname!
+                          : 'Пользователь',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: compact ? 13 : 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    formatCommentDate(comment.createdAt),
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Открыть видео',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              if (comment.body.trim().isNotEmpty ||
+                  comment.htmlBody.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                CollapsibleCommentBody(comment: comment, compact: compact),
+              ],
+              const SizedBox(height: 7),
+              Semantics(
+                button: true,
+                label: 'Ответить пользователю',
+                child: InkWell(
+                  key: ValueKey('reply_${comment.id}'),
+                  borderRadius: BorderRadius.circular(9),
+                  onTap: () => onReply(comment),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 3,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.reply,
+                          size: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Ответить',
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _CommentAvatar extends StatelessWidget {
+  const _CommentAvatar({required this.comment, required this.small});
+
+  final ShikimoriComment comment;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = small ? 28.0 : 36.0;
+    final avatar = comment.userAvatar;
+    return ClipOval(
+      child: SizedBox.square(
+        dimension: size,
+        child: ColoredBox(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          child: avatar == null || avatar.isEmpty
+              ? Icon(
+                  CupertinoIcons.person_fill,
+                  size: size * .48,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                )
+              : CachedNetworkImage(
+                  imageUrl: avatar,
+                  fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 120),
+                  placeholder: (_, _) => const SizedBox.shrink(),
+                  errorWidget: (_, _, _) => Icon(
+                    CupertinoIcons.person_fill,
+                    size: size * .48,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class CollapsibleCommentBody extends StatefulWidget {
+  const CollapsibleCommentBody({
+    required this.comment,
+    this.compact = false,
+    super.key,
+  });
+
+  final ShikimoriComment comment;
+  final bool compact;
+
+  @override
+  State<CollapsibleCommentBody> createState() => _CollapsibleCommentBodyState();
+}
+
+class _CollapsibleCommentBodyState extends State<CollapsibleCommentBody> {
+  bool _expanded = false;
+
+  bool get _canCollapse {
+    final source = widget.comment.body;
+    return source.length > 420 ||
+        '\n'.allMatches(source).length >= 8 ||
+        widget.comment.htmlBody.length > 1800;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final document = CommentDocument.parse(
+      widget.comment.body,
+      htmlBody: widget.comment.htmlBody,
+    );
+    final collapseMedia =
+        _canCollapse && !_expanded && document.images.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 210),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: ClipRect(
+            child: ConstrainedBox(
+              key: ValueKey(
+                _expanded ? 'comment_expanded' : 'comment_collapsed',
+              ),
+              constraints: _canCollapse && !_expanded
+                  ? BoxConstraints(maxHeight: widget.compact ? 190 : 250)
+                  : const BoxConstraints(),
+              child: CommentMarkupView(
+                comment: widget.comment,
+                compact: widget.compact,
+                hideMedia: collapseMedia,
+              ),
+            ),
+          ),
+        ),
+        if (collapseMedia) ...[
+          CommentRemoteImage(
+            previewUrl: document.images.first,
+            originalUrl: document.images.first,
+            maxHeight: widget.compact ? 130 : 170,
+          ),
+          if (document.images.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'Ещё ${document.images.length - 1} изображений внутри',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+        ],
+        if (_canCollapse)
+          TextButton(
+            key: const ValueKey('comment_expand_button'),
+            onPressed: () => setState(() => _expanded = !_expanded),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.only(top: 4),
+              minimumSize: const Size(0, 30),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(_expanded ? 'Свернуть' : 'Показать полностью'),
+          ),
+      ],
+    );
+  }
+}
+
+class CommentMarkupView extends StatelessWidget {
+  const CommentMarkupView({
+    required this.comment,
+    required this.compact,
+    this.hideMedia = false,
+    super.key,
+  });
+
+  static final Uri _baseUri = Uri.parse('https://shikimori.io');
+  static const _headers = <String, String>{
+    'User-Agent': 'AniMix/2.0',
+    'Referer': 'https://shikimori.io/',
+  };
+
+  final ShikimoriComment comment;
+  final bool compact;
+  final bool hideMedia;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final document = CommentDocument.parse(
+      comment.body,
+      htmlBody: comment.htmlBody,
+    );
+    return HtmlWidget(
+      document.html,
+      baseUrl: _baseUri,
+      textStyle: TextStyle(
+        fontSize: compact ? 12.5 : 13.5,
+        height: 1.38,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .9),
+      ),
+      customStylesBuilder: (element) {
+        if (element.classes.contains('b-quote')) {
+          return {
+            'background-color': _cssColor(
+              Theme.of(context).colorScheme.surfaceContainerHigh,
+            ),
+            'border-left': '3px solid ${_cssColor(accent)}',
+            'border-radius': '10px',
+            'padding': '9px 11px',
+            'margin': '7px 0',
+          };
+        }
+        if (element.classes.contains('quoteable')) {
+          return {
+            'color': _cssColor(accent),
+            'font-size': '11px',
+            'font-weight': '700',
+            'margin-bottom': '4px',
+          };
+        }
+        if (element.localName == 'pre' || element.localName == 'code') {
+          return {
+            'background-color': _cssColor(
+              Theme.of(context).colorScheme.surfaceContainer,
+            ),
+            'border-radius': '8px',
+            'padding': '7px',
+            'font-size': '12px',
+          };
+        }
+        if (element.localName == 'a' || element.classes.contains('b-mention')) {
+          return {'color': _cssColor(accent), 'text-decoration': 'none'};
+        }
+        return null;
+      },
+      customWidgetBuilder: (element) => _customElement(context, element),
+      onTapUrl: (url) => _launch(url),
+      onTapImage: (metadata) {
+        if (metadata.sources.isEmpty) return;
+        final url = _absoluteUrl(metadata.sources.first.url);
+        if (url.isNotEmpty) {
+          unawaited(
+            showAniMixMediaViewer(
+              context,
+              images: [url],
+              headers: _headers,
+              title: 'Из комментария',
+            ),
+          );
+        }
+      },
+      onErrorBuilder: (context, element, error) => Text(
+        element.text.trim(),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    );
+  }
+
+  Widget? _customElement(BuildContext context, dom.Element element) {
+    if (element.classes.contains('b-replies')) {
+      return const SizedBox.shrink();
+    }
+    if (element.localName == 'img' && element.classes.contains('smiley')) {
+      final url = _absoluteUrl(element.attributes['src']);
+      final alt = element.attributes['alt'] ?? '';
+      return InlineCustomWidget(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          cacheManager: AniMixMediaCache.commentMedia,
+          width: compact ? 19 : 21,
+          height: compact ? 19 : 21,
+          fit: BoxFit.contain,
+          httpHeaders: _headers,
+          placeholder: (_, _) => const SizedBox.square(dimension: 18),
+          errorWidget: (_, _, _) => Text(
+            alt,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       );
     }
+    if (element.localName == 'a' && element.classes.contains('b-image')) {
+      return hideMedia ? const SizedBox.shrink() : _imageFrom(context, element);
+    }
+    if (element.localName == 'img') {
+      final parent = element.parent;
+      if (parent?.classes.contains('b-user16') == true) {
+        return const SizedBox.shrink();
+      }
+      return hideMedia ? const SizedBox.shrink() : _imageFrom(context, element);
+    }
+    if (element.classes.contains('b-spoiler') ||
+        element.classes.contains('b-spoiler_block')) {
+      final clone = element.clone(true);
+      final label = clone.querySelector('label')?.text.trim();
+      clone.querySelector('label')?.remove();
+      return CommentSpoiler(
+        title: label?.isNotEmpty == true ? label! : 'Спойлер',
+        html: clone.innerHtml,
+        compact: compact,
+      );
+    }
+    if (element.localName == 'iframe' || element.classes.contains('b-video')) {
+      final url =
+          element.attributes['src'] ??
+          element.querySelector('a')?.attributes['href'];
+      if (url == null) return null;
+      return _CommentExternalMedia(url: _absoluteUrl(url), label: 'Видео');
+    }
+    return null;
+  }
 
-    return GestureDetector(
-      onTap: () => _BBCodeParser._launchURL(url),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        height: 200,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
+  Widget _imageFrom(BuildContext context, dom.Element element) {
+    final image = element.localName == 'img'
+        ? element
+        : element.querySelector('img');
+    final preview = _absoluteUrl(image?.attributes['src']);
+    final original = element.localName == 'a'
+        ? _absoluteUrl(element.attributes['href'])
+        : preview;
+    final width = double.tryParse(image?.attributes['data-width'] ?? '');
+    final height = double.tryParse(image?.attributes['data-height'] ?? '');
+    final ratio = width != null && height != null && height > 0
+        ? width / height
+        : null;
+    if (preview.isEmpty) return const SizedBox.shrink();
+    return CommentRemoteImage(
+      previewUrl: preview,
+      originalUrl: original,
+      aspectRatio: ratio,
+    );
+  }
+
+  static String _absoluteUrl(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('//')) return 'https:$raw';
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return '';
+    return uri.hasScheme ? uri.toString() : _baseUri.resolveUri(uri).toString();
+  }
+
+  static Future<bool> _launch(String raw) async {
+    final url = _absoluteUrl(raw);
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return false;
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  static String _cssColor(Color color) =>
+      '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+}
+
+class CommentRemoteImage extends StatefulWidget {
+  const CommentRemoteImage({
+    required this.previewUrl,
+    required this.originalUrl,
+    this.aspectRatio,
+    this.maxHeight = 360,
+    super.key,
+  });
+
+  final String previewUrl;
+  final String originalUrl;
+  final double? aspectRatio;
+  final double maxHeight;
+
+  @override
+  State<CommentRemoteImage> createState() => _CommentRemoteImageState();
+}
+
+class _CommentRemoteImageState extends State<CommentRemoteImage> {
+  int _attempt = 0;
+
+  Future<void> _retry() async {
+    await CachedNetworkImage.evictFromCache(
+      widget.previewUrl,
+      cacheManager: AniMixMediaCache.commentMedia,
+    );
+    if (mounted) setState(() => _attempt++);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final ratio = (widget.aspectRatio ?? 16 / 9).clamp(.45, 3.2);
+      final height = (constraints.maxWidth / ratio).clamp(
+        96.0,
+        widget.maxHeight,
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Semantics(
+          button: true,
+          label: 'Открыть изображение',
+          child: InkWell(
+            key: const ValueKey('comment_image_open'),
+            onTap: () => unawaited(
+              showAniMixMediaViewer(
+                context,
+                images: [widget.originalUrl],
+                headers: CommentMarkupView._headers,
+                title: 'Из комментария',
+              ),
+            ),
+            borderRadius: BorderRadius.circular(14),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: CachedNetworkImage(
+                  key: ValueKey('${widget.previewUrl}#$_attempt'),
+                  imageUrl: widget.previewUrl,
+                  cacheManager: AniMixMediaCache.commentMedia,
+                  httpHeaders: CommentMarkupView._headers,
+                  fit: BoxFit.contain,
+                  fadeInDuration: const Duration(milliseconds: 160),
+                  placeholder: (_, _) => ColoredBox(
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    child: const Center(child: CupertinoActivityIndicator()),
+                  ),
+                  errorWidget: (_, _, _) => ColoredBox(
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    child: Center(
+                      child: TextButton.icon(
+                        onPressed: _retry,
+                        icon: const Icon(CupertinoIcons.refresh, size: 17),
+                        label: const Text('Повторить загрузку'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class CommentSpoiler extends StatefulWidget {
+  const CommentSpoiler({
+    required this.title,
+    required this.html,
+    required this.compact,
+    super.key,
+  });
+
+  final String title;
+  final String html;
+  final bool compact;
+
+  @override
+  State<CommentSpoiler> createState() => _CommentSpoilerState();
+}
+
+class _CommentSpoilerState extends State<CommentSpoiler> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) => AniMixSurface(
+    radius: 13,
+    selected: _open,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.eye_slash_fill, size: 15),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Icon(
+                  _open
+                      ? CupertinoIcons.chevron_up
+                      : CupertinoIcons.chevron_down,
+                  size: 14,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: HtmlWidget(
+              widget.html,
+              baseUrl: CommentMarkupView._baseUri,
+              textStyle: TextStyle(fontSize: widget.compact ? 12.5 : 13.5),
+              onTapUrl: CommentMarkupView._launch,
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+class _CommentExternalMedia extends StatelessWidget {
+  const _CommentExternalMedia({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: OutlinedButton.icon(
+      onPressed: () => unawaited(CommentMarkupView._launch(url)),
+      icon: const Icon(CupertinoIcons.play_rectangle_fill),
+      label: Text('Открыть: $label'),
+    ),
+  );
+}
+
+class CommentDocument {
+  const CommentDocument({
+    required this.html,
+    required this.text,
+    required this.images,
+  });
+
+  final String html;
+  final String text;
+  final List<String> images;
+
+  factory CommentDocument.parse(String source, {String htmlBody = ''}) {
+    final resolved = htmlBody.trim().isNotEmpty
+        ? htmlBody
+        : _legacyBbCodeToHtml(source);
+    final fragment = html_parser.parseFragment(resolved);
+    for (final unsafe in fragment.querySelectorAll(
+      'script, style, object, embed, .b-replies',
+    )) {
+      unsafe.remove();
+    }
+    final images = <String>{};
+    for (final link in fragment.querySelectorAll('a')) {
+      final href = CommentMarkupView._absoluteUrl(link.attributes['href']);
+      if (href.isNotEmpty) link.attributes['href'] = href;
+    }
+    for (final image in fragment.querySelectorAll('img')) {
+      final src = CommentMarkupView._absoluteUrl(image.attributes['src']);
+      if (src.isNotEmpty) image.attributes['src'] = src;
+      if (src.isNotEmpty && !image.classes.contains('smiley')) {
+        images.add(src);
+      }
+    }
+    final serialized = fragment.nodes.map(_serializeNode).join().trim();
+    final text = (fragment.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return CommentDocument(
+      html: serialized,
+      text: text,
+      images: images.toList(growable: false),
+    );
+  }
+
+  static String _serializeNode(dom.Node node) => switch (node) {
+    dom.Element element => element.outerHtml,
+    dom.Text text => const HtmlEscape(
+      HtmlEscapeMode.element,
+    ).convert(text.data),
+    _ => '',
+  };
+
+  static String _legacyBbCodeToHtml(String source) {
+    final withoutUnsafeHtml = source.replaceAll(
+      RegExp(
+        r'<(?:script|style|object|embed)[^>]*>.*?</(?:script|style|object|embed)>',
+        caseSensitive: false,
+        dotAll: true,
+      ),
+      '',
+    );
+    var text = const HtmlEscape(
+      HtmlEscapeMode.element,
+    ).convert(withoutUnsafeHtml);
+    text = text
+        .replaceAllMapped(
+          RegExp(
+            r'\[img[^\]]*\](https?://.*?)\[/img\]',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) => '<img src="${match.group(1)?.trim() ?? ''}">',
+        )
+        .replaceAllMapped(
+          RegExp(r'\[image=(https?://[^\]\s]+)[^\]]*\]', caseSensitive: false),
+          (match) => '<img src="${match.group(1)}">',
+        )
+        .replaceAllMapped(
+          RegExp(r'\[image=(\d+)[^\]]*\]', caseSensitive: false),
+          (match) => '<span>[изображение #${match.group(1)}]</span>',
+        )
+        .replaceAllMapped(
+          RegExp(
+            r'\[comment=(\d+)(?:;[^\]]*)?\](.*?)\[/comment\]',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) =>
+              '<a href="https://shikimori.io/comments/${match.group(1)}">@${match.group(2)}</a>',
+        )
+        .replaceAllMapped(
+          RegExp(
+            r'\[url=([^\]]+)\](.*?)\[/url\]',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) => '<a href="${match.group(1)}">${match.group(2)}</a>',
+        )
+        .replaceAllMapped(
+          RegExp(r'\[url\](.*?)\[/url\]', caseSensitive: false, dotAll: true),
+          (match) => '<a href="${match.group(1)}">${match.group(1)}</a>',
+        );
+    const pairedTags = <String, String>{
+      'b': 'strong',
+      'i': 'em',
+      'u': 'u',
+      's': 's',
+      'code': 'code',
+      'center': 'center',
+    };
+    for (final entry in pairedTags.entries) {
+      text = text
+          .replaceAll(
+            RegExp('\\[${entry.key}(?:=[^\\]]+)?\\]', caseSensitive: false),
+            '<${entry.value}>',
+          )
+          .replaceAll(
+            RegExp('\\[/${entry.key}\\]', caseSensitive: false),
+            '</${entry.value}>',
+          );
+    }
+    text = text
+        .replaceAllMapped(
+          RegExp(
+            r'\[quote(?:=[^\]]+)?\](.*?)\[/quote\]',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) =>
+              '<div class="b-quote"><div class="quote-content">${match.group(1)}</div></div>',
+        )
+        .replaceAllMapped(
+          RegExp(
+            r'\[spoiler(?:=([^\]]+))?\](.*?)\[/spoiler\]',
+            caseSensitive: false,
+            dotAll: true,
+          ),
+          (match) =>
+              '<div class="b-spoiler"><label>${match.group(1) ?? 'Спойлер'}</label><div>${match.group(2)}</div></div>',
+        )
+        .replaceAll(RegExp(r'\[\*\]\s*'), '<br>• ')
+        .replaceAll(RegExp(r'\[/?list[^\]]*\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\[br\s*/?\]', caseSensitive: false), '<br>')
+        .replaceAll(RegExp(r'\[hr\s*/?\]', caseSensitive: false), '<hr>')
+        .replaceAll(RegExp(r'\[replies=[^\]]+\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\[/?[a-z][^\]]*\]', caseSensitive: false), '')
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\n', '<br>');
+    return text;
+  }
+}
+
+String formatCommentDate(String raw) {
+  final date = DateTime.tryParse(raw)?.toLocal();
+  if (date == null) return '';
+  final difference = DateTime.now().difference(date);
+  if (difference.inMinutes < 1) return 'сейчас';
+  if (difference.inHours < 1) return '${difference.inMinutes} мин';
+  if (difference.inDays < 1) return '${difference.inHours} ч';
+  if (difference.inDays < 7) return '${difference.inDays} д';
+  return '${date.day.toString().padLeft(2, '0')}.'
+      '${date.month.toString().padLeft(2, '0')}.${date.year}';
+}
+
+class CommentComposer extends StatefulWidget {
+  const CommentComposer({
+    required this.replyTo,
+    required this.onCancelReply,
+    required this.onSend,
+    super.key,
+  });
+
+  final ShikimoriComment? replyTo;
+  final VoidCallback onCancelReply;
+  final Future<bool> Function(String text) onSend;
+
+  @override
+  State<CommentComposer> createState() => _CommentComposerState();
+}
+
+class _CommentComposerState extends State<CommentComposer> {
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+  bool _sending = false;
+
+  @override
+  void didUpdateWidget(covariant CommentComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.replyTo?.id != oldWidget.replyTo?.id && widget.replyTo != null) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_sending || _controller.text.trim().isEmpty) return;
+    setState(() => _sending = true);
+    final sent = await widget.onSend(_controller.text);
+    if (!mounted) return;
+    if (sent) _controller.clear();
+    setState(() => _sending = false);
+  }
+
+  void _insertText(String value) {
+    final text = _controller.text;
+    final selection = _controller.selection.isValid
+        ? _controller.selection
+        : TextSelection.collapsed(offset: text.length);
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(start, text.length);
+    final updated = text.replaceRange(start, end, value);
+    _controller.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: start + value.length),
+    );
+    _focusNode.requestFocus();
+  }
+
+  void _wrapSelection(String opening, String closing, String placeholder) {
+    final text = _controller.text;
+    final selection = _controller.selection.isValid
+        ? _controller.selection
+        : TextSelection.collapsed(offset: text.length);
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(start, text.length);
+    final selected = text.substring(start, end);
+    final inner = selected.isEmpty ? placeholder : selected;
+    final replacement = '$opening$inner$closing';
+    final updated = text.replaceRange(start, end, replacement);
+    final innerStart = start + opening.length;
+    _controller.value = TextEditingValue(
+      text: updated,
+      selection: selected.isEmpty
+          ? TextSelection(
+              baseOffset: innerStart,
+              extentOffset: innerStart + inner.length,
+            )
+          : TextSelection.collapsed(offset: start + replacement.length),
+    );
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _pickSmiley() async {
+    final code = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => const _ShikimoriSmileyPicker(),
+    );
+    if (code != null && mounted) _insertText('$code ');
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    top: false,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withValues(alpha: .55),
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: 'https://img.youtube.com/vi/$ytId/hqdefault.jpg',
-                fit: BoxFit.cover,
-                errorWidget: (_, _, _) =>
-                    Container(color: const Color(0xFF27272A)),
+            if (widget.replyTo != null)
+              Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.reply,
+                    size: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Ответ для ${widget.replyTo!.userNickname ?? 'пользователя'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Отменить ответ',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: widget.onCancelReply,
+                    icon: const Icon(CupertinoIcons.xmark, size: 15),
+                  ),
+                ],
               ),
+            _CommentComposerToolbar(
+              onSmiley: _pickSmiley,
+              onBold: () => _wrapSelection('[b]', '[/b]', 'жирный текст'),
+              onItalic: () => _wrapSelection('[i]', '[/i]', 'курсив'),
+              onSpoiler: () =>
+                  _wrapSelection('[spoiler]', '[/spoiler]', 'спойлер'),
+              onQuote: () => _wrapSelection('[quote]', '[/quote]', 'цитата'),
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF5722).withValues(alpha: 0.9),
-                  shape: BoxShape.circle,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('comment_input'),
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    enabled: !_sending,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 4000,
+                    buildCounter:
+                        (
+                          _, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => null,
+                    textInputAction: TextInputAction.newline,
+                    decoration: const InputDecoration(
+                      hintText: 'Написать комментарий',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
                 ),
-                child: const Icon(
-                  CupertinoIcons.play_fill,
-                  color: Colors.white,
-                  size: 28,
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  key: const ValueKey('comment_send'),
+                  tooltip: 'Отправить',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    disabledBackgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: .34),
+                    disabledForegroundColor: Theme.of(
+                      context,
+                    ).colorScheme.onPrimary.withValues(alpha: .65),
+                  ),
+                  onPressed: _sending ? null : _submit,
+                  icon: _sending
+                      ? SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary,
+                          ),
+                        )
+                      : const Icon(CupertinoIcons.arrow_up, size: 18),
                 ),
-              ),
+              ],
             ),
           ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _CommentComposerToolbar extends StatelessWidget {
+  const _CommentComposerToolbar({
+    required this.onSmiley,
+    required this.onBold,
+    required this.onItalic,
+    required this.onSpoiler,
+    required this.onQuote,
+  });
+
+  final VoidCallback onSmiley;
+  final VoidCallback onBold;
+  final VoidCallback onItalic;
+  final VoidCallback onSpoiler;
+  final VoidCallback onQuote;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 42,
+    child: ListView(
+      scrollDirection: Axis.horizontal,
+      children: [
+        _ComposerToolButton(
+          key: const ValueKey('comment_emoji'),
+          tooltip: 'Смайлы Shikimori',
+          icon: CupertinoIcons.smiley,
+          onPressed: onSmiley,
+        ),
+        _ComposerToolButton(tooltip: 'Жирный', label: 'B', onPressed: onBold),
+        _ComposerToolButton(
+          tooltip: 'Курсив',
+          label: 'I',
+          italic: true,
+          onPressed: onItalic,
+        ),
+        _ComposerToolButton(
+          tooltip: 'Спойлер',
+          icon: CupertinoIcons.eye_slash,
+          onPressed: onSpoiler,
+        ),
+        _ComposerToolButton(
+          tooltip: 'Цитата',
+          icon: CupertinoIcons.quote_bubble,
+          onPressed: onQuote,
+        ),
+      ],
+    ),
+  );
+}
+
+class _ComposerToolButton extends StatelessWidget {
+  const _ComposerToolButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.icon,
+    this.label,
+    this.italic = false,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData? icon;
+  final String? label;
+  final bool italic;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: tooltip,
+    visualDensity: VisualDensity.compact,
+    onPressed: onPressed,
+    icon: icon != null
+        ? Icon(icon, size: 18)
+        : Text(
+            label!,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+  );
+}
+
+class _ShikimoriSmileyPicker extends StatelessWidget {
+  const _ShikimoriSmileyPicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final smileys = ShikimoriSmileys.all;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 680),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height.clamp(360, 560) * .82,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Смайлы Shikimori',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Вставляются настоящим BBCode и корректно отображаются на сайте.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: GridView.builder(
+                  key: const ValueKey('shikimori_smiley_grid'),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 62,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                  ),
+                  itemCount: smileys.length,
+                  itemBuilder: (context, index) {
+                    final code = smileys[index];
+                    return Tooltip(
+                      message: code,
+                      child: InkWell(
+                        key: ValueKey('smiley_$code'),
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => Navigator.pop(context, code),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: .55),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: CachedNetworkImage(
+                              imageUrl: ShikimoriSmileys.imageUrl(code),
+                              cacheManager: AniMixMediaCache.commentMedia,
+                              fit: BoxFit.contain,
+                              fadeInDuration: const Duration(milliseconds: 100),
+                              placeholder: (_, _) =>
+                                  const CupertinoActivityIndicator(radius: 8),
+                              errorWidget: (_, _, _) => Center(
+                                child: Text(
+                                  code,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  style: const TextStyle(fontSize: 8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommentsFooter extends StatelessWidget {
+  const _CommentsFooter({
+    required this.hasMore,
+    required this.loading,
+    required this.failed,
+    required this.onLoad,
+  });
+
+  final bool hasMore;
+  final bool loading;
+  final bool failed;
+  final VoidCallback onLoad;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasMore && !failed) return const SizedBox(height: 8);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Center(
+        child: OutlinedButton.icon(
+          key: const ValueKey('comments_load_more'),
+          onPressed: loading ? null : onLoad,
+          icon: loading
+              ? const SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  failed ? CupertinoIcons.refresh : CupertinoIcons.chevron_down,
+                  size: 15,
+                ),
+          label: Text(failed ? 'Повторить загрузку' : 'Загрузить ещё'),
         ),
       ),
     );

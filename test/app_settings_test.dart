@@ -11,7 +11,8 @@ void main() {
 
     const custom = Color(0xFF2BD9A8);
     await settings.setCustomAccent(custom);
-    await settings.setThemeStyle(AniMixThemeStyle.midnight);
+    await settings.setThemeStyle(AniMixThemeStyle.translucent);
+    await settings.setThemeMode(AniMixThemeMode.light);
     await settings.setSmartConnectionEnabled(false);
     var notifications = 0;
     void listener() => notifications++;
@@ -23,12 +24,14 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(settings.accentColor.toARGB32(), custom.toARGB32());
     expect(settings.hasCustomAccent, isTrue);
-    expect(settings.themeStyle, AniMixThemeStyle.midnight);
+    expect(settings.themeStyle, AniMixThemeStyle.translucent);
+    expect(settings.themeMode, AniMixThemeMode.light);
     expect(settings.smartConnectionEnabled, isFalse);
     expect(settings.contentLayout, AniMixContentLayout.list);
     expect(notifications, 2);
     expect(prefs.getInt('appearance_custom_accent_v1'), custom.toARGB32());
-    expect(prefs.getString('appearance_theme_style_v1'), 'midnight');
+    expect(prefs.getString('appearance_theme_style_v1'), 'translucent');
+    expect(prefs.getString('appearance_theme_mode_v1'), 'light');
     expect(prefs.getBool('watch_smart_connection_v1'), isFalse);
   });
 }

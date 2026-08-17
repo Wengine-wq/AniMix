@@ -8,6 +8,7 @@ import 'services/watch_resolver_service.dart';
 import 'repositories/watch_mapping_repository.dart';
 import 'watch_storage.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 import 'services/episode_action_service.dart';
 import 'widgets/episode_collection_view.dart';
 
@@ -167,7 +168,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
         ),
       ],
       child: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AniMixEpisodeListSkeleton()
           : errorMessage != null
           ? _buildErrorState()
           : candidates != null

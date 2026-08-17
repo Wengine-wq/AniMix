@@ -23,6 +23,7 @@ class PosterFallbackService {
   );
   final Map<int, String> _cache = {};
   final Map<int, Future<String?>> _inFlight = {};
+  final Map<int, Set<String>> _rejectedUrls = {};
   Future<void>? _initializing;
 
   Future<void> initialize() => _initializing ??= _loadCache();
@@ -48,9 +49,25 @@ class PosterFallbackService {
 
   String? cached(int shikimoriId) => _cache[shikimoriId];
 
+  void markFailed(int shikimoriId, String url) {
+    _rejectedUrls.putIfAbsent(shikimoriId, () => <String>{}).add(url);
+    if (_cache[shikimoriId] == url) {
+      _cache.remove(shikimoriId);
+      unawaited(_persistCache());
+    }
+  }
+
+  Future<void> invalidate(int shikimoriId) async {
+    _cache.remove(shikimoriId);
+    _inFlight.remove(shikimoriId);
+    _rejectedUrls.remove(shikimoriId);
+    await _persistCache();
+  }
+
   Future<void> clear() async {
     _cache.clear();
     _inFlight.clear();
+    _rejectedUrls.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cacheKey);
   }
@@ -67,11 +84,15 @@ class PosterFallbackService {
       };
       for (final query in queries) {
         final yummy = await _fromYummy(shikimoriId, query, queries);
-        if (yummy != null) return await _remember(shikimoriId, yummy);
+        if (yummy != null && !_isRejected(shikimoriId, yummy)) {
+          return await _remember(shikimoriId, yummy);
+        }
       }
       for (final query in queries) {
         final liberty = await _fromAniLiberty(query, queries);
-        if (liberty != null) return await _remember(shikimoriId, liberty);
+        if (liberty != null && !_isRejected(shikimoriId, liberty)) {
+          return await _remember(shikimoriId, liberty);
+        }
       }
       return null;
     } finally {
@@ -223,12 +244,19 @@ class PosterFallbackService {
 
   Future<String> _remember(int id, String url) async {
     _cache[id] = url;
+    await _persistCache();
+    return url;
+  }
+
+  bool _isRejected(int id, String url) =>
+      _rejectedUrls[id]?.contains(url) ?? false;
+
+  Future<void> _persistCache() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _cacheKey,
       jsonEncode(_cache.map((key, value) => MapEntry(key.toString(), value))),
     );
-    return url;
   }
 
   Future<void> _loadCache() async {

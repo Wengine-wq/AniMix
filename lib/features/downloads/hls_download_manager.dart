@@ -40,6 +40,30 @@ class HlsDownloadManager extends ChangeNotifier {
     return null;
   }
 
+  Future<void> updateAnimePoster({
+    required int animeId,
+    required String animeTitle,
+    required String posterUrl,
+  }) async {
+    final uri = Uri.tryParse(posterUrl);
+    if (uri == null || !uri.hasScheme || !uri.isAbsolute) return;
+    var changed = false;
+    for (var index = 0; index < _downloads.length; index++) {
+      final item = _downloads[index];
+      final sameAnime = animeId > 0
+          ? item.animeId == animeId
+          : item.animeTitle.trim().toLowerCase() ==
+                animeTitle.trim().toLowerCase();
+      if (sameAnime && item.posterUrl != posterUrl) {
+        _downloads[index] = item.copyWith(posterUrl: posterUrl);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await _save();
+    notifyListeners();
+  }
+
   Future<void> startDownload({
     required String url,
     required String episodeId,
@@ -59,7 +83,7 @@ class HlsDownloadManager extends ChangeNotifier {
           : int.tryParse(episodeId.split('_').first) ?? 0,
       animeTitle: animeTitle,
       episodeName: episodeName,
-      posterUrl: posterUrl,
+      posterUrl: DownloadItem.normalizePosterUrl(posterUrl),
       quality: quality,
       sourceUrl: url,
       progress: 0,

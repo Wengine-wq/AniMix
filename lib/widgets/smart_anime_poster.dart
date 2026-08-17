@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../core/media_cache.dart';
 import '../core/poster_fallback_service.dart';
 
 class SmartAnimePoster extends StatefulWidget {
@@ -11,6 +14,7 @@ class SmartAnimePoster extends StatefulWidget {
   final String? russianTitle;
   final BoxFit fit;
   final Alignment alignment;
+  final ValueChanged<String>? onResolved;
 
   const SmartAnimePoster({
     required this.animeId,
@@ -19,6 +23,7 @@ class SmartAnimePoster extends StatefulWidget {
     this.russianTitle,
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
+    this.onResolved,
     super.key,
   });
 
@@ -28,7 +33,11 @@ class SmartAnimePoster extends StatefulWidget {
 
 class _SmartAnimePosterState extends State<SmartAnimePoster> {
   String? _providerUrl;
-  bool _requestedFallback = false;
+  String? _failedUrl;
+  bool _resolvingFallback = false;
+  bool _fallbackExhausted = false;
+  Timer? _networkDeadline;
+  String? _reportedUrl;
 
   bool get _isKnownPlaceholder {
     final url = widget.imageUrl?.toLowerCase() ?? '';
@@ -40,13 +49,17 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
 
   String? get _displayUrl {
     final cached = PosterFallbackService.instance.cached(widget.animeId);
-    if (_providerUrl != null) return _providerUrl;
-    if (cached != null) return cached;
+    if (_providerUrl != null && _providerUrl != _failedUrl) return _providerUrl;
+    if (cached != null && cached != _failedUrl) return cached;
     if (_isKnownPlaceholder) return null;
     final original = widget.imageUrl;
     if (original == null || original.isEmpty) return null;
-    if (original.startsWith('http')) return original;
-    return 'https://shikimori.io$original';
+    final absolute = original.startsWith('http')
+        ? original
+        : original.startsWith('//')
+        ? 'https:$original'
+        : 'https://shikimori.io$original';
+    return absolute == _failedUrl ? null : absolute;
   }
 
   @override
@@ -55,7 +68,7 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
     PosterFallbackService.instance.initialize().then((_) {
       if (mounted) setState(() {});
     });
-    if (_isKnownPlaceholder) _requestFallback();
+    if (_isKnownPlaceholder) unawaited(_requestFallback());
   }
 
   @override
@@ -64,61 +77,142 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
     if (oldWidget.animeId != widget.animeId ||
         oldWidget.imageUrl != widget.imageUrl) {
       _providerUrl = null;
-      _requestedFallback = false;
-      if (_isKnownPlaceholder) _requestFallback();
+      _failedUrl = null;
+      _fallbackExhausted = false;
+      _reportedUrl = null;
+      _networkDeadline?.cancel();
+      if (_isKnownPlaceholder) unawaited(_requestFallback());
     }
   }
 
-  Future<void> _requestFallback() async {
-    if (_requestedFallback) return;
-    _requestedFallback = true;
-    final url = await PosterFallbackService.instance.resolve(
-      shikimoriId: widget.animeId,
-      title: widget.title,
-      russianTitle: widget.russianTitle,
-    );
-    if (mounted && url != null) setState(() => _providerUrl = url);
+  @override
+  void dispose() {
+    _networkDeadline?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _requestFallback({bool retry = false}) async {
+    if (_resolvingFallback || (_fallbackExhausted && !retry)) return;
+    if (retry) {
+      await PosterFallbackService.instance.invalidate(widget.animeId);
+      _failedUrl = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _resolvingFallback = true;
+      _fallbackExhausted = false;
+    });
+    final url = await PosterFallbackService.instance
+        .resolve(
+          shikimoriId: widget.animeId,
+          title: widget.title,
+          russianTitle: widget.russianTitle,
+        )
+        .timeout(const Duration(seconds: 12), onTimeout: () => null);
+    if (!mounted) return;
+    setState(() {
+      _resolvingFallback = false;
+      if (url != null && url != _failedUrl) {
+        _providerUrl = url;
+      } else {
+        _fallbackExhausted = true;
+      }
+    });
+  }
+
+  void _armNetworkDeadline(String url) {
+    if (_networkDeadline?.isActive == true) return;
+    _networkDeadline = Timer(const Duration(seconds: 10), () {
+      if (mounted) _handleImageFailure(url);
+    });
+  }
+
+  void _handleImageFailure(String url) {
+    if (!mounted || _failedUrl == url) return;
+    _networkDeadline?.cancel();
+    PosterFallbackService.instance.markFailed(widget.animeId, url);
+    setState(() {
+      _failedUrl = url;
+      if (_providerUrl == url) _providerUrl = null;
+    });
+    unawaited(_requestFallback());
+  }
+
+  void _handleImageLoaded(String url) {
+    _networkDeadline?.cancel();
+    if (_reportedUrl == url) return;
+    _reportedUrl = url;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onResolved?.call(url);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final url = _displayUrl;
     if (url == null) {
-      _requestFallback();
-      return _placeholder(showProgress: _requestedFallback);
+      if (!_resolvingFallback && !_fallbackExhausted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_requestFallback());
+        });
+      }
+      return _placeholder(
+        showProgress: _resolvingFallback,
+        onRetry: _fallbackExhausted
+            ? () => unawaited(_requestFallback(retry: true))
+            : null,
+      );
     }
     return CachedNetworkImage(
       imageUrl: url,
+      cacheManager: AniMixMediaCache.posters,
       fit: widget.fit,
       alignment: widget.alignment,
       fadeInDuration: const Duration(milliseconds: 180),
-      placeholder: (_, _) => _placeholder(showProgress: true),
+      imageBuilder: (_, provider) {
+        _handleImageLoaded(url);
+        return Image(
+          image: provider,
+          fit: widget.fit,
+          alignment: widget.alignment,
+        );
+      },
+      placeholder: (_, _) {
+        _armNetworkDeadline(url);
+        return _placeholder(showProgress: true);
+      },
       errorWidget: (_, _, _) {
-        // Any provider image can expire or return a broken placeholder. Try
-        // the cached Yummy/AniLiberty poster once instead of leaving a grey
-        // block in lists such as Downloads.
-        _requestFallback();
-        return _placeholder(showProgress: false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleImageFailure(url);
+        });
+        return _placeholder(showProgress: _resolvingFallback);
       },
     );
   }
 
-  Widget _placeholder({required bool showProgress}) => DecoratedBox(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0x334F46E5), Color(0x332A153E), Color(0xFF17171C)],
-      ),
-    ),
-    child: Center(
-      child: showProgress
-          ? const CupertinoActivityIndicator(radius: 10)
-          : Icon(
-              CupertinoIcons.photo_on_rectangle,
-              color: Colors.white.withValues(alpha: 0.35),
-              size: 28,
-            ),
-    ),
-  );
+  Widget _placeholder({required bool showProgress, VoidCallback? onRetry}) =>
+      DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0x334F46E5), Color(0x332A153E), Color(0xFF17171C)],
+          ),
+        ),
+        child: Center(
+          child: showProgress
+              ? const CupertinoActivityIndicator(radius: 10)
+              : IconButton(
+                  tooltip: onRetry == null ? 'Обложка недоступна' : 'Повторить',
+                  onPressed: onRetry,
+                  icon: Icon(
+                    onRetry == null
+                        ? CupertinoIcons.photo_on_rectangle
+                        : CupertinoIcons.arrow_clockwise,
+                    color: Colors.white.withValues(alpha: 0.42),
+                    size: 26,
+                  ),
+                ),
+        ),
+      );
 }

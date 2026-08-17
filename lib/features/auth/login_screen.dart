@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -7,8 +8,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
+import '../../core/app_logging.dart';
 import '../../core/shikimori_auth_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
 
 class _LoginBackdrop extends StatelessWidget {
@@ -26,12 +29,22 @@ class _LoginBackdrop extends StatelessWidget {
   );
 }
 
-class LoginScreen extends HookConsumerWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  bool _busy = false;
+  bool _exchangeInFlight = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
     final authService = ref.watch(authServiceProvider);
+    final sessionNotice = ref.watch(sessionNoticeProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFF11101A),
@@ -47,6 +60,7 @@ class LoginScreen extends HookConsumerWidget {
                   child: AniMixSurface(
                     radius: 24,
                     elevated: true,
+                    blurred: true,
                     padding: const EdgeInsets.all(30),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -76,20 +90,37 @@ class LoginScreen extends HookConsumerWidget {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Вход и синхронизация списков Shikimori',
+                          'Списки, оценки и прогресс — в одном аккаунте',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white60, fontSize: 16),
                         ),
+                        if (sessionNotice != null || _error != null) ...[
+                          const SizedBox(height: 20),
+                          _LoginNotice(
+                            message: _error ?? sessionNotice!,
+                            isError: _error != null,
+                          ),
+                        ],
                         const SizedBox(height: 30),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: () =>
-                                _handleLogin(context, ref, authService),
-                            icon: const Icon(
-                              CupertinoIcons.person_crop_circle_fill,
+                            onPressed: _busy
+                                ? null
+                                : () => _handleLogin(context, ref, authService),
+                            icon: _busy
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CupertinoActivityIndicator(),
+                                  )
+                                : const Icon(
+                                    CupertinoIcons.person_crop_circle_fill,
+                                  ),
+                            label: Text(
+                              _busy
+                                  ? 'Подключаем аккаунт…'
+                                  : 'Войти через Shikimori',
                             ),
-                            label: const Text('Войти через Shikimori'),
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(54),
                               shape: RoundedRectangleBorder(
@@ -100,8 +131,13 @@ class LoginScreen extends HookConsumerWidget {
                         ),
                         const SizedBox(height: 8),
                         TextButton(
-                          onPressed: () =>
-                              _showManualCodeDialog(context, ref, authService),
+                          onPressed: _busy
+                              ? null
+                              : () => _showManualCodeDialog(
+                                  context,
+                                  ref,
+                                  authService,
+                                ),
                           child: const Text('Ввести код вручную'),
                         ),
                       ],
@@ -124,15 +160,17 @@ class LoginScreen extends HookConsumerWidget {
   ) async {
     final clientId = Config.shikimoriClientId;
     if (clientId.isEmpty) {
-      _showErrorDialog(context, 'Не настроен идентификатор Shikimori.');
+      setState(() => _error = 'Не настроен идентификатор Shikimori.');
       return;
     }
+    setState(() => _error = null);
 
     if (Platform.isIOS || Platform.isAndroid) {
       // 📱 МОБИЛКИ: Встроенный WebView
+      final redirectUri = Config.shikimoriRedirectUri;
       final authUrl = Uri.https('shikimori.io', '/oauth/authorize', {
         'client_id': clientId,
-        'redirect_uri': 'https://animix.app/callback',
+        'redirect_uri': redirectUri,
         'response_type': 'code',
         'scope': 'user_rates comments topics',
       }).toString();
@@ -145,17 +183,17 @@ class LoginScreen extends HookConsumerWidget {
       );
 
       if (code != null && code.isNotEmpty && context.mounted) {
-        _performTokenExchange(
+        await _performTokenExchange(
           context,
           ref,
           authService,
           code,
-          'https://animix.app/callback',
+          redirectUri,
         );
       }
     } else {
       // 💻 ПК (Windows): Запускаем умный локальный сервер
-      _startDesktopAuth(context, ref, authService, clientId);
+      await _startDesktopAuth(context, ref, authService, clientId);
     }
   }
 
@@ -166,7 +204,9 @@ class LoginScreen extends HookConsumerWidget {
     ShikimoriAuthService authService,
     String clientId,
   ) async {
-    final redirectUri = 'http://localhost:33333/callback';
+    if (mounted) setState(() => _busy = true);
+    final redirectUri = Config.shikimoriDesktopRedirectUri;
+    final callbackUri = Uri.parse(redirectUri);
     final authUri = Uri.https('shikimori.io', '/oauth/authorize', {
       'client_id': clientId,
       'redirect_uri': redirectUri,
@@ -176,16 +216,32 @@ class LoginScreen extends HookConsumerWidget {
 
     HttpServer? server;
     try {
-      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 33333);
-    } catch (e) {
+      server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        callbackUri.port,
+      );
+    } catch (e, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        e,
+        stackTrace,
+        source: 'Desktop OAuth callback',
+      );
       debugPrint('Порт занят, сервер не запущен: $e');
     }
 
     if (server == null) {
+      if (mounted) setState(() => _busy = false);
       await services.Clipboard.setData(
         services.ClipboardData(text: authUri.toString()),
       );
-      if (context.mounted) _showManualCodeDialog(context, ref, authService);
+      if (context.mounted) {
+        _showManualCodeDialog(
+          context,
+          ref,
+          authService,
+          redirectUri: redirectUri,
+        );
+      }
       return;
     }
 
@@ -199,37 +255,58 @@ class LoginScreen extends HookConsumerWidget {
 
     if (!context.mounted) return;
 
-    showCupertinoDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Ожидание браузера'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 16.0),
-          child: Column(
-            children: [
-              CupertinoActivityIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Мы открыли браузер.\nАвторизуйся там, и приложение само подхватит твой аккаунт! ✨',
+    BuildContext? waitingDialogContext;
+    var waitingDialogOpen = true;
+    final timeout = Timer(const Duration(minutes: 3), () async {
+      await server?.close(force: true);
+      if (waitingDialogOpen && waitingDialogContext?.mounted == true) {
+        Navigator.of(waitingDialogContext!).pop();
+      }
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Время ожидания истекло. Запустите вход ещё раз.';
+        });
+      }
+    });
+    unawaited(
+      showCupertinoDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          waitingDialogContext = ctx;
+          return CupertinoAlertDialog(
+            title: const Text('Ожидание браузера'),
+            content: const Padding(
+              padding: EdgeInsets.only(top: 16.0),
+              child: Column(
+                children: [
+                  CupertinoActivityIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Завершите вход в браузере — AniMix подхватит аккаунт автоматически.',
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('Отмена'),
+                onPressed: () async {
+                  timeout.cancel();
+                  await server?.close(force: true);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) setState(() => _busy = false);
+                },
               ),
             ],
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('Отмена'),
-            onPressed: () {
-              server?.close(force: true);
-              Navigator.pop(ctx);
-            },
-          ),
-        ],
-      ),
+          );
+        },
+      ).whenComplete(() => waitingDialogOpen = false),
     );
 
     await for (HttpRequest request in server) {
-      if (request.uri.path == '/callback') {
+      if (request.uri.path == callbackUri.path) {
         final code = request.uri.queryParameters['code'];
 
         request.response
@@ -259,14 +336,29 @@ class LoginScreen extends HookConsumerWidget {
           ''');
         await request.response.close();
         await server.close(force: true);
+        timeout.cancel();
 
-        if (context.mounted && code != null) {
-          Navigator.pop(context);
-          _performTokenExchange(context, ref, authService, code, redirectUri);
+        if (waitingDialogOpen && waitingDialogContext?.mounted == true) {
+          Navigator.of(waitingDialogContext!).pop();
+        }
+        if (context.mounted && code?.isNotEmpty == true) {
+          await _performTokenExchange(
+            context,
+            ref,
+            authService,
+            code!,
+            redirectUri,
+          );
+        } else if (mounted) {
+          setState(() {
+            _busy = false;
+            _error = 'Shikimori не вернул код авторизации. Повторите вход.';
+          });
         }
         break;
       }
     }
+    timeout.cancel();
   }
 
   // ===================== ОБМЕН КОДА НА ТОКЕНЫ =====================
@@ -277,30 +369,40 @@ class LoginScreen extends HookConsumerWidget {
     String code, [
     String? redirectUri,
   ]) async {
-    showCupertinoDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CupertinoActivityIndicator(radius: 20)),
-    );
-
+    if (_exchangeInFlight) return;
+    setState(() {
+      _busy = true;
+      _exchangeInFlight = true;
+      _error = null;
+    });
     try {
       final success = await authService.login(code, redirectUri);
-
-      if (context.mounted) {
-        Navigator.pop(context);
-
-        if (success) {
-          // Инвалидируем провайдер (ref теперь передан и доступен)
-          ref.invalidate(isLoggedInProvider);
-        } else {
-          _showErrorDialog(context, 'Не удалось авторизоваться.');
-        }
+      if (!mounted) return;
+      if (success) {
+        ref.read(sessionNoticeProvider.notifier).clear();
+        ref.read(userDataRevisionProvider.notifier).bump();
+        ref.invalidate(currentUserProvider);
+        ref.invalidate(isLoggedInProvider);
+      } else {
+        setState(() {
+          _busy = false;
+          _exchangeInFlight = false;
+          _error =
+              'Не удалось авторизоваться. Проверьте соединение и повторите.';
+        });
       }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.pop(context);
-        _showErrorDialog(context, e.toString());
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Shikimori login',
+      );
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _exchangeInFlight = false;
+          _error = 'Ошибка входа. Подробности сохранены в диагностике.';
+        });
       }
     }
   }
@@ -309,8 +411,9 @@ class LoginScreen extends HookConsumerWidget {
   void _showManualCodeDialog(
     BuildContext context,
     WidgetRef ref,
-    ShikimoriAuthService authService,
-  ) {
+    ShikimoriAuthService authService, {
+    String? redirectUri,
+  }) {
     final controller = TextEditingController();
 
     showCupertinoDialog(
@@ -363,7 +466,13 @@ class LoginScreen extends HookConsumerWidget {
               Navigator.pop(dialogContext);
               final code = controller.text.trim();
               if (code.isNotEmpty) {
-                _performTokenExchange(context, ref, authService, code);
+                _performTokenExchange(
+                  context,
+                  ref,
+                  authService,
+                  code,
+                  redirectUri,
+                );
               }
             },
           ),
@@ -371,22 +480,45 @@ class LoginScreen extends HookConsumerWidget {
       ),
     );
   }
+}
 
-  void _showErrorDialog(BuildContext context, String message) {
-    showCupertinoDialog(
-      context: context,
-      builder: (errorContext) => CupertinoAlertDialog(
-        title: const Text('Ошибка'),
-        content: Text(message),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('OK'),
-            onPressed: () => Navigator.pop(errorContext),
+class _LoginNotice extends StatelessWidget {
+  const _LoginNotice({required this.message, required this.isError});
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color:
+          (isError ? CupertinoColors.systemRed : CupertinoColors.systemOrange)
+              .withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          isError
+              ? CupertinoIcons.exclamationmark_circle_fill
+              : CupertinoIcons.info_circle_fill,
+          size: 19,
+          color: isError
+              ? CupertinoColors.systemRed
+              : CupertinoColors.systemOrange,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(fontSize: 13, height: 1.3),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
 // ===================== ВСТРОЕННЫЙ БРАУЗЕР ДЛЯ МОБИЛОК =====================
@@ -401,6 +533,14 @@ class ShikimoriWebViewScreen extends StatefulWidget {
 class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
+  bool _completed = false;
+
+  void _complete(String url) {
+    if (_completed || !mounted) return;
+    _completed = true;
+    final uri = Uri.tryParse(url);
+    Navigator.of(context).pop(uri?.queryParameters['code'] ?? '');
+  }
 
   @override
   void initState() {
@@ -418,15 +558,12 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
           onUrlChange: (UrlChange change) {
             final url = change.url;
             if (url != null && url.startsWith('https://animix.app/callback')) {
-              final uri = Uri.parse(url);
-              final code = uri.queryParameters['code'];
-              Navigator.pop(context, code ?? '');
+              _complete(url);
             }
           },
           onNavigationRequest: (request) {
             if (request.url.startsWith('https://animix.app/callback')) {
-              final uri = Uri.parse(request.url);
-              Navigator.pop(context, uri.queryParameters['code'] ?? '');
+              _complete(request.url);
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;

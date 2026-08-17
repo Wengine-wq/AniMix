@@ -1,15 +1,18 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../core/animix_theme.dart';
 
-class AniMixSurface extends StatelessWidget {
+class AniMixSurface extends StatefulWidget {
   const AniMixSurface({
     required this.child,
     this.padding = EdgeInsets.zero,
-    this.radius = 22,
+    this.radius = 20,
     this.onTap,
     this.selected = false,
     this.elevated = false,
+    this.blurred = false,
     super.key,
   });
 
@@ -20,48 +23,105 @@ class AniMixSurface extends StatelessWidget {
   final bool selected;
   final bool elevated;
 
+  /// Enables a real backdrop blur for transient/floating chrome only.
+  ///
+  /// Content cards deliberately keep this disabled: multiple backdrop filters
+  /// in scrolling lists are both visually muddy and expensive to repaint.
+  final bool blurred;
+
+  @override
+  State<AniMixSurface> createState() => _AniMixSurfaceState();
+}
+
+class _AniMixSurfaceState extends State<AniMixSurface> {
+  bool _hovered = false;
+
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     final scheme = Theme.of(context).colorScheme;
-    final content = AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: padding,
+    final translucent = AniMixTheme.isTranslucent(context);
+    final surfaceColor = widget.selected
+        ? Color.alphaBlend(
+            accent.withValues(alpha: 0.12),
+            widget.elevated ? scheme.surfaceContainerHigh : scheme.surface,
+          )
+        : widget.elevated
+        ? scheme.surfaceContainerHigh
+        : scheme.surface;
+    final decorated = AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: widget.padding,
+      transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
+      transformAlignment: Alignment.center,
       decoration: BoxDecoration(
-        color: selected
-            ? Color.alphaBlend(
-                accent.withValues(alpha: 0.12),
-                elevated ? scheme.surfaceContainerHigh : scheme.surface,
-              )
-            : elevated
-            ? scheme.surfaceContainerHigh
-            : scheme.surface,
-        borderRadius: BorderRadius.circular(radius),
+        color: translucent
+            ? surfaceColor.withValues(alpha: widget.elevated ? .82 : .72)
+            : surfaceColor,
+        borderRadius: BorderRadius.circular(widget.radius),
         border: Border.all(
-          color: selected
-              ? accent.withValues(alpha: 0.38)
-              : AniMixTheme.divider,
+          color: widget.selected
+              ? accent.withValues(alpha: 0.30)
+              : translucent
+              ? scheme.onSurface.withValues(alpha: widget.elevated ? .12 : .065)
+              : scheme.outlineVariant.withValues(alpha: .42),
         ),
-        boxShadow: elevated
-            ? const [
+        boxShadow: widget.elevated || _hovered
+            ? [
                 BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 20,
-                  offset: Offset(0, 8),
+                  color: Colors.black.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.dark
+                        ? (_hovered ? .24 : .13)
+                        : (_hovered ? .15 : .08),
+                  ),
+                  blurRadius: _hovered ? 34 : 24,
+                  offset: Offset(0, _hovered ? 13 : 8),
                 ),
+                if (translucent)
+                  BoxShadow(
+                    color: accent.withValues(alpha: _hovered ? .12 : .06),
+                    blurRadius: _hovered ? 30 : 20,
+                    offset: const Offset(0, 8),
+                  ),
               ]
             : null,
       ),
-      child: child,
+      child: widget.child,
     );
-    if (onTap == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(radius),
-        onTap: onTap,
-        child: content,
-      ),
+    final content = ClipRRect(
+      borderRadius: BorderRadius.circular(widget.radius),
+      child: translucent && (widget.blurred || widget.elevated)
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 13, sigmaY: 13),
+              child: decorated,
+            )
+          : decorated,
+    );
+    final interactive = widget.onTap == null
+        ? content
+        : Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(widget.radius),
+              onTap: widget.onTap,
+              child: content,
+            ),
+          );
+    return MouseRegion(
+      cursor: widget.onTap == null
+          ? MouseCursor.defer
+          : SystemMouseCursors.click,
+      onEnter: (_) {
+        if ((widget.onTap != null || widget.elevated || translucent) &&
+            mounted) {
+          setState(() => _hovered = true);
+        }
+      },
+      onExit: (_) {
+        if (_hovered && mounted) setState(() => _hovered = false);
+      },
+      child: interactive,
     );
   }
 }
@@ -83,19 +143,32 @@ class AniMixPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final translucent = AniMixTheme.isTranslucent(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.alphaBlend(
-              theme.colorScheme.primary.withValues(alpha: .035),
-              theme.colorScheme.surfaceContainer,
-            ),
-            theme.scaffoldBackgroundColor,
-          ],
-          stops: [0, 0.38],
+          begin: translucent ? Alignment.topLeft : Alignment.topCenter,
+          end: translucent ? Alignment.bottomRight : Alignment.bottomCenter,
+          colors: translucent
+              ? [
+                  Color.alphaBlend(
+                    theme.colorScheme.primary.withValues(alpha: .16),
+                    theme.scaffoldBackgroundColor,
+                  ),
+                  Color.alphaBlend(
+                    theme.colorScheme.tertiary.withValues(alpha: .07),
+                    theme.scaffoldBackgroundColor,
+                  ),
+                  theme.scaffoldBackgroundColor,
+                ]
+              : [
+                  Color.alphaBlend(
+                    theme.colorScheme.primary.withValues(alpha: .025),
+                    theme.colorScheme.surfaceContainer,
+                  ),
+                  theme.scaffoldBackgroundColor,
+                ],
+          stops: translucent ? const [0, .42, 1] : const [0, 0.38],
         ),
       ),
       child: Scaffold(
@@ -104,13 +177,15 @@ class AniMixPage extends StatelessWidget {
           title: Text(title),
           leading: leading,
           actions: actions,
-          toolbarHeight: 64,
+          toolbarHeight: 72,
         ),
         body: SafeArea(
           top: false,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
+              constraints: const BoxConstraints(
+                maxWidth: AniMixLayout.contentMaxWidth,
+              ),
               child: child,
             ),
           ),
@@ -137,14 +212,18 @@ class AniMixIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final button = Material(
-      color: const Color(0xD91A1A20),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
       shape: const CircleBorder(side: BorderSide(color: Color(0x26FFFFFF))),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onPressed,
         child: SizedBox.square(
           dimension: size,
-          child: Icon(icon, size: size * .44, color: Colors.white),
+          child: Icon(
+            icon,
+            size: size * .44,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
     );
@@ -166,14 +245,22 @@ class AniMixMetadataPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = accent ? Theme.of(context).colorScheme.primary : Colors.white;
+    final color = accent
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
-        color: accent ? color.withValues(alpha: .14) : const Color(0xD91A1A20),
+        color: accent
+            ? color.withValues(alpha: .12)
+            : Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: accent ? color.withValues(alpha: .42) : AniMixTheme.divider,
+          color: accent
+              ? color.withValues(alpha: .42)
+              : Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: .55),
         ),
       ),
       child: Row(
@@ -218,7 +305,7 @@ class AniMixSectionHeader extends StatelessWidget {
     children: [
       if (icon != null) ...[
         Icon(icon, color: Theme.of(context).colorScheme.primary, size: 22),
-        const SizedBox(width: 9),
+        const SizedBox(width: AniMixSpacing.sm),
       ],
       Expanded(
         child: Column(
@@ -226,20 +313,22 @@ class AniMixSectionHeader extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 21,
                 letterSpacing: -.45,
                 fontWeight: FontWeight.w800,
+                height: 1.18,
               ),
             ),
             if (subtitle?.isNotEmpty == true) ...[
-              const SizedBox(height: 3),
+              const SizedBox(height: AniMixSpacing.xs),
               Text(
                 subtitle!,
-                style: const TextStyle(
-                  color: AniMixTheme.subtleText,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
+                  height: 1.35,
                 ),
               ),
             ],
@@ -272,13 +361,13 @@ class AniMixEmptyState extends StatelessWidget {
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 380),
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(AniMixSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: 58,
+              height: 58,
               decoration: BoxDecoration(
                 color: Theme.of(
                   context,
@@ -288,26 +377,26 @@ class AniMixEmptyState extends StatelessWidget {
               child: Icon(
                 icon,
                 color: Theme.of(context).colorScheme.primary,
-                size: 28,
+                size: 25,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: AniMixSpacing.lg),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AniMixSpacing.sm),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AniMixTheme.subtleText,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.45,
               ),
             ),
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: AniMixSpacing.lg),
               FilledButton(onPressed: onAction, child: Text(actionLabel!)),
             ],
           ],

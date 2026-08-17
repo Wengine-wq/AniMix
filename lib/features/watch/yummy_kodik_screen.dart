@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -9,6 +11,7 @@ import 'kodik_webview_screen.dart';
 import 'watch_player_screen.dart';
 import 'watch_storage.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 import 'services/episode_action_service.dart';
 import 'widgets/episode_collection_view.dart';
 
@@ -62,6 +65,11 @@ Future<void> launchKodikPlayer(
 
   // Let the platform view detach before FVP claims the native texture.
   await WidgetsBinding.instance.endOfFrame;
+  if (Platform.isWindows) {
+    // WebView2 releases its composition surface asynchronously. One frame is
+    // not always enough before FVP requests a D3D texture of its own.
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+  }
   if (!context.mounted) return;
 
   // WebView2/WebKit must be fully removed before the native video surface is
@@ -278,7 +286,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
         ),
       ],
       child: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AniMixEpisodeListSkeleton()
           : errorMessage != null
           ? _buildErrorState()
           : candidates != null

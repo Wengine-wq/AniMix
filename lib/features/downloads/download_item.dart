@@ -35,12 +35,13 @@ class DownloadItem {
     String? localPath,
     int? fileSizeBytes,
     String? error,
+    String? posterUrl,
   }) => DownloadItem(
     episodeId: episodeId,
     animeId: animeId,
     animeTitle: animeTitle,
     episodeName: episodeName,
-    posterUrl: posterUrl,
+    posterUrl: posterUrl ?? this.posterUrl,
     quality: quality,
     sourceUrl: sourceUrl,
     progress: progress ?? this.progress,
@@ -73,7 +74,7 @@ class DownloadItem {
       animeId: int.tryParse(json['animeId']?.toString() ?? '') ?? parsedAnimeId,
       animeTitle: json['animeTitle']?.toString() ?? '',
       episodeName: json['episodeName']?.toString() ?? '',
-      posterUrl: json['posterUrl']?.toString(),
+      posterUrl: normalizePosterUrl(json['posterUrl']?.toString()),
       quality: json['quality']?.toString() ?? 'Авто',
       sourceUrl: json['sourceUrl']?.toString(),
       progress: (json['progress'] as num?)?.toDouble() ?? 0,
@@ -85,5 +86,16 @@ class DownloadItem {
       fileSizeBytes: (json['fileSizeBytes'] as num?)?.toInt(),
       error: json['error']?.toString(),
     );
+  }
+
+  static String? normalizePosterUrl(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('//')) return 'https:$value';
+    if (value.startsWith('/system/')) return 'https://shikimori.io$value';
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.isAbsolute) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    return uri.toString();
   }
 }

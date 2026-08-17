@@ -7,6 +7,7 @@ import 'package:animix/features/home/home_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/providers/auth_provider.dart';
 import 'package:animix/providers/user_provider.dart';
+import 'package:animix/widgets/animix_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -57,6 +58,37 @@ void main() {
     await tester.drag(find.byType(ListView).last, const Offset(0, -500));
     await tester.pumpAndSettle();
     expect(find.text('ТЕМА ИНТЕРФЕЙСА'), findsOneWidget);
+    expect(find.text('Воздух'), findsOneWidget);
+  });
+
+  testWidgets('translucent theme blurs only explicitly floating surfaces', (
+    tester,
+  ) async {
+    final theme = AniMixTheme.material(
+      const Color(0xFF64D2FF),
+      AniMixThemeStyle.translucent,
+    );
+    await pumpAt(
+      tester,
+      MaterialApp(
+        theme: theme,
+        home: const AniMixPage(
+          title: 'Воздух',
+          child: Center(
+            child: AniMixSurface(
+              elevated: true,
+              blurred: true,
+              child: Text('Карточка'),
+            ),
+          ),
+        ),
+      ),
+      const Size(390, 844),
+    );
+
+    expect(theme.extension<AniMixVisualStyle>()?.translucent, isTrue);
+    expect(find.byType(BackdropFilter), findsWidgets);
+    expect(find.text('Карточка'), findsOneWidget);
   });
 
   testWidgets('bookmarks auth state does not overflow on mobile', (

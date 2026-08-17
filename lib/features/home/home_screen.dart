@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -11,9 +10,9 @@ import '../../core/app_settings.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
-import '../profile/profile_screen.dart';
 import '../recommendation/recommendation_screen.dart';
 
 class HomeData {
@@ -186,11 +185,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               SliverToBoxAdapter(child: _DashboardHeader(user: user)),
               ...data.when(
                 loading: () => const [
-                  SliverFillRemaining(
-                    child: Center(
-                      child: CupertinoActivityIndicator(radius: 15),
-                    ),
-                  ),
+                  SliverToBoxAdapter(child: AniMixHomeSkeleton()),
                 ],
                 error: (_, _) => [
                   SliverFillRemaining(
@@ -271,7 +266,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         hasMore: _catalogHasMore,
         onRetry: _loadMore,
       ),
-    const SliverToBoxAdapter(child: SizedBox(height: 42)),
+    const SliverToBoxAdapter(child: SizedBox(height: 56)),
   ];
 }
 
@@ -283,31 +278,36 @@ class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1180),
+      constraints: const BoxConstraints(maxWidth: AniMixLayout.contentMaxWidth),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+        padding: const EdgeInsets.fromLTRB(
+          AniMixLayout.pageInset,
+          AniMixSpacing.md,
+          AniMixLayout.pageInset,
+          AniMixSpacing.lg,
+        ),
         child: Row(
           children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Добро пожаловать',
                     style: TextStyle(
-                      color: AniMixTheme.subtleText,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: AniMixSpacing.xs),
                   Text(
                     user?.nickname?.toString().isNotEmpty == true
                         ? user.nickname
                         : 'в AniMix',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 31,
                       height: 1.05,
                       letterSpacing: -.9,
@@ -329,36 +329,6 @@ class _DashboardHeader extends StatelessWidget {
                   heightFactor: .94,
                   child: _HomeSearchSheet(),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                CupertinoPageRoute<void>(builder: (_) => const ProfileScreen()),
-              ),
-              child: Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0x66FFFFFF)),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: user?.imageUrl?.toString().isNotEmpty == true
-                    ? CachedNetworkImage(
-                        imageUrl: user.imageUrl,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, _, _) => const Icon(
-                          CupertinoIcons.person_crop_circle_fill,
-                          color: Colors.white54,
-                        ),
-                      )
-                    : const Icon(
-                        CupertinoIcons.person_crop_circle_fill,
-                        color: Colors.white54,
-                      ),
               ),
             ),
           ],
@@ -391,22 +361,105 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       final desktop = constraints.maxWidth >= 760;
       return SizedBox(
         height: desktop ? 350 : 228,
-        child: PageView.builder(
-          controller: _controller,
-          physics: const BouncingScrollPhysics(),
-          itemCount: widget.items.length,
-          itemBuilder: (context, index) => Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _controller,
+              physics: const BouncingScrollPhysics(),
+              itemCount: widget.items.length,
+              itemBuilder: (context, index) => AnimatedBuilder(
+                animation: _controller,
                 child: _HeroCard(anime: widget.items[index]),
+                builder: (context, child) {
+                  final page = _controller.hasClients
+                      ? (_controller.page ?? _controller.initialPage.toDouble())
+                      : _controller.initialPage.toDouble();
+                  final distance = (page - index).clamp(-1.0, 1.0);
+                  return Transform.scale(
+                    scale: 1 - distance.abs() * .025,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: _HeroMotionScope(
+                            pageOffset: distance,
+                            child: child!,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-          ),
+            Positioned(
+              top: 14,
+              right: 28,
+              child: _CarouselSignal(
+                controller: _controller,
+                itemCount: widget.items.length,
+              ),
+            ),
+          ],
         ),
       );
     },
+  );
+}
+
+class _HeroMotionScope extends InheritedWidget {
+  const _HeroMotionScope({required this.pageOffset, required super.child});
+
+  final double pageOffset;
+
+  static double of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<_HeroMotionScope>()
+          ?.pageOffset ??
+      0;
+
+  @override
+  bool updateShouldNotify(_HeroMotionScope oldWidget) =>
+      pageOffset != oldWidget.pageOffset;
+}
+
+class _CarouselSignal extends StatelessWidget {
+  const _CarouselSignal({required this.controller, required this.itemCount});
+
+  final PageController controller;
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Позиция в подборке',
+    child: IgnorePointer(
+      child: Container(
+        width: 72,
+        height: 4,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: .34),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        alignment: Alignment.centerLeft,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final page = controller.hasClients
+                ? (controller.page ?? controller.initialPage.toDouble())
+                : controller.initialPage.toDouble();
+            final progress = itemCount <= 1
+                ? 1.0
+                : ((page + 1) / itemCount).clamp(0.0, 1.0);
+            return FractionallySizedBox(
+              widthFactor: progress,
+              child: ColoredBox(color: Theme.of(context).colorScheme.primary),
+            );
+          },
+        ),
+      ),
+    ),
   );
 }
 
@@ -415,99 +468,108 @@ class _HeroCard extends StatelessWidget {
   final ShikimoriAnime anime;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () => _openAnime(context, anime.id),
-    child: Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x47000000),
-            blurRadius: 22,
-            offset: Offset(0, 9),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final imageHeight = constraints.maxHeight * .64;
-          return Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                height: imageHeight,
-                child: SmartAnimePoster(
-                  animeId: anime.id,
-                  imageUrl: anime.imageUrl,
-                  title: anime.name ?? '',
-                  russianTitle: anime.russian,
-                  alignment: Alignment.topCenter,
+  Widget build(BuildContext context) {
+    final pageOffset = _HeroMotionScope.of(context);
+    return GestureDetector(
+      onTap: () => _openAnime(context, anime.id),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x47000000),
+              blurRadius: 22,
+              offset: Offset(0, 9),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final imageHeight = constraints.maxHeight * .64;
+            return Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: imageHeight,
+                  child: Transform.translate(
+                    offset: Offset(-pageOffset * 14, 0),
+                    child: Transform.scale(
+                      scale: 1.035,
+                      child: SmartAnimePoster(
+                        animeId: anime.id,
+                        imageUrl: anime.imageUrl,
+                        title: anime.name ?? '',
+                        russianTitle: anime.russian,
+                        alignment: Alignment.topCenter,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xF5000000),
-                        Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: .52),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xF5000000),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .52),
+                        ],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '◉  СЕЙЧАС ВЫХОДИТ',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                anime.russian ?? anime.name ?? 'Без названия',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  height: 1.05,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if ((anime.score ?? 0) > 0)
+                          AniMixMetadataPill(
+                            label: '★ ${anime.score!.toStringAsFixed(1)}',
+                          ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          CupertinoIcons.chevron_right,
+                          color: Colors.white,
+                          size: 16,
+                        ),
                       ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '◉  СЕЙЧАС ВЫХОДИТ',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              anime.russian ?? anime.name ?? 'Без названия',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                height: 1.05,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if ((anime.score ?? 0) > 0)
-                        AniMixMetadataPill(
-                          label: '★ ${anime.score!.toStringAsFixed(1)}',
-                        ),
-                      const SizedBox(width: 8),
-                      const Icon(
-                        CupertinoIcons.chevron_right,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ],
-                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _DiscoveryStrip extends StatelessWidget {
@@ -565,17 +627,25 @@ class _DiscoveryStrip extends StatelessWidget {
     ];
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1180),
+        constraints: const BoxConstraints(
+          maxWidth: AniMixLayout.contentMaxWidth,
+        ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 2),
+          padding: const EdgeInsets.fromLTRB(
+            AniMixLayout.pageInset,
+            AniMixSpacing.xl,
+            AniMixLayout.pageInset,
+            AniMixSpacing.xs,
+          ),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 760 ? 4 : 2;
               final width =
-                  (constraints.maxWidth - (columns - 1) * 10) / columns;
+                  (constraints.maxWidth - (columns - 1) * AniMixSpacing.md) /
+                  columns;
               return Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: AniMixSpacing.md,
+                runSpacing: AniMixSpacing.md,
                 children: items
                     .map((item) => SizedBox(width: width, child: item))
                     .toList(),
@@ -609,7 +679,7 @@ class _Shortcut extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.all(13),
+        padding: const EdgeInsets.all(AniMixSpacing.md),
         decoration: BoxDecoration(
           gradient: LinearGradient(colors: colors),
           borderRadius: BorderRadius.circular(20),
@@ -626,7 +696,7 @@ class _Shortcut extends StatelessWidget {
               ),
               child: Icon(icon, size: 18),
             ),
-            const SizedBox(width: 11),
+            const SizedBox(width: AniMixSpacing.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,13 +708,13 @@ class _Shortcut extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: AniMixSpacing.xxs),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AniMixTheme.subtleText,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -674,15 +744,19 @@ class _AnimeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 28),
+    padding: const EdgeInsets.only(top: 36),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1180),
+            constraints: const BoxConstraints(
+              maxWidth: AniMixLayout.contentMaxWidth,
+            ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AniMixLayout.pageInset,
+              ),
               child: AniMixSectionHeader(
                 title: title,
                 subtitle: subtitle,
@@ -691,15 +765,18 @@ class _AnimeSection extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 13),
+        const SizedBox(height: AniMixSpacing.md),
         SizedBox(
           height: 282,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AniMixLayout.pageInset,
+              vertical: 6,
+            ),
             itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            separatorBuilder: (_, _) => const SizedBox(width: AniMixSpacing.md),
             itemBuilder: (context, index) => _PosterCard(anime: items[index]),
           ),
         ),
@@ -775,7 +852,10 @@ class _PosterCard extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             anime.status == 'ongoing' ? 'TV · выходит' : 'TV',
-            style: const TextStyle(color: AniMixTheme.subtleText, fontSize: 10),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -865,11 +945,13 @@ class _AllAnimeGrid extends StatelessWidget {
                         ? const Center(child: CupertinoActivityIndicator())
                         : hasMore
                         ? const SizedBox(height: 36)
-                        : const Center(
+                        : Center(
                             child: Text(
                               'Вы дошли до конца каталога',
                               style: TextStyle(
-                                color: AniMixTheme.subtleText,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -896,7 +978,11 @@ class _LayoutSwitch extends StatelessWidget {
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: AniMixTheme.divider),
+      border: Border.all(
+        color: Theme.of(
+          context,
+        ).colorScheme.outlineVariant.withValues(alpha: .55),
+      ),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -951,7 +1037,7 @@ class _LayoutButton extends StatelessWidget {
           size: 17,
           color: selected
               ? Theme.of(context).colorScheme.primary
-              : AniMixTheme.subtleText,
+              : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
     ),
@@ -999,8 +1085,8 @@ class _AnimeListRow extends StatelessWidget {
                   anime.name!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AniMixTheme.subtleText,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -1021,9 +1107,9 @@ class _AnimeListRow extends StatelessWidget {
             ],
           ),
         ),
-        const Icon(
+        Icon(
           CupertinoIcons.chevron_right,
-          color: Colors.white30,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           size: 15,
         ),
       ],
@@ -1116,7 +1202,7 @@ class _HomeSearchSheetState extends ConsumerState<_HomeSearchSheet> {
           autofocus: true,
           placeholder: 'Название аниме',
           backgroundColor: Theme.of(context).colorScheme.surface,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           onChanged: _schedule,
           onSubmitted: (_) => _search(),
         ),

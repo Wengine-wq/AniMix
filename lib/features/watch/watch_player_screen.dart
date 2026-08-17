@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chewie/chewie.dart';
@@ -7,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../downloads/download_item.dart';
 import '../downloads/hls_download_manager.dart';
+import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
 import '../../core/config.dart';
 import 'watch_storage.dart';
@@ -44,6 +46,9 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   bool _isChangingQuality = false;
   bool _isWatched = false;
   int _lastSaveTime = 0;
+  int _initializationGeneration = 0;
+  bool _playerErrorHandled = false;
+  int? _actualVideoHeight;
   final Set<String> _failedSources = <String>{};
 
   String get _episodeId => '${widget.animeId}_${widget.episodeNumber}';
@@ -75,6 +80,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     Duration? position,
     bool autoPlay = true,
   }) async {
+    final generation = ++_initializationGeneration;
     if (source == null || source.isEmpty) {
       if (mounted) setState(() => _initError = 'Видео недоступно.');
       return;
@@ -89,7 +95,16 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
               uri,
               httpHeaders: Config.providerMediaHeaders,
             );
-      await controller.initialize().timeout(const Duration(seconds: 30));
+      await controller.initialize().timeout(
+        Duration(seconds: Platform.isWindows ? 14 : 28),
+        onTimeout: () => throw TimeoutException(
+          'Источник не ответил за ${Platform.isWindows ? 14 : 28} секунд',
+        ),
+      );
+      if (!mounted || generation != _initializationGeneration) {
+        await controller.dispose();
+        return;
+      }
       if (!controller.value.isInitialized ||
           controller.value.duration <= Duration.zero) {
         throw const FormatException('Плеер не получил метаданные потока');
@@ -104,6 +119,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
         await controller.seekTo(savedPosition);
       }
       controller.addListener(_onVideoProgress);
+      _playerErrorHandled = false;
 
       final chewie = ChewieController(
         videoPlayerController: controller,
@@ -138,11 +154,19 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
       setState(() {
         _videoController = controller;
         _chewieController = chewie;
+        _actualVideoHeight = _decodedHeight(controller!);
         _initError = null;
         _isChangingQuality = false;
       });
-    } catch (error) {
+    } catch (error, stackTrace) {
       await controller?.dispose();
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Windows player',
+        context:
+            'Не удалось открыть $_selectedQuality (${Uri.tryParse(source)?.host ?? 'unknown'})',
+      );
       _failedSources.add(source);
       final fallbackQuality = _sortedQualities().cast<String?>().firstWhere((
         quality,
@@ -150,7 +174,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
         final candidate = quality == null ? null : _sources[quality];
         return candidate != null && !_failedSources.contains(candidate);
       }, orElse: () => null);
-      if (mounted && fallbackQuality != null) {
+      final maxAttempts = Platform.isWindows ? 2 : 3;
+      if (mounted &&
+          generation == _initializationGeneration &&
+          fallbackQuality != null &&
+          _failedSources.length < maxAttempts) {
         debugPrint(
           '[AniMix player] $_selectedQuality failed, trying $fallbackQuality: $error',
         );
@@ -180,11 +208,13 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     final position = oldVideo?.value.position;
     final wasPlaying = oldVideo?.value.isPlaying ?? true;
     final selectedSource = _sources[quality];
+    _failedSources.clear();
     if (selectedSource != null) _failedSources.remove(selectedSource);
 
     setState(() {
       _selectedQuality = quality;
       _isChangingQuality = true;
+      _actualVideoHeight = null;
       _chewieController = null;
       _videoController = null;
     });
@@ -200,7 +230,28 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
 
   void _onVideoProgress() {
     final video = _videoController;
-    if (video == null || !video.value.isInitialized) return;
+    if (video == null) return;
+    if (video.value.hasError && !_playerErrorHandled) {
+      _playerErrorHandled = true;
+      final message = video.value.errorDescription ?? 'Неизвестная ошибка';
+      AppLogBuffer.instance.recordError(
+        StateError(message),
+        StackTrace.current,
+        source: 'Windows player',
+        context: 'Ошибка после запуска $_selectedQuality',
+      );
+      if (mounted) {
+        setState(() => _initError = 'Видеопоток прерван: $message');
+      }
+      return;
+    }
+    if (!video.value.isInitialized) return;
+    final decodedHeight = _decodedHeight(video);
+    if (decodedHeight != null &&
+        decodedHeight != _actualVideoHeight &&
+        mounted) {
+      setState(() => _actualVideoHeight = decodedHeight);
+    }
     final position = video.value.position;
     final duration = video.value.duration;
     if (duration.inSeconds == 0) return;
@@ -221,7 +272,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
       context: context,
       builder: (sheetContext) => CupertinoActionSheet(
         title: const Text('Качество видео'),
-        message: Text('Сейчас: $_selectedQuality'),
+        message: Text(
+          _actualVideoHeight == null
+              ? 'Сейчас: $_selectedQuality'
+              : 'Сейчас декодируется: ${_actualVideoHeight}p',
+        ),
         actions: [
           for (final quality in _sortedQualities())
             CupertinoActionSheetAction(
@@ -232,7 +287,21 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(quality),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(quality),
+                      const SizedBox(height: 3),
+                      Text(
+                        _qualityDescription(quality),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: CupertinoColors.systemGrey,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
                   if (quality == _selectedQuality) ...[
                     const SizedBox(width: 8),
                     const Icon(CupertinoIcons.check_mark, size: 17),
@@ -307,15 +376,41 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     return label == 'Авто' ? -1 : 0;
   }
 
+  static int? _decodedHeight(VideoPlayerController controller) {
+    final height = controller.value.size.height.round();
+    return height > 0 ? height : null;
+  }
+
+  String get _qualityBadge {
+    final actual = _actualVideoHeight;
+    if (actual == null) return _selectedQuality;
+    final requested = RegExp(r'(\d+)p').firstMatch(_selectedQuality)?.group(1);
+    if (requested == '$actual') return '${actual}p';
+    if (_selectedQuality == 'Авто' || requested == null) {
+      return 'Авто · ${actual}p';
+    }
+    return '$_selectedQuality → ${actual}p';
+  }
+
+  static String _qualityDescription(String quality) {
+    if (RegExp(r'\d+p', caseSensitive: false).hasMatch(quality)) {
+      return 'Фиксированная версия потока';
+    }
+    if (quality == 'Авто') return 'CDN меняет качество по скорости сети';
+    return 'Высота не указана источником';
+  }
+
   void _retryPlayer() {
     final source = _sources[_selectedQuality];
     if (source != null) _failedSources.remove(source);
+    _failedSources.clear();
     setState(() => _initError = null);
     _initPlayer(source);
   }
 
   @override
   void dispose() {
+    _initializationGeneration++;
     _videoController?.removeListener(_onVideoProgress);
     _chewieController?.dispose();
     _videoController?.dispose();
@@ -348,11 +443,34 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
             CupertinoButton(
               padding: const EdgeInsets.only(left: 7),
               onPressed: _sources.length > 1 ? _showSourceMenu : null,
-              child: Text(
-                _selectedQuality,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      CupertinoIcons.slider_horizontal_3,
+                      size: 15,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _qualityBadge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

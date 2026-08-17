@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_anime_detail.dart';
 import '../../models/shikimori_user.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/animix_media_viewer.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../data/comments_screen.dart';
 import '../watch/watch_provider_selection_screen.dart';
@@ -59,16 +60,9 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         _anime = detail;
         _duration = detail.duration?.toString();
         _rating = detail.rating;
-        _watching =
-            detail.statusStats['watching'] ?? detail.statusStats['Смотрю'] ?? 0;
-        _planned =
-            detail.statusStats['planned'] ??
-            detail.statusStats['В планах'] ??
-            0;
-        _completed =
-            detail.statusStats['completed'] ??
-            detail.statusStats['Просмотрено'] ??
-            0;
+        _watching = detail.statusStats['watching'] ?? 0;
+        _planned = detail.statusStats['planned'] ?? 0;
+        _completed = detail.statusStats['completed'] ?? 0;
         _loading = false;
       });
 
@@ -121,9 +115,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CupertinoActivityIndicator(radius: 15)),
-      );
+      return const AniMixDetailSkeletonScreen();
     }
     if (_anime == null) {
       return Scaffold(
@@ -337,8 +329,8 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         const SizedBox(height: 18),
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 34,
             height: 1.06,
             letterSpacing: -1.2,
@@ -349,8 +341,8 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           const SizedBox(height: 9),
           Text(
             original!,
-            style: const TextStyle(
-              color: AniMixTheme.subtleText,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 16,
               height: 1.3,
             ),
@@ -402,8 +394,12 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
       label: Text(_statusActionLabel(_currentStatus)),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(150, 52),
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: AniMixTheme.divider),
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        side: BorderSide(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: .65),
+        ),
         shape: const StadiumBorder(),
       ),
     );
@@ -420,8 +416,12 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
       label: const Text('Отзывы'),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(130, 52),
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: AniMixTheme.divider),
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        side: BorderSide(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: .65),
+        ),
         shape: const StadiumBorder(),
       ),
     );
@@ -572,7 +572,9 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                   child: LinearProgressIndicator(
                     minHeight: 7,
                     value: progress,
-                    backgroundColor: Colors.white10,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHigh,
                   ),
                 ),
               ],
@@ -606,14 +608,11 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         itemCount: _screenshots.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) => GestureDetector(
-          onTap: () => Navigator.push(
+          onTap: () => showAniMixMediaViewer(
             context,
-            CupertinoPageRoute<void>(
-              builder: (_) => _FullscreenGallery(
-                screenshots: _screenshots,
-                initialIndex: index,
-              ),
-            ),
+            images: _screenshots,
+            initialIndex: index,
+            title: 'Скриншот',
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(15),
@@ -725,7 +724,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                           : CupertinoIcons.circle,
                       color: status == option.$1
                           ? Theme.of(context).colorScheme.primary
-                          : Colors.white24,
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 const SizedBox(height: 10),
@@ -954,8 +953,8 @@ class _InfoGrid extends StatelessWidget {
                   children: [
                     Text(
                       item.$1,
-                      style: const TextStyle(
-                        color: AniMixTheme.subtleText,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
@@ -992,7 +991,10 @@ class _Stat extends StatelessWidget {
       const SizedBox(height: 3),
       Text(
         label,
-        style: const TextStyle(color: AniMixTheme.subtleText, fontSize: 11),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 11,
+        ),
       ),
     ],
   );
@@ -1047,61 +1049,6 @@ class _AnimeMiniCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    ),
-  );
-}
-
-class _FullscreenGallery extends StatefulWidget {
-  const _FullscreenGallery({
-    required this.screenshots,
-    required this.initialIndex,
-  });
-
-  final List<String> screenshots;
-  final int initialIndex;
-
-  @override
-  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
-}
-
-class _FullscreenGalleryState extends State<_FullscreenGallery> {
-  late final PageController _controller;
-  late int _index;
-
-  @override
-  void initState() {
-    super.initState();
-    _index = widget.initialIndex;
-    _controller = PageController(initialPage: _index);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
-    appBar: AppBar(
-      backgroundColor: Colors.black,
-      title: Text('${_index + 1} / ${widget.screenshots.length}'),
-    ),
-    body: PageView.builder(
-      controller: _controller,
-      itemCount: widget.screenshots.length,
-      onPageChanged: (value) => setState(() => _index = value),
-      itemBuilder: (context, index) => InteractiveViewer(
-        minScale: 0.7,
-        maxScale: 4,
-        child: Center(
-          child: CachedNetworkImage(
-            imageUrl: widget.screenshots[index],
-            fit: BoxFit.contain,
-          ),
-        ),
       ),
     ),
   );

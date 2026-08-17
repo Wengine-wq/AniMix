@@ -2,12 +2,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../core/animix_theme.dart';
 import '../../core/app_settings.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../auth/login_screen.dart';
@@ -143,8 +143,7 @@ class CatalogScreen extends ConsumerWidget {
           ),
           Expanded(
             child: async.when(
-              loading: () =>
-                  const Center(child: CupertinoActivityIndicator(radius: 15)),
+              loading: () => const AniMixCatalogSkeleton(),
               error: (error, _) => error is _BookmarksAuthRequired
                   ? AniMixEmptyState(
                       icon: CupertinoIcons.person_crop_circle_badge_exclam,
@@ -473,7 +472,10 @@ class _BookmarkCard extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             anime.kind?.toUpperCase() ?? 'TV',
-            style: const TextStyle(color: AniMixTheme.subtleText, fontSize: 10),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -539,9 +541,9 @@ class _BookmarkRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
+          Icon(
             CupertinoIcons.chevron_right,
-            color: Colors.white30,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             size: 15,
           ),
         ],

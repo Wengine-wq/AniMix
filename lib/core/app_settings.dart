@@ -22,9 +22,20 @@ enum AniMixContentLayout {
   final String label;
 }
 
+enum AniMixThemeMode {
+  system('Как в системе', 'Автоматически следует за iOS или Windows'),
+  dark('Тёмная', 'Глубокий фон и светлый текст'),
+  light('Светлая', 'Светлые поверхности и мягкие тени');
+
+  const AniMixThemeMode(this.label, this.description);
+  final String label;
+  final String description;
+}
+
 enum AniMixThemeStyle {
   graphite('Графит', 'Нейтральный тёмный интерфейс'),
   midnight('Полночь', 'Холодный сине-чёрный фон'),
+  translucent('Воздух', 'Полупрозрачные поверхности и мягкий свет'),
   oled('OLED', 'Чистый чёрный фон без подсветки');
 
   const AniMixThemeStyle(this.label, this.description);
@@ -40,12 +51,14 @@ class AppSettingsController extends ChangeNotifier {
   static const _layoutKey = 'appearance_layout_v1';
   static const _customAccentKey = 'appearance_custom_accent_v1';
   static const _themeStyleKey = 'appearance_theme_style_v1';
+  static const _themeModeKey = 'appearance_theme_mode_v1';
   static const _smartConnectionKey = 'watch_smart_connection_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
   Color? _customAccent;
   AniMixThemeStyle _themeStyle = AniMixThemeStyle.graphite;
+  AniMixThemeMode _themeMode = AniMixThemeMode.system;
   bool _smartConnectionEnabled = true;
   bool _initialized = false;
 
@@ -55,6 +68,7 @@ class AppSettingsController extends ChangeNotifier {
   bool get hasCustomAccent => _customAccent != null;
   AniMixContentLayout get contentLayout => _contentLayout;
   AniMixThemeStyle get themeStyle => _themeStyle;
+  AniMixThemeMode get themeMode => _themeMode;
   bool get smartConnectionEnabled => _smartConnectionEnabled;
 
   Future<void> initialize() async {
@@ -73,6 +87,10 @@ class AppSettingsController extends ChangeNotifier {
     _themeStyle = AniMixThemeStyle.values.firstWhere(
       (value) => value.name == prefs.getString(_themeStyleKey),
       orElse: () => AniMixThemeStyle.graphite,
+    );
+    _themeMode = AniMixThemeMode.values.firstWhere(
+      (value) => value.name == prefs.getString(_themeModeKey),
+      orElse: () => AniMixThemeMode.system,
     );
     _smartConnectionEnabled = prefs.getBool(_smartConnectionKey) ?? true;
     _initialized = true;
@@ -110,6 +128,14 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeStyleKey, value.name);
+  }
+
+  Future<void> setThemeMode(AniMixThemeMode value) async {
+    if (_themeMode == value) return;
+    _themeMode = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_themeModeKey, value.name);
   }
 
   Future<void> setSmartConnectionEnabled(bool value) async {

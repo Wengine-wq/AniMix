@@ -1,9 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/animix_theme.dart';
+import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
 import '../../core/poster_fallback_service.dart';
 import '../../core/secure_storage.dart';
@@ -56,7 +58,7 @@ class SettingsScreen extends ConsumerWidget {
                     color: settings.accentColor,
                     title: 'Оформление',
                     subtitle:
-                        '${settings.hasCustomAccent ? 'Свой цвет' : settings.accent.label} · ${settings.themeStyle.label}',
+                        '${settings.themeMode.label} · ${settings.hasCustomAccent ? 'Свой цвет' : settings.accent.label} · ${settings.themeStyle.label}',
                     onTap: () => _push(context, const _AppearanceScreen()),
                   ),
                   _SettingsRow(
@@ -81,6 +83,13 @@ class SettingsScreen extends ConsumerWidget {
               const _SettingsSectionLabel('Приложение'),
               _SettingsGroup(
                 children: [
+                  _SettingsRow(
+                    icon: CupertinoIcons.doc_text_search,
+                    color: const Color(0xFFFFA34D),
+                    title: 'Диагностика',
+                    subtitle: 'Ошибки приложения, которые можно скопировать',
+                    onTap: () => _push(context, const _DiagnosticsScreen()),
+                  ),
                   _SettingsRow(
                     icon: CupertinoIcons.info_circle_fill,
                     color: const Color(0xFF8D8D98),
@@ -147,6 +156,7 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (accepted != true) return;
     await SecureStorage.clear();
+    ref.read(sessionNoticeProvider.notifier).clear();
     ref.invalidate(isLoggedInProvider);
   }
 }
@@ -255,7 +265,9 @@ class _AppearanceScreen extends StatelessWidget {
                                 height: 13,
                                 width: 150,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
@@ -264,7 +276,10 @@ class _AppearanceScreen extends StatelessWidget {
                                 height: 9,
                                 width: 105,
                                 decoration: BoxDecoration(
-                                  color: Colors.white24,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant
+                                      .withValues(alpha: .38),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
@@ -341,6 +356,26 @@ class _AppearanceScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
+            const _SettingsSectionLabel('Яркость интерфейса'),
+            _SettingsGroup(
+              children: AniMixThemeMode.values
+                  .map(
+                    (mode) => _ChoiceRow(
+                      icon: switch (mode) {
+                        AniMixThemeMode.system =>
+                          CupertinoIcons.circle_lefthalf_fill,
+                        AniMixThemeMode.dark => CupertinoIcons.moon_fill,
+                        AniMixThemeMode.light => CupertinoIcons.sun_max_fill,
+                      },
+                      title: mode.label,
+                      subtitle: mode.description,
+                      selected: settings.themeMode == mode,
+                      onTap: () => settings.setThemeMode(mode),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 28),
             const _SettingsSectionLabel('Тема интерфейса'),
             _SettingsGroup(
               children: AniMixThemeStyle.values
@@ -351,6 +386,8 @@ class _AppearanceScreen extends StatelessWidget {
                           CupertinoIcons.circle_grid_hex_fill,
                         AniMixThemeStyle.midnight =>
                           CupertinoIcons.moon_stars_fill,
+                        AniMixThemeStyle.translucent =>
+                          CupertinoIcons.circle_grid_3x3_fill,
                         AniMixThemeStyle.oled =>
                           CupertinoIcons.circle_lefthalf_fill,
                       },
@@ -829,6 +866,140 @@ class _ConnectionScreenState extends State<_ConnectionScreen> {
       );
     },
   );
+}
+
+class _DiagnosticsScreen extends StatelessWidget {
+  const _DiagnosticsScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final logs = AppLogBuffer.instance;
+    return AnimatedBuilder(
+      animation: logs,
+      builder: (context, _) => AniMixPage(
+        title: 'Диагностика',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          children: [
+            AniMixSurface(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AniMixSectionHeader(
+                    title: 'Журнал ошибок',
+                    subtitle:
+                        'Токены и коды авторизации скрываются автоматически',
+                    icon: CupertinoIcons.exclamationmark_bubble_fill,
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(
+                              ClipboardData(text: logs.exportText()),
+                            );
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Диагностика скопирована'),
+                              ),
+                            );
+                          },
+                          icon: const Icon(CupertinoIcons.doc_on_clipboard),
+                          label: const Text('Скопировать'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton.filledTonal(
+                        tooltip: 'Очистить журнал',
+                        onPressed: logs.isEmpty ? null : logs.clear,
+                        icon: const Icon(CupertinoIcons.trash),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            if (logs.isEmpty)
+              const AniMixEmptyState(
+                icon: CupertinoIcons.check_mark_circled,
+                title: 'Ошибок нет',
+                message: 'Если что-то сломается, подробности появятся здесь.',
+              )
+            else
+              ...logs.entries.reversed.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: AniMixSurface(
+                    radius: 16,
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              switch (entry.level) {
+                                AppLogLevel.info => CupertinoIcons.info_circle,
+                                AppLogLevel.warning =>
+                                  CupertinoIcons.exclamationmark_triangle,
+                                AppLogLevel.error =>
+                                  CupertinoIcons.xmark_octagon_fill,
+                              },
+                              size: 17,
+                              color: switch (entry.level) {
+                                AppLogLevel.info => CupertinoColors.systemBlue,
+                                AppLogLevel.warning =>
+                                  CupertinoColors.systemOrange,
+                                AppLogLevel.error => CupertinoColors.systemRed,
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                entry.source ?? entry.level.name.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _diagnosticTime(entry.timestamp),
+                              style: const TextStyle(
+                                color: AniMixTheme.subtleText,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 9),
+                        SelectableText(
+                          entry.message,
+                          style: const TextStyle(fontSize: 12, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _diagnosticTime(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}:'
+      '${value.second.toString().padLeft(2, '0')}';
 }
 
 class _DataScreen extends StatefulWidget {

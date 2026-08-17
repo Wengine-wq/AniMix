@@ -10,10 +10,8 @@ import '../models/shikimori_comment.dart';
 import '../models/shikimori_user.dart';
 import '../models/shikimori_history.dart';
 import '../providers/auth_provider.dart';
+import 'app_logging.dart';
 import 'secure_storage.dart';
-
-// Глобальный navigator используется только для системного диалога сессии.
-import '../main.dart';
 
 class ShikimoriApiClient {
   late final Dio _dio;
@@ -21,8 +19,7 @@ class ShikimoriApiClient {
   final Map<String, _ShikimoriCacheEntry> _cache = {};
   final Map<String, Future<dynamic>> _inFlight = {};
 
-  // 🔥 ЗАЩИТА ОТ КРАША: Флаг для предотвращения спама диалогами при множественных 401 ошибках
-  static bool _isSessionExpiredHandled = false;
+  static Future<void>? _sessionExpiryTask;
 
   ShikimoriApiClient(this.ref) {
     _dio = Dio(
@@ -48,36 +45,45 @@ class ShikimoriApiClient {
           return handler.next(options);
         },
         onError: (error, handler) async {
-          // 🔥 ПЕРЕХВАТ ИСТЕКШЕГО ТОКЕНА (401 Unauthorized)
           if (error.response?.statusCode == 401) {
-            // Проверяем, не обрабатываем ли мы уже выход из аккаунта.
-            // Это спасет от краша, если 5 запросов одновременно вернут 401.
-            if (!_isSessionExpiredHandled) {
-              _isSessionExpiredHandled = true; // Блокируем остальные ошибки
-
-              debugPrint(
-                '❌ Ошибка 401: Токен истек или отозван. Сбрасываем сессию.',
-              );
-              await SecureStorage.clear();
-
-              // Инвалидируем провайдер авторизации (перекинет на экран входа)
-              ref.invalidate(isLoggedInProvider);
-
-              // Показываем единый диалог истёкшей сессии.
-              // ignore: argument_type_not_assignable
-              showSessionExpiredDialog(ref as dynamic);
-
-              // Снимаем блокировку через 3 секунды, когда интерфейс уже перейдет на экран логина
-              Future.delayed(const Duration(seconds: 3), () {
-                _isSessionExpiredHandled = false;
-              });
-            }
+            await _handleExpiredSession();
+          } else {
+            AppLogBuffer.instance.recordError(
+              error,
+              error.stackTrace,
+              source: 'Shikimori API',
+            );
           }
           return handler.next(error);
         },
       ),
     );
   }
+
+  Future<void> _handleExpiredSession() async {
+    if (ref.read(sessionNoticeProvider) != null) return;
+    final pending = _sessionExpiryTask;
+    if (pending != null) return pending;
+
+    final task = () async {
+      AppLogBuffer.instance.warning(
+        'Shikimori rejected the current session (HTTP 401).',
+        source: 'Authentication',
+      );
+      await SecureStorage.clear();
+      _cache.clear();
+      ref.read(sessionNoticeProvider.notifier).sessionExpired();
+      ref.invalidate(isLoggedInProvider);
+    }();
+    _sessionExpiryTask = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_sessionExpiryTask, task)) _sessionExpiryTask = null;
+    }
+  }
+
+  void invalidateCurrentUserCache() => _cache.remove('current-user');
 
   // =====================================================================
   // СТРОГО ОРИГИНАЛЬНЫЕ МЕТОДЫ ИЗ ВАЛИДНОГО ФАЙЛА (БЕЗ ИЗМЕНЕНИЙ)
@@ -86,7 +92,10 @@ class ShikimoriApiClient {
   Future<ShikimoriUser> getCurrentUser() async {
     final data = await _cachedRequest('current-user', () async {
       final whoamiRes = await _dio.get('/api/users/whoami');
-      final userId = whoamiRes.data['id'] as int;
+      final userId = int.tryParse(whoamiRes.data?['id']?.toString() ?? '');
+      if (userId == null || userId <= 0) {
+        throw const FormatException('Shikimori whoami returned no user id.');
+      }
       final fullRes = await _dio.get('/api/users/$userId');
       return fullRes.data;
     }, freshFor: const Duration(seconds: 20));
@@ -213,6 +222,8 @@ class ShikimoriApiClient {
     } else {
       await _dio.post('/api/v2/user_rates', data: body);
     }
+    invalidateCurrentUserCache();
+    ref.read(userDataRevisionProvider.notifier).bump();
   }
 
   Future<List<ShikimoriHistory>> getUserHistory(
@@ -252,6 +263,7 @@ class ShikimoriApiClient {
   Future<List<ShikimoriComment>> getComments(
     int topicId, {
     int page = 1,
+    bool descending = true,
   }) async {
     try {
       final res = await _dio.get(
@@ -261,7 +273,7 @@ class ShikimoriApiClient {
           'commentable_type': 'Topic',
           'limit': 30,
           'page': page, // 🔥 Включаем поддержку пагинации
-          'desc': 1, // 1 = сначала новые
+          'desc': descending ? 1 : 0,
         },
       );
       return (res.data as List)

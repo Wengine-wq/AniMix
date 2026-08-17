@@ -318,7 +318,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
     }
     await controller.loadRequest(
       Uri.parse(_normalizedUrl),
-      headers: Config.providerMediaHeaders,
+      headers: Config.providerEmbedHeaders,
     );
   }
 
@@ -498,7 +498,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
     if (_isMobile) {
       await _mobileController?.loadRequest(
         Uri.parse(_normalizedUrl),
-        headers: Config.providerMediaHeaders,
+        headers: Config.providerEmbedHeaders,
       );
     } else if (_isWindows && _windowsReady) {
       await _windowsController.executeScript(

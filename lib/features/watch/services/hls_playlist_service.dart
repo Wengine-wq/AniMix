@@ -121,8 +121,10 @@ class HlsPlaylistService {
       }
     }
 
-    return byLabel.values.toList()
-      ..sort((a, b) => _qualityRank(b.label).compareTo(_qualityRank(a.label)));
+    return byLabel.values.toList()..sort((a, b) {
+      final quality = _qualityRank(b.label).compareTo(_qualityRank(a.label));
+      return quality != 0 ? quality : b.bandwidth.compareTo(a.bandwidth);
+    });
   }
 
   Future<Map<String, String>> _verifySiblingMp4Qualities(Uri source) async {
@@ -157,8 +159,13 @@ class HlsPlaylistService {
     await Future.wait(
       deriveSiblingHlsUrls(source).entries.map((entry) async {
         try {
-          final response = await _dio.headUri<void>(Uri.parse(entry.value));
-          if ((response.statusCode ?? 500) < 400) {
+          // A HEAD request is not enough here: several CDNs answer 200 for a
+          // missing rendition and then return an HTML fallback. Verify that
+          // the candidate really is an HLS manifest before exposing it.
+          final response = await _dio.getUri<String>(Uri.parse(entry.value));
+          final body = response.data ?? '';
+          if ((response.statusCode ?? 500) < 400 &&
+              body.trimLeft().startsWith('#EXTM3U')) {
             found[entry.key] = entry.value;
           }
         } catch (_) {
@@ -216,9 +223,10 @@ class HlsPlaylistService {
         ? null
         : int.tryParse(resolution.split('x').last.toLowerCase());
     if (height != null && height > 0) return '${height}p';
-    if (bandwidth >= 5 * 1000 * 1000) return '1080p';
-    if (bandwidth >= 2 * 1000 * 1000) return '720p';
-    if (bandwidth >= 900 * 1000) return '480p';
+    if (bandwidth > 0) {
+      final megabits = bandwidth / 1000 / 1000;
+      return 'Поток · ${megabits.toStringAsFixed(megabits >= 10 ? 0 : 1)} Мбит/с';
+    }
     return 'Поток';
   }
 
@@ -231,7 +239,13 @@ class HlsPlaylistService {
   }
 
   static int _qualityRank(String label) =>
-      int.tryParse(RegExp(r'\d+').firstMatch(label)?.group(0) ?? '') ??
+      int.tryParse(
+        RegExp(
+              r'(2160|1440|1080|720|480|360)p',
+              caseSensitive: false,
+            ).firstMatch(label)?.group(1) ??
+            '',
+      ) ??
       (label == 'Авто' ? -1 : 0);
 
   static bool _isMediaUrl(String value) =>

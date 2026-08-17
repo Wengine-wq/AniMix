@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import 'config.dart';
+import 'app_logging.dart';
 import 'secure_storage.dart';
 
 class ShikimoriAuthService {
@@ -19,6 +20,10 @@ class ShikimoriAuthService {
       final clientId = Config.shikimoriClientId;
 
       if (clientId.isEmpty) {
+        AppLogBuffer.instance.warning(
+          'SHIKIMORI_CLIENT_ID is missing.',
+          source: 'Authentication',
+        );
         debugPrint('Ошибка авторизации: SHIKIMORI_CLIENT_ID не найден.');
         return false;
       }
@@ -26,9 +31,7 @@ class ShikimoriAuthService {
       // Выбираем правильный редирект в зависимости от того, откуда пришел запрос
       final actualRedirectUri = redirectUri?.trim().isNotEmpty == true
           ? redirectUri!.trim()
-          : (Config.shikimoriRedirectUri.isNotEmpty
-                ? Config.shikimoriRedirectUri
-                : 'https://animix.app/callback');
+          : Config.shikimoriRedirectUri;
 
       final Response<dynamic> response;
       final proxyUrl = Config.shikimoriOAuthProxyUrl.trim();
@@ -47,6 +50,10 @@ class ShikimoriAuthService {
           ),
         );
       } else {
+        AppLogBuffer.instance.warning(
+          'SHIKIMORI_OAUTH_PROXY_URL is missing.',
+          source: 'Authentication',
+        );
         debugPrint(
           'Ошибка авторизации: настройте SHIKIMORI_OAUTH_PROXY_URL. '
           'Обмен кода выполняется только через защищённый прокси.',
@@ -68,7 +75,12 @@ class ShikimoriAuthService {
         return true;
       }
       return false;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        e,
+        stackTrace,
+        source: 'Shikimori OAuth',
+      );
       debugPrint('Ошибка авторизации Shikimori: $e');
       return false;
     }

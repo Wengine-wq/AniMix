@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -15,32 +17,44 @@ import 'features/downloads/downloads_screen.dart';
 import 'features/profile/settings_screen.dart';
 import 'providers/auth_provider.dart';
 import 'core/animix_theme.dart';
+import 'core/animix_motion.dart';
 import 'core/app_settings.dart';
+import 'core/app_logging.dart';
 
-// 🔥 ГЛОБАЛЬНЫЙ КЛЮЧ НАВИГАЦИИ (Нужен для вызова диалогов из перехватчиков API)
-final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+void main() {
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      AppLogBuffer.instance.installGlobalHandlers();
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+      if (Platform.isWindows) {
+        fvp.registerWith(
+          options: const {
+            'platforms': ['windows'],
+            'video.decoders': ['D3D11', 'NVDEC', 'FFmpeg'],
+          },
+        );
+      }
 
-  if (Platform.isWindows) {
-    fvp.registerWith(
-      options: const {
-        'platforms': ['windows'],
-      },
-    );
-  }
+      debugPaintSizeEnabled = false;
+      debugPaintBaselinesEnabled = false;
+      debugRepaintRainbowEnabled = false;
+      debugProfilePaintsEnabled = false;
 
-  debugPaintSizeEnabled = false;
-  debugPaintBaselinesEnabled = false;
-  debugRepaintRainbowEnabled = false;
-  debugProfilePaintsEnabled = false;
-
-  // Optional local override. Release builds receive public values through
-  // --dart-define, so no .env asset or secret is shipped with the app.
-  await dotenv.load(fileName: '.env', isOptional: true);
-  await AppSettingsController.instance.initialize();
-  runApp(const ProviderScope(child: MyApp()));
+      // Optional local override. Release builds receive public values through
+      // --dart-define, so no .env asset or secret is shipped with the app.
+      await dotenv.load(fileName: '.env', isOptional: true);
+      await AppSettingsController.instance.initialize();
+      runApp(const ProviderScope(child: MyApp()));
+    },
+    (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Uncaught async error',
+      );
+    },
+  );
 }
 
 class MyApp extends ConsumerWidget {
@@ -56,21 +70,40 @@ class MyApp extends ConsumerWidget {
     return AnimatedBuilder(
       animation: settings,
       builder: (context, _) => MaterialApp(
-        navigatorKey: appNavigatorKey,
         title: 'AniMix',
         debugShowCheckedModeBanner: false,
-        theme: AniMixTheme.material(settings.accentColor, settings.themeStyle),
-        builder: (context, child) => CupertinoTheme(
-          data: AniMixTheme.cupertino(
-            settings.accentColor,
-            settings.themeStyle,
-          ),
-          child: DefaultTextStyle(
-            style: Theme.of(context).textTheme.bodyMedium!,
-            child: child ?? const SizedBox.shrink(),
-          ),
+        theme: AniMixTheme.material(
+          settings.accentColor,
+          settings.themeStyle,
+          brightness: Brightness.light,
         ),
+        darkTheme: AniMixTheme.material(
+          settings.accentColor,
+          settings.themeStyle,
+          brightness: Brightness.dark,
+        ),
+        themeMode: switch (settings.themeMode) {
+          AniMixThemeMode.system => ThemeMode.system,
+          AniMixThemeMode.dark => ThemeMode.dark,
+          AniMixThemeMode.light => ThemeMode.light,
+        },
+        builder: (context, child) {
+          final brightness = Theme.of(context).brightness;
+          return CupertinoTheme(
+            data: AniMixTheme.cupertino(
+              settings.accentColor,
+              settings.themeStyle,
+              brightness: brightness,
+            ),
+            child: DefaultTextStyle(
+              style: Theme.of(context).textTheme.bodyMedium!,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          );
+        },
         home: authState.when(
+          skipLoadingOnRefresh: true,
+          skipLoadingOnReload: true,
           data: (loggedIn) =>
               loggedIn ? const MainWrapper() : const LoginScreen(),
           loading: () => const _StartupLoading(),
@@ -119,39 +152,6 @@ class _StartupError extends StatelessWidget {
           ],
         ),
       ),
-    ),
-  );
-}
-
-// =====================================================================
-// 🚨 ДИАЛОГ ИСТЕКШЕЙ СЕССИИ (Полностью нативное стекло)
-// Вызывается из shikimori_api_client.dart при ошибке 401
-// =====================================================================
-void showSessionExpiredDialog(dynamic ref) {
-  final context = appNavigatorKey.currentContext;
-  if (context == null) return;
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => AlertDialog(
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-      icon: const Icon(
-        CupertinoIcons.exclamationmark_triangle_fill,
-        color: Colors.redAccent,
-        size: 38,
-      ),
-      title: const Text('Сессия истекла'),
-      content: const Text(
-        'Shikimori больше не принимает текущий токен. Войдите в аккаунт повторно.',
-        textAlign: TextAlign.center,
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Войти повторно'),
-        ),
-      ],
     ),
   );
 }
@@ -267,85 +267,132 @@ class _FloatingTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
+    final accent = scheme.primary;
+    final translucent = AniMixTheme.isTranslucent(context);
     return ColoredBox(
       color: Colors.transparent,
       child: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-        child: Container(
-          height: 66,
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(25),
-            border: Border.all(color: const Color(0x1FFFFFFF)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 24,
-                offset: Offset(0, 10),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(25),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: translucent ? 16 : 0,
+              sigmaY: translucent ? 16 : 0,
+            ),
+            child: Container(
+              height: 66,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainer.withValues(
+                  alpha: translucent ? .76 : 1,
+                ),
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(
+                  color: scheme.onSurface.withValues(
+                    alpha: translucent ? .14 : .07,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: Theme.of(context).brightness == Brightness.dark
+                          ? .34
+                          : .13,
+                    ),
+                    blurRadius: translucent ? 32 : 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(
-            children: [
-              for (var index = 0; index < destinations.length; index++)
-                Expanded(
-                  child: Semantics(
-                    button: true,
-                    selected: selectedIndex == index,
-                    label: destinations[index].label,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(19),
-                      onTap: () => onSelected(index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 190),
-                        curve: Curves.easeOutCubic,
-                        decoration: BoxDecoration(
-                          color: selectedIndex == index
-                              ? accent.withValues(alpha: .17)
-                              : Colors.transparent,
+              child: Row(
+                children: [
+                  for (var index = 0; index < destinations.length; index++)
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: selectedIndex == index,
+                        label: destinations[index].label,
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(19),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            IconTheme(
-                              data: IconThemeData(
-                                size: 20,
-                                color: selectedIndex == index
-                                    ? accent
-                                    : AniMixTheme.subtleText,
-                              ),
-                              child: selectedIndex == index
-                                  ? (destinations[index].selectedIcon ??
-                                        destinations[index].icon)
-                                  : destinations[index].icon,
+                          onTap: () => onSelected(index),
+                          child: AnimatedContainer(
+                            duration: AniMixMotion.resolve(
+                              context,
+                              AniMixMotion.selection,
                             ),
-                            const SizedBox(height: 4),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                destinations[index].label,
-                                style: TextStyle(
-                                  color: selectedIndex == index
-                                      ? Colors.white
-                                      : AniMixTheme.subtleText,
-                                  fontSize: 9,
-                                  fontWeight: selectedIndex == index
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
+                            curve: AniMixMotion.standardCurve,
+                            decoration: BoxDecoration(
+                              color: selectedIndex == index
+                                  ? accent.withValues(alpha: .17)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(19),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                AnimatedSwitcher(
+                                  duration: AniMixMotion.resolve(
+                                    context,
+                                    AniMixMotion.selection,
+                                  ),
+                                  switchInCurve: AniMixMotion.standardCurve,
+                                  switchOutCurve: AniMixMotion.exitCurve,
+                                  transitionBuilder: (child, animation) =>
+                                      FadeTransition(
+                                        opacity: animation,
+                                        child: ScaleTransition(
+                                          scale: Tween<double>(
+                                            begin: .88,
+                                            end: 1,
+                                          ).animate(animation),
+                                          child: child,
+                                        ),
+                                      ),
+                                  child: IconTheme(
+                                    key: ValueKey((
+                                      index,
+                                      selectedIndex == index,
+                                    )),
+                                    data: IconThemeData(
+                                      size: 20,
+                                      color: selectedIndex == index
+                                          ? accent
+                                          : scheme.onSurfaceVariant,
+                                    ),
+                                    child: selectedIndex == index
+                                        ? (destinations[index].selectedIcon ??
+                                              destinations[index].icon)
+                                        : destinations[index].icon,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 4),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    destinations[index].label,
+                                    style: TextStyle(
+                                      color: selectedIndex == index
+                                          ? scheme.onSurface
+                                          : scheme.onSurfaceVariant,
+                                      fontSize: 9,
+                                      fontWeight: selectedIndex == index
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -372,18 +419,27 @@ class _DesktopSidebar extends StatelessWidget {
       ('Профиль', CupertinoIcons.person_crop_circle_fill),
       ('Настройки', CupertinoIcons.gear_alt_fill),
     ];
+    final scheme = Theme.of(context).colorScheme;
+    final translucent = AniMixTheme.isTranslucent(context);
     return Container(
-      width: 220,
+      width: 232,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        border: const Border(right: BorderSide(color: AniMixTheme.divider)),
+        color: scheme.surfaceContainer.withValues(alpha: translucent ? .82 : 1),
+        border: Border(
+          right: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
+        ),
       ),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 20, 18, 26),
+              padding: const EdgeInsets.fromLTRB(
+                AniMixSpacing.lg,
+                AniMixSpacing.lg,
+                AniMixSpacing.lg,
+                AniMixSpacing.xl,
+              ),
               child: Row(
                 children: [
                   ClipRRect(
@@ -395,7 +451,7 @@ class _DesktopSidebar extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(width: 11),
+                  const SizedBox(width: AniMixSpacing.sm),
                   const Text(
                     'AniMix',
                     style: TextStyle(
@@ -410,8 +466,8 @@ class _DesktopSidebar extends StatelessWidget {
             for (var index = 0; index < items.length; index++)
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 2,
+                  horizontal: AniMixSpacing.md,
+                  vertical: AniMixSpacing.xxs,
                 ),
                 child: Material(
                   color: selectedIndex == index
@@ -419,26 +475,26 @@ class _DesktopSidebar extends StatelessWidget {
                           context,
                         ).colorScheme.primary.withValues(alpha: .16)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(16),
                   child: ListTile(
-                    dense: true,
-                    minTileHeight: 48,
+                    dense: false,
+                    minTileHeight: 52,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     leading: Icon(
                       items[index].$2,
                       size: 20,
                       color: selectedIndex == index
-                          ? Theme.of(context).colorScheme.primary
-                          : AniMixTheme.subtleText,
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                     ),
                     title: Text(
                       items[index].$1,
                       style: TextStyle(
                         color: selectedIndex == index
-                            ? Colors.white
-                            : AniMixTheme.subtleText,
+                            ? scheme.onSurface
+                            : scheme.onSurfaceVariant,
                         fontWeight: selectedIndex == index
                             ? FontWeight.w800
                             : FontWeight.w600,

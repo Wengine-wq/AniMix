@@ -51,7 +51,11 @@ class ShikimoriAnimeDetail {
       releasedOn = _safeString(json['released_on']),
       duration = (json['duration'] as num?)?.toInt(),
       rating = _safeString(json['rating']),
-      statusStats = _parseStatusStats(json['rates_statuses_stats']),
+      statusStats = _parseStatusStats(
+        json['rates_statuses_stats'] ??
+            json['ratesStatusesStats'] ??
+            json['status_stats'],
+      ),
       genres = (json['genres'] as List? ?? [])
           .map((g) => _safeString(g?['russian'] ?? g?['name']) ?? '')
           .where((g) => g.isNotEmpty)
@@ -70,13 +74,41 @@ class ShikimoriAnimeDetail {
 
   static Map<String, int> _parseStatusStats(dynamic raw) {
     final result = <String, int>{};
+    if (raw is Map) {
+      for (final entry in raw.entries) {
+        final value = _asInt(entry.value);
+        if (value == null) continue;
+        result[_canonicalStatus(entry.key.toString())] = value;
+      }
+      return result;
+    }
     for (final item in raw is List ? raw : const []) {
       if (item is! Map) continue;
       final name = item['name']?.toString();
-      final value = (item['value'] as num?)?.toInt();
-      if (name != null && value != null) result[name] = value;
+      final value = _asInt(item['value']);
+      if (name == null || value == null) continue;
+      final key = _canonicalStatus(name);
+      result[key] = (result[key] ?? 0) + value;
     }
     return result;
+  }
+
+  static int? _asInt(dynamic value) => switch (value) {
+    num number => number.toInt(),
+    String text => int.tryParse(text),
+    _ => null,
+  };
+
+  static String _canonicalStatus(String raw) {
+    final value = raw.trim().toLowerCase().replaceAll('-', '_');
+    return switch (value) {
+      'watching' || 'смотрю' || 'смотрят' => 'watching',
+      'planned' || 'запланировано' || 'в планах' => 'planned',
+      'completed' || 'просмотрено' => 'completed',
+      'on_hold' || 'отложено' => 'on_hold',
+      'dropped' || 'брошено' => 'dropped',
+      _ => value,
+    };
   }
 
   static String? _safeString(dynamic value) {

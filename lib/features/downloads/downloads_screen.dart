@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/animix_theme.dart';
 import '../../core/app_settings.dart';
 import '../../widgets/animix_surface.dart';
 import '../../widgets/smart_anime_poster.dart';
@@ -106,8 +105,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         const Spacer(),
         Text(
           _formatBytes(bytes),
-          style: const TextStyle(
-            color: AniMixTheme.subtleText,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -119,23 +118,29 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Widget _stat(String value, String label) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.06),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(13),
-      border: Border.all(color: AniMixTheme.divider),
+      border: Border.all(
+        color: Theme.of(
+          context,
+        ).colorScheme.outlineVariant.withValues(alpha: .55),
+      ),
     ),
     child: Text.rich(
       TextSpan(
         children: [
           TextSpan(
             text: value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
           TextSpan(
             text: '  $label',
-            style: const TextStyle(color: AniMixTheme.subtleText),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -179,8 +184,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                           group.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
@@ -188,8 +193,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                         const SizedBox(height: 6),
                         Text(
                           '${group.items.length} серий  •  $completed готово${active > 0 ? '  •  $active активно' : ''}',
-                          style: const TextStyle(
-                            color: AniMixTheme.subtleText,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
@@ -218,7 +225,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                     child: Column(
                       children: [
-                        const Divider(height: 1, color: AniMixTheme.divider),
+                        const Divider(height: 1),
                         const SizedBox(height: 4),
                         for (final item in group.items) _episodeRow(item),
                       ],
@@ -238,6 +245,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             imageUrl: group.posterUrl,
             title: group.title,
             fit: BoxFit.cover,
+            onResolved: (url) => _manager.updateAnimePoster(
+              animeId: group.animeId,
+              animeTitle: group.title,
+              posterUrl: url,
+            ),
           )
         : (group.posterUrl?.isNotEmpty == true
               ? CachedNetworkImage(
@@ -273,16 +285,16 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       item.episodeName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       item.quality,
-                      style: const TextStyle(
-                        color: AniMixTheme.subtleText,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
@@ -341,7 +353,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               item.state == DownloadState.downloading
                   ? CupertinoIcons.xmark_circle
                   : CupertinoIcons.trash,
-              color: AniMixTheme.subtleText,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               size: 19,
             ),
           ),
@@ -353,11 +365,17 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Widget _posterPlaceholder(Color accent) => DecoratedBox(
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [accent.withValues(alpha: 0.25), Colors.white10],
+        colors: [
+          accent.withValues(alpha: 0.25),
+          Theme.of(context).colorScheme.surfaceContainerHigh,
+        ],
       ),
     ),
-    child: const Center(
-      child: Icon(CupertinoIcons.film, color: Colors.white54),
+    child: Center(
+      child: Icon(
+        CupertinoIcons.film,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     ),
   );
 
@@ -393,22 +411,22 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 ),
               ),
               const SizedBox(height: 22),
-              const Text(
+              Text(
                 'Нет загрузок',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   decoration: TextDecoration.none,
                 ),
               ),
               const SizedBox(height: 9),
-              const Text(
+              Text(
                 'Откройте тайтл, выберите серию и качество — все эпизоды одного аниме будут собраны вместе.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AniMixTheme.subtleText,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 14,
                   height: 1.45,
                   decoration: TextDecoration.none,
