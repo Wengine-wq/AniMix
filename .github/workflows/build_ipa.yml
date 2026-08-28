@@ -2,9 +2,23 @@ name: Build iOS Unsigned IPA (Clean Build)
 
 on: [workflow_dispatch]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: animix-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ios:
     runs-on: macos-14
+    env:
+      # Public identifiers/endpoints, not secrets. Keeping production defaults
+      # here prevents stale repository variables from silently reviving the
+      # retired Cloudflare backend.
+      SHIKIMORI_CLIENT_ID: NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
+      SHIKIMORI_OAUTH_PROXY_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+      ANIMIX_API_BASE_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
     
     steps:
       - name: 📥 Скачивание кода проекта
@@ -23,22 +37,14 @@ jobs:
         run: flutter pub get
 
       - name: 🔐 Подготовка публичной конфигурации
-        env:
-          SHIKIMORI_CLIENT_ID: ${{ vars.SHIKIMORI_CLIENT_ID }}
-          SHIKIMORI_REDIRECT_URI: ${{ vars.SHIKIMORI_REDIRECT_URI }}
-          SHIKIMORI_OAUTH_PROXY_URL: ${{ vars.SHIKIMORI_OAUTH_PROXY_URL }}
-        run: echo "✅ Используем GitHub Variables; OAuth secret в сборку не попадает"
+        run: echo "✅ Публичные адреса Yandex API заданы; OAuth secrets остаются в Lockbox"
 
       - name: ⚙️ Генерация файлов Xcode
-        env:
-          SHIKIMORI_CLIENT_ID: ${{ vars.SHIKIMORI_CLIENT_ID }}
-          SHIKIMORI_REDIRECT_URI: ${{ vars.SHIKIMORI_REDIRECT_URI }}
-          SHIKIMORI_OAUTH_PROXY_URL: ${{ vars.SHIKIMORI_OAUTH_PROXY_URL }}
         run: |
           flutter build ios --config-only --no-codesign \
             --dart-define=SHIKIMORI_CLIENT_ID="$SHIKIMORI_CLIENT_ID" \
-            --dart-define=SHIKIMORI_REDIRECT_URI="${SHIKIMORI_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}" \
-            --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL"
+            --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL" \
+            --dart-define=ANIMIX_API_BASE_URL="$ANIMIX_API_BASE_URL"
 
       - name: 🍏 Установка CocoaPods
         run: |
@@ -73,4 +79,5 @@ jobs:
         with:
           name: Animix_iOS_App
           path: build/ios/Release-iphoneos/Animix.ipa
+          if-no-files-found: error
           retention-days: 7

@@ -6,10 +6,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/animix_auth_service.dart';
 import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
+import '../../core/profile_media_codec.dart';
 import '../../models/shikimori_history.dart';
 import '../../models/shikimori_user.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
 import '../../widgets/animix_skeletons.dart';
@@ -21,6 +24,7 @@ import 'settings_screen.dart';
 
 final userHistoryProvider = FutureProvider.family
     .autoDispose<List<ShikimoriHistory>, int>((ref, userId) async {
+      if (userId <= 0) return const <ShikimoriHistory>[];
       return ref.watch(apiClientProvider).getUserHistory(userId, limit: 60);
     });
 
@@ -34,6 +38,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _coverPath;
   bool _coverBusy = false;
+  bool _editingProfile = false;
+  bool _profileSaveBusy = false;
+  final TextEditingController _displayNameController = TextEditingController();
 
   @override
   void initState() {
@@ -41,21 +48,59 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _loadCover();
   }
 
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadCover() async {
     final path = await ProfileCoverStorage.currentPath();
-    if (mounted) setState(() => _coverPath = path);
+    if (mounted) {
+      setState(() => _coverPath = path);
+    }
   }
 
   Future<void> _refresh() async {
-    ref.invalidate(currentUserProvider);
-    final user = await ref.read(currentUserProvider.future);
-    if (user != null) ref.invalidate(userHistoryProvider(user.id));
+    try {
+      final service = ref.read(animixAuthServiceProvider);
+      final fresh = await service.getCurrentUser(allowCachedFallback: false);
+      if (fresh == null) {
+        throw const FormatException('AniMix profile refresh failed.');
+      }
+      if (!mounted) return;
+      ref.read(userDataRevisionProvider.notifier).bump();
+      ref.invalidate(currentUserProvider);
+      final user = await ref.read(currentUserProvider.future);
+      if (!mounted) return;
+      if (user != null) ref.invalidate(userHistoryProvider(user.id));
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Profile refresh',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Профиль пока недоступен. Попробуйте ещё раз.'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _chooseCover() async {
     if (_coverBusy) return;
     setState(() => _coverBusy = true);
+    final userFuture = ref.read(currentUserProvider.future);
     try {
+      final user = await userFuture;
+      if (!mounted) return;
+      if (user?.isAniMix == true) {
+        await _pickAndUploadAniMixMedia(AniMixProfileMediaKind.banner);
+        return;
+      }
       final path = await ProfileCoverStorage.chooseAndSave();
       if (path != null && mounted) setState(() => _coverPath = path);
     } catch (error, stackTrace) {
@@ -77,7 +122,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _resetCover() async {
     if (_coverBusy) return;
     setState(() => _coverBusy = true);
+    final userFuture = ref.read(currentUserProvider.future);
+    final service = ref.read(animixAuthServiceProvider);
     try {
+      final user = await userFuture;
+      if (!mounted) return;
+      if (user?.isAniMix == true) {
+        final updated = await service.deleteProfileMedia(
+          AniMixProfileMediaKind.banner,
+        );
+        if (updated == null) throw StateError('AniMix banner reset failed');
+        await ProfileCoverStorage.clearAniMixMedia(isBanner: true);
+        if (!mounted) return;
+        ref.read(userDataRevisionProvider.notifier).bump();
+        ref.invalidate(currentUserProvider);
+        return;
+      }
       await ProfileCoverStorage.clear();
       if (mounted) setState(() => _coverPath = null);
     } finally {
@@ -85,52 +145,178 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _showCoverMenu() async {
-    final action = await showModalBottomSheet<_CoverAction>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(CupertinoIcons.photo_on_rectangle),
-                title: const Text('Выбрать изображение'),
-                subtitle: const Text('JPG, PNG или WebP с устройства'),
-                onTap: () => Navigator.pop(sheetContext, _CoverAction.choose),
-              ),
-              if (_coverPath != null)
-                ListTile(
-                  leading: const Icon(CupertinoIcons.arrow_counterclockwise),
-                  title: const Text('Вернуть фон AniMix'),
-                  onTap: () => Navigator.pop(sheetContext, _CoverAction.reset),
-                ),
-            ],
-          ),
-        ),
-      ),
+  Future<void> _pickAndUploadAniMixMedia(AniMixProfileMediaKind kind) async {
+    final service = ref.read(animixAuthServiceProvider);
+    final selected = await ProfileCoverStorage.pickImage();
+    if (selected == null) return;
+    final bytes = await ProfileMediaCodec.encodeForUpload(
+      await selected.readAsBytes(),
+      isBanner: kind == AniMixProfileMediaKind.banner,
+    );
+    final updated = await service.uploadProfileMedia(
+      kind: kind,
+      bytes: bytes,
+      contentType: 'image/jpeg',
+    );
+    if (updated == null) throw StateError('AniMix ${kind.name} upload failed');
+    await ProfileCoverStorage.clearAniMixMedia(
+      isBanner: kind == AniMixProfileMediaKind.banner,
     );
     if (!mounted) return;
-    switch (action) {
-      case _CoverAction.choose:
-        await _chooseCover();
-      case _CoverAction.reset:
-        await _resetCover();
-      case null:
-        break;
+    ref.read(userDataRevisionProvider.notifier).bump();
+    ref.invalidate(currentUserProvider);
+    await ref.read(currentUserProvider.future);
+  }
+
+  Future<void> _deleteAniMixMedia(AniMixProfileMediaKind kind) async {
+    if (_coverBusy) return;
+    setState(() => _coverBusy = true);
+    final service = ref.read(animixAuthServiceProvider);
+    try {
+      final updated = await service.deleteProfileMedia(kind);
+      if (updated == null) {
+        throw StateError('AniMix ${kind.name} delete failed');
+      }
+      await ProfileCoverStorage.clearAniMixMedia(
+        isBanner: kind == AniMixProfileMediaKind.banner,
+      );
+      if (!mounted) return;
+      ref.read(userDataRevisionProvider.notifier).bump();
+      ref.invalidate(currentUserProvider);
+      await ref.read(currentUserProvider.future);
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'AniMix profile media',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось удалить изображение.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  Future<void> _chooseAvatar() async {
+    if (_coverBusy) return;
+    final userFuture = ref.read(currentUserProvider.future);
+    final user = await userFuture;
+    if (!mounted) return;
+    if (user?.isAniMix != true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Аватар Shikimori изменяется в Shikimori.'),
+          ),
+        );
+      }
+      return;
+    }
+    setState(() => _coverBusy = true);
+    try {
+      await _pickAndUploadAniMixMedia(AniMixProfileMediaKind.avatar);
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'AniMix avatar',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Не удалось обновить аватар. Проверьте сеть и повторите.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  void _startProfileEditing(ShikimoriUser user) {
+    _displayNameController.text = user.nickname;
+    setState(() => _editingProfile = true);
+  }
+
+  void _cancelProfileEditing() {
+    if (_profileSaveBusy) return;
+    setState(() => _editingProfile = false);
+  }
+
+  Future<void> _saveProfile(ShikimoriUser user) async {
+    final name = _displayNameController.text.trim();
+    if (name.isEmpty || name.length > 32 || _profileSaveBusy) return;
+    if (name == user.nickname) {
+      setState(() => _editingProfile = false);
+      return;
+    }
+    setState(() => _profileSaveBusy = true);
+    final service = ref.read(animixAuthServiceProvider);
+    try {
+      final updated = await service.updateProfile(displayName: name);
+      if (updated == null) throw StateError('AniMix profile update failed');
+      if (!mounted) return;
+      ref.read(userDataRevisionProvider.notifier).bump();
+      ref.invalidate(currentUserProvider);
+      await ref.read(currentUserProvider.future);
+      if (mounted) setState(() => _editingProfile = false);
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'AniMix profile edit',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось сохранить профиль.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _profileSaveBusy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
+    final loadedUser = user.value;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Профиль'),
         actions: [
+          if (loadedUser?.isAniMix == true)
+            if (_editingProfile) ...[
+              IconButton(
+                tooltip: 'Отменить',
+                onPressed: _profileSaveBusy ? null : _cancelProfileEditing,
+                icon: const Icon(CupertinoIcons.xmark_circle_fill),
+              ),
+              IconButton(
+                tooltip: 'Сохранить',
+                onPressed: _profileSaveBusy
+                    ? null
+                    : () => _saveProfile(loadedUser!),
+                icon: _profileSaveBusy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CupertinoActivityIndicator(),
+                      )
+                    : const Icon(CupertinoIcons.check_mark_circled_solid),
+              ),
+            ] else
+              IconButton(
+                tooltip: 'Редактировать профиль',
+                onPressed: _coverBusy
+                    ? null
+                    : () => _startProfileEditing(loadedUser!),
+                icon: const Icon(CupertinoIcons.pencil_circle_fill),
+              ),
           IconButton(
             tooltip: 'Настройки',
             onPressed: () async {
@@ -152,7 +338,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         error: (_, _) => AniMixEmptyState(
           icon: CupertinoIcons.exclamationmark_triangle,
           title: 'Не удалось загрузить профиль',
-          message: 'Shikimori временно не отвечает.',
+          message: 'Профиль временно недоступен. Проверьте сеть и повторите.',
           actionLabel: 'Повторить',
           onAction: () => ref.invalidate(currentUserProvider),
         ),
@@ -162,7 +348,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               icon: CupertinoIcons.person_crop_circle,
               title: 'Профиль Shikimori',
               message:
-                  'Войдите, чтобы синхронизировать закладки, прогресс и историю.',
+                  'Войдите, чтобы сохранить прогресс, оценки и собственный профиль.',
               actionLabel: 'Войти',
               onAction: () => Navigator.push(
                 context,
@@ -188,9 +374,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         children: [
                           _ProfileHeader(
                             user: value,
-                            coverPath: _coverPath,
+                            coverPath: value.isAniMix ? null : _coverPath,
+                            avatarPath: null,
                             coverBusy: _coverBusy,
-                            onChangeCover: _showCoverMenu,
+                            editing: _editingProfile,
+                            nameController: _displayNameController,
+                            onChangeCover: _chooseCover,
+                            onChangeAvatar: _chooseAvatar,
+                            onDeleteCover: value.bannerUrl?.isNotEmpty == true
+                                ? _resetCover
+                                : null,
+                            onDeleteAvatar: value.avatarUrl?.isNotEmpty == true
+                                ? () => _deleteAniMixMedia(
+                                    AniMixProfileMediaKind.avatar,
+                                  )
+                                : null,
                           ),
                           const SizedBox(height: AniMixSpacing.xl),
                           Padding(
@@ -258,20 +456,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 }
 
-enum _CoverAction { choose, reset }
-
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.user,
     required this.coverPath,
+    required this.avatarPath,
     required this.coverBusy,
+    required this.editing,
+    required this.nameController,
     required this.onChangeCover,
+    required this.onChangeAvatar,
+    this.onDeleteCover,
+    this.onDeleteAvatar,
   });
 
   final ShikimoriUser user;
   final String? coverPath;
+  final String? avatarPath;
   final bool coverBusy;
+  final bool editing;
+  final TextEditingController nameController;
   final VoidCallback onChangeCover;
+  final VoidCallback onChangeAvatar;
+  final VoidCallback? onDeleteCover;
+  final VoidCallback? onDeleteAvatar;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -299,7 +507,14 @@ class _ProfileHeader extends StatelessWidget {
                     fit: BoxFit.cover,
                     alignment: Alignment.center,
                     gaplessPlayback: true,
-                    errorBuilder: (_, _, _) => const _ProfileGradient(),
+                    errorBuilder: (_, _, _) => _remoteCoverOrGradient(),
+                  )
+                else if (user.bannerUrl?.isNotEmpty == true)
+                  CachedNetworkImage(
+                    imageUrl: user.bannerUrl!,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorWidget: (_, _, _) => const _ProfileGradient(),
                   )
                 else
                   const _ProfileGradient(),
@@ -315,102 +530,156 @@ class _ProfileHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                Positioned(
-                  right: 18,
-                  top: 18,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: .42),
-                    borderRadius: BorderRadius.circular(999),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: coverBusy ? null : onChangeCover,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 9,
+                if (editing)
+                  Positioned(
+                    right: 18,
+                    top: 18,
+                    child: Row(
+                      children: [
+                        if (onDeleteCover != null) ...[
+                          _ProfileMediaButton(
+                            icon: CupertinoIcons.delete,
+                            label: 'Удалить',
+                            onTap: coverBusy ? null : onDeleteCover,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        _ProfileMediaButton(
+                          icon: CupertinoIcons.photo_fill_on_rectangle_fill,
+                          label: 'Сменить фон',
+                          busy: coverBusy,
+                          onTap: coverBusy ? null : onChangeCover,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (coverBusy)
-                              const SizedBox.square(
-                                dimension: 15,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            else
-                              const Icon(
-                                CupertinoIcons.photo_fill_on_rectangle_fill,
-                                size: 16,
-                                color: Colors.white,
-                              ),
-                            const SizedBox(width: 7),
-                            const Text(
-                              'Фон',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-                ),
               ],
             ),
           ),
           Positioned(
             bottom: -50,
-            child: Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  width: 5,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x42000000),
-                    blurRadius: 22,
-                    offset: Offset(0, 9),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: user.imageUrl?.isNotEmpty == true
-                  ? CachedNetworkImage(
-                      imageUrl: user.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, _, _) => const Icon(
-                        CupertinoIcons.person_crop_circle_fill,
-                        size: 76,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Сменить аватар',
+                  child: MouseRegion(
+                    cursor: coverBusy
+                        ? SystemMouseCursors.basic
+                        : SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: editing && !coverBusy ? onChangeAvatar : null,
+                      child: Container(
+                        width: 104,
+                        height: 104,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            width: 5,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x42000000),
+                              blurRadius: 22,
+                              offset: Offset(0, 9),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: avatarPath != null
+                            ? Image.file(
+                                File(avatarPath!),
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                errorBuilder: (_, _, _) =>
+                                    _remoteAvatarOrPlaceholder(),
+                              )
+                            : user.imageUrl?.isNotEmpty == true
+                            ? CachedNetworkImage(
+                                imageUrl: user.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, _, _) => const Icon(
+                                  CupertinoIcons.person_crop_circle_fill,
+                                  size: 76,
+                                ),
+                              )
+                            : const Icon(
+                                CupertinoIcons.person_crop_circle_fill,
+                                size: 76,
+                              ),
                       ),
-                    )
-                  : const Icon(
-                      CupertinoIcons.person_crop_circle_fill,
-                      size: 76,
                     ),
+                  ),
+                ),
+                if (editing)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Material(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: coverBusy ? null : onChangeAvatar,
+                        child: const Padding(
+                          padding: EdgeInsets.all(7),
+                          child: Icon(
+                            CupertinoIcons.camera_fill,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
       const SizedBox(height: 68),
-      Text(
-        user.nickname,
-        style: const TextStyle(
-          fontSize: 29,
-          letterSpacing: -.7,
-          fontWeight: FontWeight.w900,
+      if (editing)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: TextField(
+              controller: nameController,
+              autofocus: true,
+              maxLength: 32,
+              textAlign: TextAlign.center,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Имя в AniMix',
+                hintText: 'Как тебя видят другие',
+                counterText: '',
+                prefixIcon: Icon(CupertinoIcons.person_fill),
+              ),
+            ),
+          ),
+        )
+      else
+        Text(
+          user.nickname,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 29,
+            letterSpacing: -.7,
+            fontWeight: FontWeight.w900,
+          ),
         ),
-      ),
+      if (editing && onDeleteAvatar != null) ...[
+        const SizedBox(height: 6),
+        TextButton.icon(
+          onPressed: coverBusy ? null : onDeleteAvatar,
+          icon: const Icon(CupertinoIcons.delete, size: 16),
+          label: const Text('Удалить аватар'),
+        ),
+      ],
       const SizedBox(height: 7),
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -425,7 +694,7 @@ class _ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(width: 7),
           Text(
-            _onlineText(user.lastOnlineAt),
+            _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
@@ -437,15 +706,84 @@ class _ProfileHeader extends StatelessWidget {
     ],
   );
 
-  static String _onlineText(String? value) {
+  Widget _remoteCoverOrGradient() => user.bannerUrl?.isNotEmpty == true
+      ? CachedNetworkImage(
+          imageUrl: user.bannerUrl!,
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          errorWidget: (_, _, _) => const _ProfileGradient(),
+        )
+      : const _ProfileGradient();
+
+  Widget _remoteAvatarOrPlaceholder() => user.imageUrl?.isNotEmpty == true
+      ? CachedNetworkImage(
+          imageUrl: user.imageUrl!,
+          fit: BoxFit.cover,
+          errorWidget: (_, _, _) =>
+              const Icon(CupertinoIcons.person_crop_circle_fill, size: 76),
+        )
+      : const Icon(CupertinoIcons.person_crop_circle_fill, size: 76);
+
+  static String _onlineText(String? value, {required bool isAniMix}) {
     final date = DateTime.tryParse(value ?? '')?.toLocal();
-    if (date == null) return 'Профиль Shikimori';
+    if (date == null) return isAniMix ? 'Профиль AniMix' : 'Профиль Shikimori';
     final difference = DateTime.now().difference(date);
     if (difference.inMinutes < 5) return 'сейчас онлайн';
     if (difference.inHours < 1) return '${difference.inMinutes} мин. назад';
     if (difference.inDays < 1) return '${difference.inHours} ч. назад';
     return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
+}
+
+class _ProfileMediaButton extends StatelessWidget {
+  const _ProfileMediaButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.busy = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.black.withValues(alpha: .42),
+    borderRadius: BorderRadius.circular(999),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (busy)
+              const SizedBox.square(
+                dimension: 15,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            else
+              Icon(icon, size: 16, color: Colors.white),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _ProfileGradient extends StatelessWidget {
@@ -537,9 +875,11 @@ class _LibraryOverview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AniMixSectionHeader(
+          AniMixSectionHeader(
             title: 'Моя медиатека',
-            subtitle: 'Живой срез коллекции Shikimori',
+            subtitle: user.isAniMix
+                ? 'Статистика вашей библиотеки AniMix'
+                : 'Живой срез коллекции Shikimori',
             icon: CupertinoIcons.chart_pie_fill,
           ),
           const SizedBox(height: AniMixSpacing.xl),
@@ -851,7 +1191,11 @@ class _ProfileInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final values = <({String label, String value, IconData icon})>[
       if (user.name?.trim().isNotEmpty == true)
-        (label: 'Имя', value: user.name!, icon: CupertinoIcons.person_fill),
+        (
+          label: user.isAniMix ? 'Имя в AniMix' : 'Имя',
+          value: user.name!,
+          icon: CupertinoIcons.person_fill,
+        ),
       if (user.birthOn?.isNotEmpty == true)
         (
           label: 'Дата рождения',
@@ -860,7 +1204,7 @@ class _ProfileInfoCard extends StatelessWidget {
         ),
       if (user.joinedAt?.isNotEmpty == true)
         (
-          label: 'На Shikimori с',
+          label: user.isAniMix ? 'В AniMix с' : 'На Shikimori с',
           value: _shortDate(user.joinedAt!),
           icon: CupertinoIcons.calendar,
         ),
@@ -871,50 +1215,65 @@ class _ProfileInfoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AniMixSectionHeader(
+          AniMixSectionHeader(
             title: 'О пользователе',
-            subtitle: 'Данные профиля Shikimori',
+            subtitle: user.isAniMix
+                ? 'Публичные данные аккаунта AniMix'
+                : 'Данные профиля Shikimori',
             icon: CupertinoIcons.person_crop_circle_fill,
           ),
           const SizedBox(height: AniMixSpacing.lg),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: values
-                .map(
-                  (item) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 11,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHigh.withValues(alpha: .62),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(item.icon, size: 16),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${item.label}: ',
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          item.value,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
+          Column(
+            children: [
+              for (final item in values) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 11,
                   ),
-                )
-                .toList(),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHigh.withValues(alpha: .62),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(item.icon, size: 17),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.label,
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item.value,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (item != values.last) const SizedBox(height: 10),
+              ],
+            ],
           ),
         ],
       ),

@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:animix/features/watch/services/hls_playlist_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -83,5 +86,47 @@ video/index.m3u8
       expect(sources['720p'], contains('/720.mp4:hls:manifest.m3u8'));
       expect(sources['360p'], contains('/360.mp4:hls:manifest.m3u8'));
     });
+
+    test('rejects an expired cached HLS URL', () async {
+      final dio = Dio()..httpClientAdapter = _PlaylistAdapter(statusCode: 403);
+      final service = HlsPlaylistService(dio: dio);
+
+      expect(
+        await service.isReachable('https://cdn.example.org/expired.m3u8'),
+        isFalse,
+      );
+    });
+
+    test('accepts a live cached HLS manifest', () async {
+      final dio = Dio()..httpClientAdapter = _PlaylistAdapter(statusCode: 200);
+      final service = HlsPlaylistService(dio: dio);
+
+      expect(
+        await service.isReachable('https://cdn.example.org/live.m3u8'),
+        isTrue,
+      );
+    });
   });
+}
+
+class _PlaylistAdapter implements HttpClientAdapter {
+  const _PlaylistAdapter({required this.statusCode});
+
+  final int statusCode;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    statusCode == 200 ? '#EXTM3U\n#EXT-X-VERSION:3' : 'expired',
+    statusCode,
+    headers: {
+      Headers.contentTypeHeader: ['application/vnd.apple.mpegurl'],
+    },
+  );
+
+  @override
+  void close({bool force = false}) {}
 }

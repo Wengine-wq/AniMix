@@ -1,17 +1,19 @@
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config.dart';
 import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_anime_detail.dart';
 import '../../models/shikimori_user.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_media_viewer.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_network_image.dart';
 import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../data/comments_screen.dart';
@@ -100,7 +102,22 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   Future<void> _loadUserRate() async {
     final api = ref.read(apiClientProvider);
     try {
-      final user = await api.getCurrentUser();
+      final user = await ref.read(currentUserProvider.future);
+      if (user == null) return;
+      if (user.isAniMix) {
+        final entry = await ref
+            .read(animixAuthServiceProvider)
+            .getLibraryEntry(widget.animeId);
+        if (mounted) {
+          setState(() {
+            _currentUser = user;
+            _currentStatus = entry?['status']?.toString();
+            _currentScore = _entryInt(entry, 'score');
+            _watchedEpisodes = _entryInt(entry, 'episodes_watched');
+          });
+        }
+        return;
+      }
       final rate = await api.getUserRate(widget.animeId, userId: user.id);
       if (!mounted) return;
       setState(() {
@@ -618,7 +635,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
             borderRadius: BorderRadius.circular(15),
             child: AspectRatio(
               aspectRatio: 16 / 9,
-              child: CachedNetworkImage(
+              child: AniMixNetworkImage(
                 imageUrl: _screenshots[index],
                 fit: BoxFit.cover,
                 placeholder: (context, _) => ColoredBox(
@@ -760,6 +777,39 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   Future<void> _updateUserRate(String status, int score) async {
     final user = _currentUser;
     if (user == null) return;
+    if (user.isAniMix) {
+      final previousStatus = _currentStatus;
+      final previousScore = _currentScore;
+      setState(() {
+        _currentStatus = status;
+        _currentScore = score;
+      });
+      final saved = await ref
+          .read(animixAuthServiceProvider)
+          .saveLibraryEntry(
+            animeId: widget.animeId,
+            status: status,
+            score: score,
+            episodesWatched: _watchedEpisodes,
+          );
+      if (saved) {
+        ref.read(userDataRevisionProvider.notifier).bump();
+        ref.invalidate(currentUserProvider);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _currentStatus = previousStatus;
+          _currentScore = previousScore;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось сохранить изменения AniMix'),
+          ),
+        );
+      }
+      return;
+    }
     final previousStatus = _currentStatus;
     final previousScore = _currentScore;
     setState(() {
@@ -795,6 +845,20 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     final previous = _watchedEpisodes;
     setState(() => _watchedEpisodes = episodes);
     try {
+      if (user.isAniMix) {
+        final saved = await ref
+            .read(animixAuthServiceProvider)
+            .saveLibraryEntry(
+              animeId: widget.animeId,
+              status: status,
+              score: _currentScore,
+              episodesWatched: episodes,
+            );
+        if (!saved) throw StateError('AniMix progress save failed');
+        ref.read(userDataRevisionProvider.notifier).bump();
+        ref.invalidate(currentUserProvider);
+        return;
+      }
       await ref
           .read(apiClientProvider)
           .setUserRate(
@@ -813,9 +877,15 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     }
   }
 
+  static int _entryInt(Map<String, dynamic>? entry, String key) {
+    final value = entry?[key];
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
   String _validImageUrl(String? path) {
     if (path == null || path.isEmpty) return '';
-    return path.startsWith('http') ? path : 'https://shikimori.io$path';
+    return Config.proxiedImageUrl(path);
   }
 
   String _statusLabel(String? status) => switch (status) {

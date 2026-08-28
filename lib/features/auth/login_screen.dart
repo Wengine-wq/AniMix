@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' as services;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_windows/webview_windows.dart';
 
 import '../../core/config.dart';
 import '../../core/app_logging.dart';
-import '../../core/shikimori_auth_service.dart';
+import '../../core/shikimori_oauth_flow.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
@@ -38,12 +36,10 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _busy = false;
-  bool _exchangeInFlight = false;
   String? _error;
 
   @override
   Widget build(BuildContext context) {
-    final authService = ref.watch(authServiceProvider);
     final sessionNotice = ref.watch(sessionNoticeProvider);
 
     return Scaffold(
@@ -102,43 +98,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ],
                         const SizedBox(height: 30),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _busy
-                                ? null
-                                : () => _handleLogin(context, ref, authService),
-                            icon: _busy
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CupertinoActivityIndicator(),
-                                  )
-                                : const Icon(
-                                    CupertinoIcons.person_crop_circle_fill,
-                                  ),
-                            label: Text(
-                              _busy
-                                  ? 'Подключаем аккаунт…'
-                                  : 'Войти через Shikimori',
-                            ),
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size.fromHeight(54),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
+                        _buildAniMixAuthPanel(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Shikimori подключается отдельно в настройках после входа в AniMix.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            height: 1.35,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => _showManualCodeDialog(
-                                  context,
-                                  ref,
-                                  authService,
-                                ),
-                          child: const Text('Ввести код вручную'),
                         ),
                       ],
                     ),
@@ -152,333 +123,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  // ===================== ЛОГИКА АВТОРИЗАЦИИ =====================
-  Future<void> _handleLogin(
-    BuildContext context,
-    WidgetRef ref,
-    ShikimoriAuthService authService,
-  ) async {
-    final clientId = Config.shikimoriClientId;
-    if (clientId.isEmpty) {
-      setState(() => _error = 'Не настроен идентификатор Shikimori.');
-      return;
-    }
-    setState(() => _error = null);
-
-    if (Platform.isIOS || Platform.isAndroid) {
-      // 📱 МОБИЛКИ: Встроенный WebView
-      final redirectUri = Config.shikimoriRedirectUri;
-      final authUrl = Uri.https('shikimori.io', '/oauth/authorize', {
-        'client_id': clientId,
-        'redirect_uri': redirectUri,
-        'response_type': 'code',
-        'scope': 'user_rates comments topics',
-      }).toString();
-
-      final code = await Navigator.push<String>(
-        context,
-        CupertinoPageRoute(
-          builder: (_) => ShikimoriWebViewScreen(url: authUrl),
+  Widget _buildAniMixAuthPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: _busy ? null : _handleAniMixGoogleLogin,
+          icon: _busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CupertinoActivityIndicator(),
+                )
+              : const Icon(CupertinoIcons.person_crop_circle_fill),
+          label: Text(_busy ? 'Открываем Google…' : 'Войти через Google'),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
         ),
-      );
-
-      if (code != null && code.isNotEmpty && context.mounted) {
-        await _performTokenExchange(
-          context,
-          ref,
-          authService,
-          code,
-          redirectUri,
-        );
-      }
-    } else {
-      // 💻 ПК (Windows): Запускаем умный локальный сервер
-      await _startDesktopAuth(context, ref, authService, clientId);
-    }
-  }
-
-  // 🔥 МАГИЯ ДЛЯ ПК: ЛОКАЛЬНЫЙ СЕРВЕР ПЕРЕХВАТА ОАУТ-РЕДИРЕКТА
-  Future<void> _startDesktopAuth(
-    BuildContext context,
-    WidgetRef ref,
-    ShikimoriAuthService authService,
-    String clientId,
-  ) async {
-    if (mounted) setState(() => _busy = true);
-    final redirectUri = Config.shikimoriDesktopRedirectUri;
-    final callbackUri = Uri.parse(redirectUri);
-    final authUri = Uri.https('shikimori.io', '/oauth/authorize', {
-      'client_id': clientId,
-      'redirect_uri': redirectUri,
-      'response_type': 'code',
-      'scope': 'user_rates comments topics',
-    });
-
-    HttpServer? server;
-    try {
-      server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        callbackUri.port,
-      );
-    } catch (e, stackTrace) {
-      AppLogBuffer.instance.recordError(
-        e,
-        stackTrace,
-        source: 'Desktop OAuth callback',
-      );
-      debugPrint('Порт занят, сервер не запущен: $e');
-    }
-
-    if (server == null) {
-      if (mounted) setState(() => _busy = false);
-      await services.Clipboard.setData(
-        services.ClipboardData(text: authUri.toString()),
-      );
-      if (context.mounted) {
-        _showManualCodeDialog(
-          context,
-          ref,
-          authService,
-          redirectUri: redirectUri,
-        );
-      }
-      return;
-    }
-
-    try {
-      await launchUrl(authUri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      await services.Clipboard.setData(
-        services.ClipboardData(text: authUri.toString()),
-      );
-    }
-
-    if (!context.mounted) return;
-
-    BuildContext? waitingDialogContext;
-    var waitingDialogOpen = true;
-    final timeout = Timer(const Duration(minutes: 3), () async {
-      await server?.close(force: true);
-      if (waitingDialogOpen && waitingDialogContext?.mounted == true) {
-        Navigator.of(waitingDialogContext!).pop();
-      }
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = 'Время ожидания истекло. Запустите вход ещё раз.';
-        });
-      }
-    });
-    unawaited(
-      showCupertinoDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          waitingDialogContext = ctx;
-          return CupertinoAlertDialog(
-            title: const Text('Ожидание браузера'),
-            content: const Padding(
-              padding: EdgeInsets.only(top: 16.0),
-              child: Column(
-                children: [
-                  CupertinoActivityIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Завершите вход в браузере — AniMix подхватит аккаунт автоматически.',
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              CupertinoDialogAction(
-                child: const Text('Отмена'),
-                onPressed: () async {
-                  timeout.cancel();
-                  await server?.close(force: true);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  if (mounted) setState(() => _busy = false);
-                },
-              ),
-            ],
-          );
-        },
-      ).whenComplete(() => waitingDialogOpen = false),
+        const SizedBox(height: 10),
+        Text(
+          'Google подтверждает email, а AniMix хранит только собственный профиль и сессию.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+            height: 1.35,
+          ),
+        ),
+      ],
     );
-
-    await for (HttpRequest request in server) {
-      if (request.uri.path == callbackUri.path) {
-        final code = request.uri.queryParameters['code'];
-
-        request.response
-          ..statusCode = HttpStatus.ok
-          ..headers.contentType = ContentType.html
-          ..write('''
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <title>AniMix Auth</title>
-              <style>
-                body { background: #0F0F0F; color: #FFF; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-                .card { background: #1E1E1E; padding: 40px; border-radius: 24px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid rgba(139, 92, 246, 0.5); }
-                h1 { color: #8B5CF6; margin-top: 0; }
-                p { font-size: 18px; color: #A0A0A0; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <h1>Успешно! 🎉</h1>
-                <p>Мы передали данные в приложение.<br>Можешь смело закрыть эту вкладку.</p>
-              </div>
-              <script>window.close();</script>
-            </body>
-            </html>
-          ''');
-        await request.response.close();
-        await server.close(force: true);
-        timeout.cancel();
-
-        if (waitingDialogOpen && waitingDialogContext?.mounted == true) {
-          Navigator.of(waitingDialogContext!).pop();
-        }
-        if (context.mounted && code?.isNotEmpty == true) {
-          await _performTokenExchange(
-            context,
-            ref,
-            authService,
-            code!,
-            redirectUri,
-          );
-        } else if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = 'Shikimori не вернул код авторизации. Повторите вход.';
-          });
-        }
-        break;
-      }
-    }
-    timeout.cancel();
   }
 
-  // ===================== ОБМЕН КОДА НА ТОКЕНЫ =====================
-  Future<void> _performTokenExchange(
-    BuildContext context,
-    WidgetRef ref,
-    ShikimoriAuthService authService,
-    String code, [
-    String? redirectUri,
-  ]) async {
-    if (_exchangeInFlight) return;
+  Future<void> _handleAniMixGoogleLogin() async {
     setState(() {
       _busy = true;
-      _exchangeInFlight = true;
       _error = null;
     });
-    try {
-      final success = await authService.login(code, redirectUri);
-      if (!mounted) return;
-      if (success) {
-        ref.read(sessionNoticeProvider.notifier).clear();
-        ref.read(userDataRevisionProvider.notifier).bump();
-        ref.invalidate(currentUserProvider);
-        ref.invalidate(isLoggedInProvider);
-      } else {
-        setState(() {
-          _busy = false;
-          _exchangeInFlight = false;
-          _error =
-              'Не удалось авторизоваться. Проверьте соединение и повторите.';
-        });
-      }
-    } catch (error, stackTrace) {
-      AppLogBuffer.instance.recordError(
-        error,
-        stackTrace,
-        source: 'Shikimori login',
-      );
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _exchangeInFlight = false;
-          _error = 'Ошибка входа. Подробности сохранены в диагностике.';
-        });
-      }
+    final result = await ref.read(animixAuthServiceProvider).loginWithGoogle();
+    if (!mounted) return;
+    if (result.success) {
+      setState(() => _busy = false);
+      ref.read(sessionNoticeProvider.notifier).clear();
+      ref.read(userDataRevisionProvider.notifier).bump();
+      ref.invalidate(currentUserProvider);
+      ref.read(authSessionSignalProvider.notifier).signedIn();
+    } else {
+      setState(() {
+        _busy = false;
+        _error = result.errorMessage;
+      });
     }
-  }
-
-  // ===================== ОКНО РУЧНОГО ВВОДА КОДА =====================
-  void _showManualCodeDialog(
-    BuildContext context,
-    WidgetRef ref,
-    ShikimoriAuthService authService, {
-    String? redirectUri,
-  }) {
-    final controller = TextEditingController();
-
-    showCupertinoDialog(
-      context: context,
-      builder: (dialogContext) => CupertinoAlertDialog(
-        title: const Text('Введи код авторизации'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: CupertinoTextField(
-                controller: controller,
-                placeholder: 'Вставь код из браузера',
-                padding: const EdgeInsets.all(12),
-                style: const TextStyle(color: CupertinoColors.white),
-              ),
-            ),
-            const SizedBox(height: 12),
-            CupertinoButton(
-              onPressed: () async {
-                final clipboardData = await services.Clipboard.getData(
-                  services.Clipboard.kTextPlain,
-                );
-                if (clipboardData?.text != null &&
-                    clipboardData!.text!.isNotEmpty) {
-                  String text = clipboardData.text!.trim();
-                  if (text.contains('code=')) {
-                    final uri = Uri.tryParse(text);
-                    if (uri != null && uri.queryParameters['code'] != null) {
-                      text = uri.queryParameters['code']!;
-                    }
-                  }
-                  controller.text = text;
-                }
-              },
-              child: const Text('📋 Вставить из буфера'),
-            ),
-          ],
-        ),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('Отмена'),
-            onPressed: () => Navigator.pop(dialogContext),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text('Войти'),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              final code = controller.text.trim();
-              if (code.isNotEmpty) {
-                _performTokenExchange(
-                  context,
-                  ref,
-                  authService,
-                  code,
-                  redirectUri,
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -524,7 +216,14 @@ class _LoginNotice extends StatelessWidget {
 // ===================== ВСТРОЕННЫЙ БРАУЗЕР ДЛЯ МОБИЛОК =====================
 class ShikimoriWebViewScreen extends StatefulWidget {
   final String url;
-  const ShikimoriWebViewScreen({required this.url, super.key});
+  final String expectedState;
+  final bool clearSession;
+  const ShikimoriWebViewScreen({
+    required this.url,
+    required this.expectedState,
+    this.clearSession = false,
+    super.key,
+  });
 
   @override
   State<ShikimoriWebViewScreen> createState() => _ShikimoriWebViewScreenState();
@@ -534,12 +233,25 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _completed = false;
+  String? _callbackError;
 
-  void _complete(String url) {
-    if (_completed || !mounted) return;
+  bool _tryComplete(String url) {
+    if (_completed || !mounted) return _completed;
+    final result = ShikimoriOAuthFlow.parseCallback(
+      url,
+      expectedState: widget.expectedState,
+    );
+    if (result == null) return false;
+    if (!result.isSuccess) {
+      setState(() {
+        _isLoading = false;
+        _callbackError = result.error ?? 'Неизвестная ошибка OAuth.';
+      });
+      return true;
+    }
     _completed = true;
-    final uri = Uri.tryParse(url);
-    Navigator.of(context).pop(uri?.queryParameters['code'] ?? '');
+    Navigator.of(context).pop(result.code);
+    return true;
   }
 
   @override
@@ -557,20 +269,39 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
           },
           onUrlChange: (UrlChange change) {
             final url = change.url;
-            if (url != null && url.startsWith('https://animix.app/callback')) {
-              _complete(url);
-            }
+            if (url != null) _tryComplete(url);
           },
           onNavigationRequest: (request) {
-            if (request.url.startsWith('https://animix.app/callback')) {
-              _complete(request.url);
+            if (_tryComplete(request.url)) {
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
+      );
+    unawaited(_loadAuthorization());
+  }
+
+  Future<void> _loadAuthorization() async {
+    try {
+      if (widget.clearSession) {
+        await WebViewCookieManager().clearCookies();
+        await _controller.clearCache();
+      }
+      await _controller.loadRequest(Uri.parse(widget.url));
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Mobile OAuth WebView',
+      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _callbackError = 'Не удалось открыть авторизацию Shikimori.';
+        });
+      }
+    }
   }
 
   @override
@@ -589,9 +320,155 @@ class _ShikimoriWebViewScreenState extends State<ShikimoriWebViewScreen> {
             WebViewWidget(controller: _controller),
             if (_isLoading)
               const Center(child: CupertinoActivityIndicator(radius: 20)),
+            if (_callbackError != null)
+              _OAuthErrorOverlay(
+                message: _callbackError!,
+                onClose: () => Navigator.pop(context),
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+class ShikimoriWindowsWebViewScreen extends StatefulWidget {
+  const ShikimoriWindowsWebViewScreen({
+    required this.url,
+    required this.expectedState,
+    this.clearSession = false,
+    super.key,
+  });
+
+  final String url;
+  final String expectedState;
+  final bool clearSession;
+
+  @override
+  State<ShikimoriWindowsWebViewScreen> createState() =>
+      _ShikimoriWindowsWebViewScreenState();
+}
+
+class _ShikimoriWindowsWebViewScreenState
+    extends State<ShikimoriWindowsWebViewScreen> {
+  final WebviewController _controller = WebviewController();
+  StreamSubscription<String>? _urlSubscription;
+  StreamSubscription<WebErrorStatus>? _errorSubscription;
+  bool _ready = false;
+  bool _completed = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _controller.initialize();
+      if (widget.clearSession) {
+        await _controller.clearCookies();
+        await _controller.clearCache();
+      }
+      await _controller.setUserAgent(Config.browserUserAgent);
+      await _controller.setBackgroundColor(const Color(0xFF050507));
+      await _controller.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
+      _urlSubscription = _controller.url.listen(_tryComplete);
+      _errorSubscription = _controller.onLoadError.listen((error) {
+        if (mounted && !_completed) {
+          setState(() => _error = 'WebView2 не открыл страницу: $error');
+        }
+      });
+      await _controller.loadUrl(widget.url);
+      if (mounted) setState(() => _ready = true);
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Windows OAuth WebView',
+      );
+      if (mounted) {
+        setState(() => _error = 'Не удалось запустить WebView2: $error');
+      }
+    }
+  }
+
+  Future<void> _tryComplete(String url) async {
+    if (_completed || !mounted) return;
+    final result = ShikimoriOAuthFlow.parseCallback(
+      url,
+      expectedState: widget.expectedState,
+    );
+    if (result == null) return;
+    _completed = true;
+    await _controller.stop();
+    if (!mounted) return;
+    if (result.isSuccess) {
+      Navigator.pop(context, result.code);
+    } else {
+      setState(() => _error = result.error ?? 'Неизвестная ошибка OAuth.');
+    }
+  }
+
+  @override
+  void dispose() {
+    _urlSubscription?.cancel();
+    _errorSubscription?.cancel();
+    if (_controller.value.isInitialized) unawaited(_controller.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF050507),
+    appBar: AppBar(
+      backgroundColor: const Color(0xFF050507),
+      foregroundColor: Colors.white,
+      title: const Text('Авторизация Shikimori'),
+    ),
+    body: Stack(
+      children: [
+        if (_ready) Positioned.fill(child: Webview(_controller)),
+        if (!_ready && _error == null)
+          const Center(child: CupertinoActivityIndicator(radius: 20)),
+        if (_error != null)
+          _OAuthErrorOverlay(
+            message: _error!,
+            onClose: () => Navigator.pop(context),
+          ),
+      ],
+    ),
+  );
+}
+
+class _OAuthErrorOverlay extends StatelessWidget {
+  const _OAuthErrorOverlay({required this.message, required this.onClose});
+
+  final String message;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xF2050507),
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              CupertinoIcons.exclamationmark_triangle_fill,
+              color: CupertinoColors.systemRed,
+              size: 46,
+            ),
+            const SizedBox(height: 16),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: onClose, child: const Text('Закрыть')),
+          ],
+        ),
+      ),
+    ),
+  );
 }

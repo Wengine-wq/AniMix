@@ -1,0 +1,72 @@
+name: Build Android APKs
+
+on: [workflow_dispatch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: animix-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      # Public client identifiers and API endpoints. OAuth secrets stay in
+      # Yandex Lockbox and are never compiled into Android artifacts.
+      SHIKIMORI_CLIENT_ID: NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
+      SHIKIMORI_OAUTH_PROXY_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+      ANIMIX_API_BASE_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify project
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build ABI-specific APKs
+        run: |
+          flutter build apk --release --split-per-abi \
+            --dart-define=SHIKIMORI_CLIENT_ID="$SHIKIMORI_CLIENT_ID" \
+            --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL" \
+            --dart-define=ANIMIX_API_BASE_URL="$ANIMIX_API_BASE_URL"
+
+      - name: Build universal APK
+        run: |
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk artifacts/AniMix-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk artifacts/AniMix-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk artifacts/AniMix-x86_64.apk
+          flutter build apk --release \
+            --dart-define=SHIKIMORI_CLIENT_ID="$SHIKIMORI_CLIENT_ID" \
+            --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL" \
+            --dart-define=ANIMIX_API_BASE_URL="$ANIMIX_API_BASE_URL"
+          cp build/app/outputs/flutter-apk/app-release.apk artifacts/AniMix-universal.apk
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniMix_Android_APKs
+          path: artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 7

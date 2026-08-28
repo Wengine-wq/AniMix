@@ -1,0 +1,24 @@
+{
+  "name": "animix-yandex-api",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AniMix user API for Yandex Cloud Functions and YDB.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@yandex-cloud/nodejs-sdk": "^2.7.7",
+    "@aws-sdk/client-s3": "^3.900.0",
+    "@aws-sdk/s3-request-presigner": "^3.900.0",
+    "ydb-sdk": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

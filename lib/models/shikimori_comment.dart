@@ -1,3 +1,5 @@
+import '../core/config.dart';
+
 class ShikimoriComment {
   final int id;
   final int?
@@ -47,8 +49,10 @@ class ShikimoriComment {
     final value = rawUrl?.toString().trim();
     if (value == null || value.isEmpty) return null;
     final url = value.replaceAll('shikimori.one', 'shikimori.io');
-    if (url.startsWith('http')) return url;
-    if (url.startsWith('//')) return 'https:$url';
-    return 'https://shikimori.io/${url.replaceFirst(RegExp(r'^/+'), '')}';
+    if (url.startsWith('http')) return Config.proxiedImageUrl(url);
+    if (url.startsWith('//')) return Config.proxiedImageUrl('https:$url');
+    return Config.proxiedImageUrl(
+      'https://shikimori.io/${url.replaceFirst(RegExp(r'^/+'), '')}',
+    );
   }
 }

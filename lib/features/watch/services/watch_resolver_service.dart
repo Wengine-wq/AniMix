@@ -8,13 +8,18 @@ import '../../../core/app_settings.dart';
 import 'provider_response_cache.dart';
 
 class WatchResolverService {
-  final _dio = Dio(
-    BaseOptions(
-      headers: Config.yummyApiHeaders,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-    ),
-  );
+  WatchResolverService({Dio? dio})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              headers: Config.yummyApiHeaders,
+              connectTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 15),
+            ),
+          );
+
+  final Dio _dio;
 
   final _repo = WatchMappingRepository();
   final _responseCache = ProviderResponseCache.instance;
@@ -26,6 +31,7 @@ class WatchResolverService {
     Map<String, dynamic>? queryParameters,
     Map<String, dynamic>? headers,
     required Duration freshFor,
+    bool forceRefresh = false,
   }) async {
     if (!AppSettingsController.instance.smartConnectionEnabled) {
       final response = await _dio.get(
@@ -41,10 +47,13 @@ class WatchResolverService {
       ),
     );
     final key = uri.toString();
-    final cached = await _responseCache.get(key, maxAge: freshFor);
-    if (cached != null) return cached;
+    if (!forceRefresh) {
+      final cached = await _responseCache.get(key, maxAge: freshFor);
+      if (cached != null) return cached;
+    }
 
-    final existing = _inFlight[key];
+    final flightKey = forceRefresh ? '$key#refresh' : key;
+    final existing = _inFlight[flightKey];
     if (existing != null) return existing;
     final request = () async {
       try {
@@ -56,6 +65,7 @@ class WatchResolverService {
         await _responseCache.put(key, response.data);
         return response.data;
       } catch (_) {
+        if (forceRefresh) rethrow;
         final stale = await _responseCache.get(
           key,
           maxAge: const Duration(days: 7),
@@ -63,10 +73,10 @@ class WatchResolverService {
         if (stale != null) return stale;
         rethrow;
       } finally {
-        _inFlight.remove(key);
+        _inFlight.remove(flightKey);
       }
     }();
-    _inFlight[key] = request;
+    _inFlight[flightKey] = request;
     return request;
   }
 
@@ -76,6 +86,7 @@ class WatchResolverService {
     required String searchNameRu,
     required String searchNameEn,
     bool forcePicker = false,
+    bool forceRefresh = false,
   }) async {
     final smart = AppSettingsController.instance.smartConnectionEnabled;
     final mapping = smart ? await _repo.get('${shikimoriId}_$provider') : null;
@@ -90,12 +101,23 @@ class WatchResolverService {
         shikimoriId: shikimoriId,
         searchNameRu: searchNameRu,
         searchNameEn: searchNameEn,
+        forceRefresh: forceRefresh,
       );
     }
 
     final candidates = provider == 'yummyanime'
-        ? await _searchYummyCandidates(searchNameRu, searchNameEn, shikimoriId)
-        : await _searchCandidates(provider, searchNameRu, searchNameEn);
+        ? await _searchYummyCandidates(
+            searchNameRu,
+            searchNameEn,
+            shikimoriId,
+            forceRefresh: forceRefresh,
+          )
+        : await _searchCandidates(
+            provider,
+            searchNameRu,
+            searchNameEn,
+            forceRefresh: forceRefresh,
+          );
 
     if (candidates.isEmpty) throw Exception('Релиз не найден в базе $provider');
 
@@ -121,6 +143,7 @@ class WatchResolverService {
         shikimoriId: shikimoriId,
         searchNameRu: searchNameRu,
         searchNameEn: searchNameEn,
+        forceRefresh: forceRefresh,
       );
     }
 
@@ -137,9 +160,9 @@ class WatchResolverService {
     String query,
   ) async {
     if (provider == 'yummyanime') {
-      return await _searchYummyCandidates(query, '', null);
+      return await _searchYummyCandidates(query, '', null, forceRefresh: true);
     } else {
-      return await _searchCandidates(provider, query, '');
+      return await _searchCandidates(provider, query, '', forceRefresh: true);
     }
   }
 
@@ -154,17 +177,26 @@ class WatchResolverService {
     required int shikimoriId,
     required String searchNameRu,
     required String searchNameEn,
+    bool forceRefresh = false,
   }) async {
     if (provider != 'yummyanime') {
-      return loadEpisodesDirect(provider, releaseId);
+      return loadEpisodesDirect(
+        provider,
+        releaseId,
+        forceRefresh: forceRefresh,
+      );
     }
-    final groups = await loadYummyStudios(releaseId);
+    final groups = await loadYummyStudios(
+      releaseId,
+      forceRefresh: forceRefresh,
+    );
     if (!AppSettingsController.instance.smartConnectionEnabled) return groups;
     return _enrichYummyWithAniLiberty(
       groups: groups,
       shikimoriId: shikimoriId,
       searchNameRu: searchNameRu,
       searchNameEn: searchNameEn,
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -173,6 +205,7 @@ class WatchResolverService {
     required int shikimoriId,
     required String searchNameRu,
     required String searchNameEn,
+    bool forceRefresh = false,
   }) async {
     try {
       var mapping = await _repo.get('${shikimoriId}_anilibria');
@@ -181,6 +214,7 @@ class WatchResolverService {
           'anilibria',
           searchNameRu,
           searchNameEn,
+          forceRefresh: forceRefresh,
         );
         final best = candidates.isEmpty ? null : candidates.first;
         if (best == null || (best['matchScore'] as int? ?? 0) < 88) {
@@ -200,6 +234,7 @@ class WatchResolverService {
       final directEpisodes = await loadEpisodesDirect(
         'anilibria',
         mapping.releaseId,
+        forceRefresh: forceRefresh,
       );
       final directByNumber = <String, Map<String, dynamic>>{
         for (final episode in directEpisodes)
@@ -242,7 +277,10 @@ class WatchResolverService {
   // 🟢 БЛОК YUMMY ANIME (С УМНОЙ ГРУППИРОВКОЙ)
   // =====================================================================
 
-  Future<List<Map<String, dynamic>>> loadYummyStudios(String yummyId) async {
+  Future<List<Map<String, dynamic>>> loadYummyStudios(
+    String yummyId, {
+    bool forceRefresh = false,
+  }) async {
     debugPrint('🌐 [YUMMY API] Получение студий для релиза: $yummyId');
     try {
       final url = '${Config.yummyApiBase}/anime/$yummyId/videos';
@@ -250,6 +288,7 @@ class WatchResolverService {
         url,
         headers: Config.yummyApiHeaders,
         freshFor: const Duration(minutes: 15),
+        forceRefresh: forceRefresh,
       );
       List<dynamic> videos = [];
       if (data is List) {
@@ -381,8 +420,9 @@ class WatchResolverService {
   Future<List<Map<String, dynamic>>> _searchYummyCandidates(
     String nameRu,
     String nameEn,
-    int? shikimoriId,
-  ) async {
+    int? shikimoriId, {
+    bool forceRefresh = false,
+  }) async {
     final cleanRu = _cleanSearchQuery(nameRu);
     final cleanEn = _cleanSearchQuery(nameEn);
 
@@ -396,6 +436,7 @@ class WatchResolverService {
           queryParameters: {'q': q, 'limit': 15},
           headers: Config.yummyApiHeaders,
           freshFor: const Duration(hours: 1),
+          forceRefresh: forceRefresh,
         );
         List<dynamic> releases = [];
 
@@ -508,12 +549,14 @@ class WatchResolverService {
 
   Future<List<Map<String, dynamic>>> loadEpisodesDirect(
     String provider,
-    String releaseId,
-  ) async {
+    String releaseId, {
+    bool forceRefresh = false,
+  }) async {
     if (provider == 'anilibria') {
       final data = await _cachedGet(
         '${Config.aniLibertyApiBase}/anime/releases/$releaseId',
         freshFor: const Duration(hours: 1),
+        forceRefresh: forceRefresh,
       );
       final playlist = data['episodes'] as List<dynamic>? ?? [];
 
@@ -554,8 +597,9 @@ class WatchResolverService {
   Future<List<Map<String, dynamic>>> _searchCandidates(
     String provider,
     String nameRu,
-    String nameEn,
-  ) async {
+    String nameEn, {
+    bool forceRefresh = false,
+  }) async {
     if (provider != 'anilibria') return [];
 
     final cleanRu = _cleanSearchQuery(nameRu);
@@ -570,12 +614,14 @@ class WatchResolverService {
             '${Config.aniLibertyApiBase}/app/search/releases',
             queryParameters: {'query': cleanRu},
             freshFor: const Duration(hours: 1),
+            forceRefresh: forceRefresh,
           ),
         if (cleanEn.isNotEmpty)
           _cachedGet(
             '${Config.aniLibertyApiBase}/app/search/releases',
             queryParameters: {'query': cleanEn},
             freshFor: const Duration(hours: 1),
+            forceRefresh: forceRefresh,
           ),
       ]);
 
@@ -605,8 +651,14 @@ class WatchResolverService {
       final scoreB = b['matchScore'] as int;
       if (scoreA != scoreB) return scoreB.compareTo(scoreA);
 
-      final epsA = (a['episodes']?['total'] as int?) ?? 1;
-      final epsB = (b['episodes']?['total'] as int?) ?? 1;
+      final epsA =
+          (a['episodes']?['total'] as int?) ??
+          (a['episodes_total'] as int?) ??
+          1;
+      final epsB =
+          (b['episodes']?['total'] as int?) ??
+          (b['episodes_total'] as int?) ??
+          1;
       if (epsA != epsB) return epsB.compareTo(epsA);
 
       return (b['year'] as int? ?? 0).compareTo(a['year'] as int? ?? 0);
@@ -617,12 +669,20 @@ class WatchResolverService {
       final titleAlt = r['name']?['english'] ?? r['name']?['alternative'] ?? '';
       final title = titleAlt.isNotEmpty ? '$titleMain / $titleAlt' : titleMain;
 
+      var poster =
+          r['poster']?['original'] ??
+          r['poster']?['preview'] ??
+          r['poster']?['src'] ??
+          '';
+      if (poster is String && poster.startsWith('/')) {
+        poster = Uri.parse(Config.aniLibertyApiBase).resolve(poster).toString();
+      }
       return {
         'id': r['id'],
         'title': title,
         'year': r['year'] ?? 0,
-        'episodes': r['episodes']?['total'] ?? 1,
-        'poster': r['poster']?['original'] ?? r['poster']?['preview'] ?? '',
+        'episodes': r['episodes']?['total'] ?? r['episodes_total'] ?? 1,
+        'poster': poster,
         'matchScore': r['matchScore'],
       };
     }).toList();

@@ -13,12 +13,14 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_logging.dart';
 import '../../core/animix_theme.dart';
+import '../../core/config.dart';
 import '../../core/media_cache.dart';
 import '../../core/shikimori_smileys.dart';
 import '../../models/shikimori_comment.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_media_viewer.dart';
 import '../../widgets/animix_surface.dart';
+import '../../widgets/animix_network_image.dart';
 import '../../widgets/animix_skeletons.dart';
 
 const _shikimoriUrl = 'https://shikimori.io';
@@ -727,7 +729,7 @@ class _CommentAvatar extends StatelessWidget {
                   size: size * .48,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 )
-              : CachedNetworkImage(
+              : AniMixNetworkImage(
                   imageUrl: avatar,
                   fit: BoxFit.cover,
                   fadeInDuration: const Duration(milliseconds: 120),
@@ -932,7 +934,7 @@ class CommentMarkupView extends StatelessWidget {
       final url = _absoluteUrl(element.attributes['src']);
       final alt = element.attributes['alt'] ?? '';
       return InlineCustomWidget(
-        child: CachedNetworkImage(
+        child: AniMixNetworkImage(
           imageUrl: url,
           cacheManager: AniMixMediaCache.commentMedia,
           width: compact ? 19 : 21,
@@ -1004,10 +1006,13 @@ class CommentMarkupView extends StatelessWidget {
   static String _absoluteUrl(String? value) {
     final raw = value?.trim() ?? '';
     if (raw.isEmpty) return '';
-    if (raw.startsWith('//')) return 'https:$raw';
+    if (raw.startsWith('//')) return Config.proxiedImageUrl('https:$raw');
     final uri = Uri.tryParse(raw);
     if (uri == null) return '';
-    return uri.hasScheme ? uri.toString() : _baseUri.resolveUri(uri).toString();
+    final absolute = uri.hasScheme
+        ? uri.toString()
+        : _baseUri.resolveUri(uri).toString();
+    return Config.proxiedImageUrl(absolute);
   }
 
   static Future<bool> _launch(String raw) async {
@@ -1081,7 +1086,7 @@ class _CommentRemoteImageState extends State<CommentRemoteImage> {
               child: SizedBox(
                 width: double.infinity,
                 height: height,
-                child: CachedNetworkImage(
+                child: AniMixNetworkImage(
                   key: ValueKey('${widget.previewUrl}#$_attempt'),
                   imageUrl: widget.previewUrl,
                   cacheManager: AniMixMediaCache.commentMedia,
@@ -1725,7 +1730,7 @@ class _ShikimoriSmileyPicker extends StatelessWidget {
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(8),
-                            child: CachedNetworkImage(
+                            child: AniMixNetworkImage(
                               imageUrl: ShikimoriSmileys.imageUrl(code),
                               cacheManager: AniMixMediaCache.commentMedia,
                               fit: BoxFit.contain,

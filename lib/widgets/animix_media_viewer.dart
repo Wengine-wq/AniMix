@@ -1,12 +1,14 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'animix_network_image.dart';
+
 import '../core/app_logging.dart';
+import '../core/config.dart';
 
 Future<void> showAniMixMediaViewer(
   BuildContext context, {
@@ -194,7 +196,7 @@ class _ZoomableMediaState extends State<_ZoomableMedia> {
       maxScale: 6,
       clipBehavior: Clip.none,
       child: Center(
-        child: CachedNetworkImage(
+        child: AniMixNetworkImage(
           imageUrl: widget.imageUrl,
           httpHeaders: widget.headers,
           fit: BoxFit.contain,
@@ -253,14 +255,22 @@ abstract final class AniMixMediaSaver {
     final file = File(
       '${directory.path}${Platform.pathSeparator}${safeStem}_$timestamp$extension',
     );
-    await Dio().download(
-      uri.toString(),
+    final dio = Dio();
+    Future<void> download(String source) => dio.download(
+      source,
       file.path,
       options: Options(
         headers: headers,
         receiveTimeout: const Duration(minutes: 2),
       ),
     );
+    try {
+      await download(uri.toString());
+    } catch (_) {
+      final fallback = Config.fallbackImageUrl(uri.toString());
+      if (fallback == uri.toString()) rethrow;
+      await download(fallback);
+    }
     return file;
   }
 }

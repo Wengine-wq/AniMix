@@ -55,4 +55,31 @@ void main() {
       expect(user.scores, 7);
     });
   });
+
+  group('AniMix profile timestamps', () {
+    test('parses unix seconds instead of treating them as a huge year', () {
+      final user = ShikimoriUser.localFromAniMixJson({
+        'display_name': 'Tester',
+        'created_at': 1787510000,
+        'shikimori_linked': true,
+        'shikimori_user_id': '42',
+        'stats': <String, dynamic>{},
+      });
+
+      expect(DateTime.parse(user.joinedAt!).year, lessThan(2100));
+      expect(user.shikimoriLinked, isTrue);
+      expect(user.shikimoriUserId, '42');
+    });
+
+    test('normalizes legacy milliseconds and microseconds identically', () {
+      ShikimoriUser parse(int value) => ShikimoriUser.localFromAniMixJson({
+        'display_name': 'Tester',
+        'created_at': value,
+        'stats': <String, dynamic>{},
+      });
+
+      expect(parse(1700000000000).joinedAt, parse(1700000000000000).joinedAt);
+      expect(DateTime.parse(parse(1700000000000000).joinedAt!).year, 2023);
+    });
+  });
 }

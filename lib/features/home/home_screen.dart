@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -14,6 +13,7 @@ import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../recommendation/recommendation_screen.dart';
+import 'anime_search_sheet.dart';
 
 class HomeData {
   const HomeData({
@@ -327,7 +327,7 @@ class _DashboardHeader extends StatelessWidget {
                 backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                 builder: (_) => const FractionallySizedBox(
                   heightFactor: .94,
-                  child: _HomeSearchSheet(),
+                  child: AnimeSearchSheet(),
                 ),
               ),
             ),
@@ -592,7 +592,7 @@ class _DiscoveryStrip extends StatelessWidget {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           builder: (_) => const FractionallySizedBox(
             heightFactor: .94,
-            child: _HomeSearchSheet(),
+            child: AnimeSearchSheet(),
           ),
         ),
       ),
@@ -1113,178 +1113,6 @@ class _AnimeListRow extends StatelessWidget {
           size: 15,
         ),
       ],
-    ),
-  );
-}
-
-class _HomeSearchSheet extends ConsumerStatefulWidget {
-  const _HomeSearchSheet();
-
-  @override
-  ConsumerState<_HomeSearchSheet> createState() => _HomeSearchSheetState();
-}
-
-class _HomeSearchSheetState extends ConsumerState<_HomeSearchSheet> {
-  final _controller = TextEditingController();
-  Timer? _debounce;
-  List<ShikimoriAnime> _items = const [];
-  bool _loading = true;
-  String _kind = 'all';
-  String _status = 'all';
-
-  @override
-  void initState() {
-    super.initState();
-    _search();
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _schedule(String _) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 320), _search);
-  }
-
-  Future<void> _search() async {
-    setState(() => _loading = true);
-    try {
-      final result = await ref
-          .read(apiClientProvider)
-          .getAnimes(
-            limit: 40,
-            filters: {
-              if (_controller.text.trim().isNotEmpty)
-                'search': _controller.text.trim(),
-              if (_kind != 'all') 'kind': _kind,
-              if (_status != 'all') 'status': _status,
-              'order': _controller.text.trim().isEmpty
-                  ? 'popularity'
-                  : 'ranked',
-            },
-          );
-      if (mounted) setState(() => _items = result);
-    } catch (_) {
-      if (mounted) setState(() => _items = const []);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
-        child: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Поиск и каталог',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-              ),
-            ),
-            IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(CupertinoIcons.xmark_circle_fill),
-            ),
-          ],
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: CupertinoSearchTextField(
-          controller: _controller,
-          autofocus: true,
-          placeholder: 'Название аниме',
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-          onChanged: _schedule,
-          onSubmitted: (_) => _search(),
-        ),
-      ),
-      const SizedBox(height: 12),
-      SizedBox(
-        height: 36,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          children: [
-            _FilterChip(
-              label: 'Все форматы',
-              selected: _kind == 'all',
-              onTap: () => _setKind('all'),
-            ),
-            _FilterChip(
-              label: 'TV',
-              selected: _kind == 'tv',
-              onTap: () => _setKind('tv'),
-            ),
-            _FilterChip(
-              label: 'Фильмы',
-              selected: _kind == 'movie',
-              onTap: () => _setKind('movie'),
-            ),
-            _FilterChip(
-              label: 'Выходит',
-              selected: _status == 'ongoing',
-              onTap: () => _setStatus(_status == 'ongoing' ? 'all' : 'ongoing'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 10),
-      Expanded(
-        child: _loading
-            ? const Center(child: CupertinoActivityIndicator())
-            : _items.isEmpty
-            ? const AniMixEmptyState(
-                icon: CupertinoIcons.search,
-                title: 'Ничего не найдено',
-                message: 'Попробуйте изменить запрос или фильтры.',
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-                itemCount: _items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 9),
-                itemBuilder: (context, index) => _AnimeListRow(_items[index]),
-              ),
-      ),
-    ],
-  );
-
-  void _setKind(String value) {
-    setState(() => _kind = value);
-    _search();
-  }
-
-  void _setStatus(String value) {
-    setState(() => _status = value);
-    _search();
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 8),
-    child: ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
     ),
   );
 }

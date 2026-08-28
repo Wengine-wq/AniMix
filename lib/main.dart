@@ -65,6 +65,7 @@ class MyApp extends ConsumerWidget {
     // Слушаем состояние авторизации для выбора стартового экрана.
     // Используем .maybeWhen, так как он поддерживается во всех версиях Riverpod (и 1.x, и 2.x)
     final authState = ref.watch(isLoggedInProvider);
+    final authSignal = ref.watch(authSessionSignalProvider);
 
     final settings = AppSettingsController.instance;
     return AnimatedBuilder(
@@ -101,15 +102,18 @@ class MyApp extends ConsumerWidget {
             ),
           );
         },
-        home: authState.when(
-          skipLoadingOnRefresh: true,
-          skipLoadingOnReload: true,
-          data: (loggedIn) =>
-              loggedIn ? const MainWrapper() : const LoginScreen(),
-          loading: () => const _StartupLoading(),
-          error: (_, _) =>
-              _StartupError(onRetry: () => ref.invalidate(isLoggedInProvider)),
-        ),
+        home: authSignal != null
+            ? (authSignal ? const MainWrapper() : const LoginScreen())
+            : authState.when(
+                skipLoadingOnRefresh: true,
+                skipLoadingOnReload: true,
+                data: (loggedIn) =>
+                    loggedIn ? const MainWrapper() : const LoginScreen(),
+                loading: () => const _StartupLoading(),
+                error: (_, _) => _StartupError(
+                  onRetry: () => ref.invalidate(isLoggedInProvider),
+                ),
+              ),
       ),
     );
   }

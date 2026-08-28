@@ -130,4 +130,45 @@ void main() {
     expect(find.text('Выйти из аккаунта'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('AniMix profile exposes inline server-backed edit mode', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final user = ShikimoriUser.localFromAniMixJson({
+      'display_name': 'AniMix Tester',
+      'created_at': '2026-08-24T10:00:00Z',
+      'stats': {'planned': 2, 'completed': 3},
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [currentUserProvider.overrideWith((ref) async => user)],
+        child: MaterialApp(
+          theme: AniMixTheme.material(
+            const Color(0xFF8B5CF6),
+            AniMixThemeStyle.graphite,
+          ),
+          home: const ProfileScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Редактировать профиль'), findsOneWidget);
+    expect(find.text('Профиль Shikimori'), findsNothing);
+    await tester.tap(find.byTooltip('Редактировать профиль'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'AniMix Tester'), findsOneWidget);
+    expect(find.text('Сменить фон'), findsOneWidget);
+    expect(find.byTooltip('Сохранить'), findsOneWidget);
+    expect(find.byTooltip('Отменить'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

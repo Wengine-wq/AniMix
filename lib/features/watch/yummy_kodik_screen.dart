@@ -126,7 +126,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
     _loadWithResolver();
   }
 
-  Future<void> _loadWithResolver() async {
+  Future<void> _loadWithResolver({bool forceRefresh = false}) async {
     if (!mounted) return;
     setState(() {
       isLoading = true;
@@ -139,6 +139,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
         provider: 'yummyanime',
         searchNameRu: widget.animeNameRu,
         searchNameEn: widget.animeNameEn,
+        forceRefresh: forceRefresh,
       );
 
       if (!mounted) return;
@@ -210,7 +211,10 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
         savedAt: DateTime.now(),
       );
       await _resolver.saveMapping(mapping);
-      final direct = await _resolver.loadYummyStudios(mapping.releaseId);
+      final direct = await _resolver.loadYummyStudios(
+        mapping.releaseId,
+        forceRefresh: true,
+      );
       if (mounted) {
         setState(() {
           candidates = null;
@@ -280,9 +284,16 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
       title: 'Озвучки YummyAnime',
       actions: [
         IconButton(
+          tooltip: 'Обновить источники',
+          onPressed: isLoading
+              ? null
+              : () => _loadWithResolver(forceRefresh: true),
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+        IconButton(
           tooltip: 'Сбросить найденное соответствие',
           onPressed: _resetMapping,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: const Icon(Icons.link_off_rounded),
         ),
       ],
       child: isLoading

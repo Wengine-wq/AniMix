@@ -109,7 +109,7 @@ void main() {
       const Size(390, 844),
     );
     expect(find.text('Закладки'), findsOneWidget);
-    expect(find.text('Нужен аккаунт Shikimori'), findsOneWidget);
+    expect(find.text('Нужен аккаунт AniMix'), findsOneWidget);
   });
 
   testWidgets('profile signed-out state remains usable on Windows size', (

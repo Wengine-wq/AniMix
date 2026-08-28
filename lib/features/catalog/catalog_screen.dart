@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/auth_provider.dart';
@@ -79,8 +80,76 @@ final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((
   if (!await ref.watch(isLoggedInProvider.future)) {
     throw const _BookmarksAuthRequired();
   }
+  ref.watch(userDataRevisionProvider);
+  final user = await ref.read(currentUserProvider.future);
+  if (user == null) throw const _BookmarksAuthRequired();
   final api = ref.read(apiClientProvider);
-  final user = await api.getCurrentUser();
+  if (user.isAniMix) {
+    final rawEntries = await ref
+        .read(animixAuthServiceProvider)
+        .getLibraryEntries();
+    if (rawEntries == null) {
+      throw const _BookmarksUnavailable('AniMix временно не отвечает.');
+    }
+    final records = rawEntries
+        .map(_AniMixBookmarkRecord.fromJson)
+        .where((entry) => entry.animeId > 0)
+        .toList(growable: false);
+    final animeById = <int, ShikimoriAnime>{};
+    const batchSize = 50;
+    const parallelBatches = 4;
+    final batches = <List<int>>[];
+    for (var start = 0; start < records.length; start += batchSize) {
+      batches.add(
+        records
+            .skip(start)
+            .take(batchSize)
+            .map((entry) => entry.animeId)
+            .toList(growable: false),
+      );
+    }
+    for (var start = 0; start < batches.length; start += parallelBatches) {
+      final wave = batches.skip(start).take(parallelBatches);
+      final results = await Future.wait(
+        wave.map((ids) async {
+          try {
+            return await api.getAnimes(
+              limit: ids.length,
+              filters: {'ids': ids.join(',')},
+            );
+          } catch (error, stackTrace) {
+            AppLogBuffer.instance.recordError(
+              error,
+              stackTrace,
+              source: 'AniMix library metadata',
+            );
+            return const <ShikimoriAnime>[];
+          }
+        }),
+      );
+      for (final anime in results.expand((items) => items)) {
+        animeById[anime.id] = anime;
+      }
+    }
+    return records
+        .map(
+          (record) => BookmarkEntry(
+            anime:
+                animeById[record.animeId] ??
+                ShikimoriAnime.fromJson({
+                  'id': record.animeId,
+                  'name': 'Anime #${record.animeId}',
+                  'russian': 'Аниме #${record.animeId}',
+                  'image': const <String, dynamic>{},
+                  'score': 0,
+                }),
+            status: record.status,
+            score: record.score,
+            watchedEpisodes: record.watchedEpisodes,
+          ),
+        )
+        .toList(growable: false);
+  }
   final rates = await api.getUserAnimeRates(user.id);
   return rates
       .whereType<Map>()
@@ -98,8 +167,36 @@ final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((
       .toList();
 });
 
+class _AniMixBookmarkRecord {
+  const _AniMixBookmarkRecord({
+    required this.animeId,
+    required this.status,
+    required this.score,
+    required this.watchedEpisodes,
+  });
+
+  factory _AniMixBookmarkRecord.fromJson(Map<String, dynamic> json) =>
+      _AniMixBookmarkRecord(
+        animeId: int.tryParse(json['shikimori_id']?.toString() ?? '') ?? 0,
+        status: json['status']?.toString() ?? '',
+        score: int.tryParse(json['score']?.toString() ?? '') ?? 0,
+        watchedEpisodes:
+            int.tryParse(json['episodes_watched']?.toString() ?? '') ?? 0,
+      );
+
+  final int animeId;
+  final String status;
+  final int score;
+  final int watchedEpisodes;
+}
+
 class _BookmarksAuthRequired implements Exception {
   const _BookmarksAuthRequired();
+}
+
+class _BookmarksUnavailable implements Exception {
+  const _BookmarksUnavailable(this.message);
+  final String message;
 }
 
 class CatalogScreen extends ConsumerWidget {
@@ -147,7 +244,7 @@ class CatalogScreen extends ConsumerWidget {
               error: (error, _) => error is _BookmarksAuthRequired
                   ? AniMixEmptyState(
                       icon: CupertinoIcons.person_crop_circle_badge_exclam,
-                      title: 'Нужен аккаунт Shikimori',
+                      title: 'Нужен аккаунт AniMix',
                       message:
                           'Войдите, чтобы синхронизировать списки и прогресс.',
                       actionLabel: 'Войти',
@@ -161,7 +258,9 @@ class CatalogScreen extends ConsumerWidget {
                   : AniMixEmptyState(
                       icon: CupertinoIcons.wifi_exclamationmark,
                       title: 'Не удалось загрузить закладки',
-                      message: 'Shikimori временно не отвечает.',
+                      message: error is _BookmarksUnavailable
+                          ? error.message
+                          : 'Каталог временно не отвечает.',
                       actionLabel: 'Повторить',
                       onAction: () => ref.invalidate(bookmarksProvider),
                     ),
@@ -244,15 +343,28 @@ class CatalogScreen extends ConsumerWidget {
     try {
       final user = await ref.read(currentUserProvider.future);
       if (user == null) return;
-      await ref
-          .read(apiClientProvider)
-          .setUserRate(
-            entry.anime.id,
-            value,
-            score: entry.score,
-            episodes: entry.watchedEpisodes,
-            userId: user.id,
-          );
+      if (user.isAniMix) {
+        final saved = await ref
+            .read(animixAuthServiceProvider)
+            .saveLibraryEntry(
+              animeId: entry.anime.id,
+              status: value,
+              score: entry.score,
+              episodesWatched: entry.watchedEpisodes,
+            );
+        if (!saved) throw StateError('AniMix library update failed');
+        ref.read(userDataRevisionProvider.notifier).bump();
+      } else {
+        await ref
+            .read(apiClientProvider)
+            .setUserRate(
+              entry.anime.id,
+              value,
+              score: entry.score,
+              episodes: entry.watchedEpisodes,
+              userId: user.id,
+            );
+      }
       ref.invalidate(bookmarksProvider);
     } catch (_) {
       if (!context.mounted) return;

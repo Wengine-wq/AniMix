@@ -1,16 +1,17 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class Config {
-  // These values identify the public AniMix OAuth client and its token proxy.
+  // These values identify the public AniMix OAuth client and backend.
   // OAuth client IDs and HTTPS endpoint URLs are not credentials: every
   // installed client must know them. The client secret remains exclusively in
-  // the Cloudflare Worker and is never compiled into the Flutter application.
+  // Yandex Lockbox and is never compiled into the Flutter application.
   static const _productionShikimoriClientId =
       'NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM';
   static const _productionShikimoriOAuthProxyUrl =
-      'https://animix-shikimori-oauth.shikimori-oauth-proxy.workers.dev';
+      'https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net';
   static const _productionShikimoriRedirectUri = 'https://animix.app/callback';
-  static const shikimoriDesktopRedirectUri = 'http://localhost:33333/callback';
+  static const _productionAniMixApiBaseUrl =
+      'https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net';
 
   static String? _environment(String key) {
     try {
@@ -41,6 +42,9 @@ class Config {
       'ANILIBERTY_API_BASE' => const String.fromEnvironment(
         'ANILIBERTY_API_BASE',
       ),
+      'ANIMIX_API_BASE_URL' => const String.fromEnvironment(
+        'ANIMIX_API_BASE_URL',
+      ),
       _ => '',
     };
     return value.trim().isEmpty ? null : value.trim();
@@ -59,11 +63,69 @@ class Config {
     'SHIKIMORI_OAUTH_PROXY_URL',
     fallback: _productionShikimoriOAuthProxyUrl,
   );
-  static String get shikimoriRedirectUri => _value(
-    'SHIKIMORI_REDIRECT_URI',
-    fallback: _productionShikimoriRedirectUri,
-  );
+
+  /// The redirect registered in Shikimori must be identical for authorize and
+  /// token exchange. Only HTTPS overrides are accepted: obsolete OOB and
+  /// localhost values would make release builds impossible to re-authorize.
+  static String get shikimoriRedirectUri {
+    final candidate = _value(
+      'SHIKIMORI_REDIRECT_URI',
+      fallback: _productionShikimoriRedirectUri,
+    );
+    final uri = Uri.tryParse(candidate);
+    if (uri?.scheme == 'https' && uri?.host.isNotEmpty == true) {
+      return uri.toString();
+    }
+    return _productionShikimoriRedirectUri;
+  }
+
   static const String shikimoriBaseUrl = 'https://shikimori.io';
+
+  /// Public Shikimori traffic goes directly to its origin so ordinary catalog
+  /// browsing does not consume AniMix/Yandex Cloud invocations.
+  static const String shikimoriApiBaseUrl = shikimoriBaseUrl;
+
+  static String get animixApiBaseUrl => _value(
+    'ANIMIX_API_BASE_URL',
+    fallback: _productionAniMixApiBaseUrl,
+  ).replaceFirst(RegExp(r'/*$'), '');
+
+  /// Normalizes a Shikimori image URL without spending a backend invocation.
+  static String proxiedImageUrl(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    final absolute = value.startsWith('http')
+        ? value
+        : value.startsWith('//')
+        ? 'https:$value'
+        : 'https://shikimori.io${value.startsWith('/') ? value : '/$value'}';
+    return absolute;
+  }
+
+  /// Zero-cost fallback between Shikimori's public domains. AniMix never
+  /// proxies catalog media through the user API: Yandex invocations are
+  /// reserved for authentication, profiles and library synchronization.
+  static String fallbackImageUrl(String raw) {
+    final absolute = proxiedImageUrl(raw);
+    final uri = Uri.tryParse(absolute);
+    if (uri == null || uri.scheme != 'https') return absolute;
+    final host = uri.host.toLowerCase();
+    final replacement = host == 'shikimori.io'
+        ? 'shikimori.one'
+        : host.endsWith('.shikimori.io')
+        ? '${host.substring(0, host.length - '.shikimori.io'.length)}.shikimori.one'
+        : host == 'shikimori.one'
+        ? 'shikimori.io'
+        : host.endsWith('.shikimori.one')
+        ? '${host.substring(0, host.length - '.shikimori.one'.length)}.shikimori.io'
+        : null;
+    return replacement == null
+        ? absolute
+        : uri.replace(host: replacement).toString();
+  }
+
+  static const animixOAuthCallbackScheme = 'animix';
+  static const animixOAuthCallbackUri = 'animix://oauth/callback';
 
   static String get yummyApplicationToken =>
       _value('YUMMY_APPLICATION_TOKEN', fallback: 'ze645twqfeql6l1u');

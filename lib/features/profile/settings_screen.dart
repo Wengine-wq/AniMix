@@ -10,14 +10,18 @@ import '../../core/app_settings.dart';
 import '../../core/poster_fallback_service.dart';
 import '../../core/secure_storage.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
 import '../auth/login_screen.dart';
+import '../catalog/catalog_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../downloads/hls_download_manager.dart';
 import '../watch/models/watch_mapping.dart';
 import '../watch/repositories/watch_mapping_repository.dart';
 import '../watch/services/provider_response_cache.dart';
 import '../watch/services/resolved_stream_cache.dart';
+import 'profile_cover_storage.dart';
+import 'shikimori_integration_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -27,6 +31,7 @@ class SettingsScreen extends ConsumerWidget {
     final authenticated = ref
         .watch(isLoggedInProvider)
         .maybeWhen(data: (value) => value, orElse: () => false);
+    final profile = ref.watch(currentUserProvider).value;
     return AnimatedBuilder(
       animation: AppSettingsController.instance,
       builder: (context, _) {
@@ -47,12 +52,27 @@ class SettingsScreen extends ConsumerWidget {
                     color: const Color(0xFFFF5E8A),
                     title: 'Мой профиль',
                     subtitle: authenticated
-                        ? 'Shikimori подключён, списки синхронизируются'
-                        : 'Войдите, чтобы синхронизировать списки',
+                        ? 'Публичный профиль и библиотека AniMix'
+                        : 'Войдите в основной аккаунт AniMix',
                     onTap: authenticated
                         ? () => Navigator.maybePop(context)
                         : () => _push(context, const LoginScreen()),
                   ),
+                  if (authenticated && profile?.isAniMix == true)
+                    _SettingsRow(
+                      icon: profile!.shikimoriLinked
+                          ? CupertinoIcons.check_mark_circled_solid
+                          : CupertinoIcons.link_circle_fill,
+                      color: profile.shikimoriLinked
+                          ? const Color(0xFF35D07F)
+                          : const Color(0xFF43C6FF),
+                      title: 'Shikimori',
+                      subtitle: profile.shikimoriLinked
+                          ? 'Библиотека перенесена в AniMix'
+                          : 'Перенести статусы, оценки и прогресс',
+                      onTap: () =>
+                          _push(context, const ShikimoriIntegrationScreen()),
+                    ),
                   _SettingsRow(
                     icon: CupertinoIcons.paintbrush_fill,
                     color: settings.accentColor,
@@ -112,10 +132,10 @@ class SettingsScreen extends ConsumerWidget {
                         : settings.accentColor,
                     title: authenticated
                         ? 'Выйти из аккаунта'
-                        : 'Войти через Shikimori',
+                        : 'Войти в AniMix',
                     subtitle: authenticated
                         ? 'Загрузки останутся на устройстве'
-                        : 'Синхронизация закладок и прогресса',
+                        : 'Google подтверждает личность, данные хранит AniMix',
                     destructive: authenticated,
                     onTap: authenticated
                         ? () => _logout(context, ref)
@@ -155,9 +175,24 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
     if (accepted != true) return;
-    await SecureStorage.clear();
+    final authService = ref.read(animixAuthServiceProvider);
+    await SecureStorage.clearShikimori();
+    await Future.wait([
+      ProfileCoverStorage.clearAniMixMedia(isBanner: false),
+      ProfileCoverStorage.clearAniMixMedia(isBanner: true),
+    ]);
     ref.read(sessionNoticeProvider.notifier).clear();
-    ref.invalidate(isLoggedInProvider);
+    ref.invalidate(currentUserProvider);
+    ref.invalidate(bookmarksProvider);
+    if (context.mounted) {
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).popUntil((route) => route.isFirst);
+    }
+    // This clears the AniMix session and emits the global signed-out signal.
+    // Keep it last: the signal can dispose this settings route immediately.
+    await authService.logout();
   }
 }
 

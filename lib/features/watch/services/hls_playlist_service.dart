@@ -19,6 +19,28 @@ class HlsPlaylistService {
 
   final Dio _dio;
 
+  /// A cached signed URL is useful only while the provider still accepts it.
+  /// Validate it before skipping the resolver WebView; otherwise an expired
+  /// Kodik token leaves the native player spinning forever on stale cache.
+  Future<bool> isReachable(String rawUrl) async {
+    final uri = Uri.tryParse(normalizeCapturedUrl(rawUrl));
+    if (uri == null || !uri.hasScheme) return false;
+    try {
+      if (_isHls(uri)) {
+        final response = await _dio.getUri<String>(uri);
+        return (response.statusCode ?? 500) < 400 &&
+            (response.data ?? '').trimLeft().startsWith('#EXTM3U');
+      }
+      if (uri.path.toLowerCase().endsWith('.mp4')) {
+        final response = await _dio.headUri<void>(uri);
+        return (response.statusCode ?? 500) < 400;
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
   Future<Map<String, String>> resolveQualities(String capturedValue) async {
     final expressionSources = parsePlayerJsExpression(capturedValue);
     if (expressionSources.length > 1) return _sorted(expressionSources);

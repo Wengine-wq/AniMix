@@ -233,10 +233,22 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
         : null;
     if (!mounted) return;
     if (cached != null && cached.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _finishWithSources(cached);
-      });
-      return;
+      var reachable = false;
+      for (final source in cached.values) {
+        if (await _hlsService.isReachable(source)) {
+          reachable = true;
+          break;
+        }
+      }
+      if (!mounted) return;
+      if (reachable) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _finishWithSources(cached);
+        });
+        return;
+      }
+      await ResolvedStreamCache.invalidate(_normalizedUrl);
+      if (!mounted) return;
     }
     _armTimeout();
     if (_isMobile) {

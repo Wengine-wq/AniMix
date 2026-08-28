@@ -1,3 +1,5 @@
+import '../core/config.dart';
+
 class ShikimoriAnime {
   final int id;
   final String? name;
@@ -8,6 +10,8 @@ class ShikimoriAnime {
   final String? kind;
   final int? episodes;
   final int? episodesAired;
+  final String? airedOn;
+  final String? rating;
 
   ShikimoriAnime.fromJson(Map<String, dynamic> json)
     : id = json['id'],
@@ -24,12 +28,13 @@ class ShikimoriAnime {
       status = json['status'],
       kind = json['kind']?.toString(),
       episodes = int.tryParse(json['episodes']?.toString() ?? ''),
-      episodesAired = int.tryParse(json['episodes_aired']?.toString() ?? '');
+      episodesAired = int.tryParse(json['episodes_aired']?.toString() ?? ''),
+      airedOn = json['aired_on']?.toString(),
+      rating = json['rating']?.toString();
+
+  int? get year => int.tryParse(airedOn?.split('-').first ?? '');
 
   static String _buildFullImageUrl(String path) {
-    if (path.isEmpty) return '';
-    // Если уже полный URL — оставляем, иначе добавляем хост
-    if (path.startsWith('http')) return path;
-    return 'https://shikimori.io$path';
+    return Config.proxiedImageUrl(path);
   }
 }

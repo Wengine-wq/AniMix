@@ -1,4 +1,5 @@
 import 'shikimori_anime.dart'; // ← ОБЯЗАТЕЛЬНЫЙ ИМПОРТ
+import '../core/config.dart';
 
 class ShikimoriAnimeDetail {
   final int id;
@@ -149,8 +150,6 @@ class ShikimoriAnimeDetail {
   }
 
   static String _buildFullImageUrl(String path) {
-    if (path.isEmpty) return '';
-    if (path.startsWith('http')) return path;
-    return 'https://shikimori.io$path';
+    return Config.proxiedImageUrl(path);
   }
 }

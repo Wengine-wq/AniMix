@@ -9,9 +9,12 @@ import '../models/shikimori_anime_detail.dart';
 import '../models/shikimori_comment.dart';
 import '../models/shikimori_user.dart';
 import '../models/shikimori_history.dart';
+import '../models/shikimori_genre.dart';
 import '../providers/auth_provider.dart';
 import 'app_logging.dart';
+import 'config.dart';
 import 'secure_storage.dart';
+import 'shikimori_auth_service.dart';
 
 class ShikimoriApiClient {
   late final Dio _dio;
@@ -20,20 +23,24 @@ class ShikimoriApiClient {
   final Map<String, Future<dynamic>> _inFlight = {};
 
   static Future<void>? _sessionExpiryTask;
+  static Future<bool>? _tokenRefreshTask;
+  static const _authRetryKey = 'animix_auth_retry';
 
-  ShikimoriApiClient(this.ref) {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: 'https://shikimori.io',
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 AniMix/1.0',
-          'Accept': 'application/json',
-        },
-      ),
-    );
+  ShikimoriApiClient(this.ref, {Dio? dio}) {
+    _dio =
+        dio ??
+        Dio(
+          BaseOptions(
+            baseUrl: Config.shikimoriApiBaseUrl,
+            connectTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(seconds: 30),
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 AniMix/1.0',
+              'Accept': 'application/json',
+            },
+          ),
+        );
 
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -46,6 +53,14 @@ class ShikimoriApiClient {
         },
         onError: (error, handler) async {
           if (error.response?.statusCode == 401) {
+            final retried = error.requestOptions.extra[_authRetryKey] == true;
+            if (!retried) {
+              final response = await _retryAfterTokenRefresh(error);
+              if (response != null) {
+                handler.resolve(response);
+                return;
+              }
+            }
             await _handleExpiredSession();
           } else {
             AppLogBuffer.instance.recordError(
@@ -60,6 +75,47 @@ class ShikimoriApiClient {
     );
   }
 
+  Future<Response<dynamic>?> _retryAfterTokenRefresh(
+    DioException originalError,
+  ) async {
+    final pending = _tokenRefreshTask;
+    final Future<bool> refresh;
+    if (pending != null) {
+      refresh = pending;
+    } else {
+      final task = ShikimoriAuthService().refreshSession();
+      _tokenRefreshTask = task;
+      refresh = task.whenComplete(() {
+        if (identical(_tokenRefreshTask, task)) _tokenRefreshTask = null;
+      });
+    }
+    if (!await refresh) return null;
+
+    final token = await SecureStorage.getAccessToken();
+    if (token == null || token.isEmpty) return null;
+    ref.read(sessionNoticeProvider.notifier).clear();
+    ref.invalidate(isLoggedInProvider);
+
+    final request = originalError.requestOptions.copyWith(
+      headers: {
+        ...originalError.requestOptions.headers,
+        'Authorization': 'Bearer $token',
+      },
+      extra: {...originalError.requestOptions.extra, _authRetryKey: true},
+    );
+    try {
+      return await _dio.fetch<dynamic>(request);
+    } on DioException catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Authentication',
+        context: 'Request failed after refreshing the Shikimori token.',
+      );
+      return null;
+    }
+  }
+
   Future<void> _handleExpiredSession() async {
     if (ref.read(sessionNoticeProvider) != null) return;
     final pending = _sessionExpiryTask;
@@ -70,7 +126,7 @@ class ShikimoriApiClient {
         'Shikimori rejected the current session (HTTP 401).',
         source: 'Authentication',
       );
-      await SecureStorage.clear();
+      await SecureStorage.clearShikimori();
       _cache.clear();
       ref.read(sessionNoticeProvider.notifier).sessionExpired();
       ref.invalidate(isLoggedInProvider);
@@ -84,6 +140,11 @@ class ShikimoriApiClient {
   }
 
   void invalidateCurrentUserCache() => _cache.remove('current-user');
+
+  void invalidateAuthenticationCache() {
+    _cache.remove('current-user');
+    _inFlight.remove('current-user');
+  }
 
   // =====================================================================
   // СТРОГО ОРИГИНАЛЬНЫЕ МЕТОДЫ ИЗ ВАЛИДНОГО ФАЙЛА (БЕЗ ИЗМЕНЕНИЙ)
@@ -122,6 +183,26 @@ class ShikimoriApiClient {
     return (data as List).map((json) => ShikimoriAnime.fromJson(json)).toList();
   }
 
+  Future<List<ShikimoriGenre>> getAnimeGenres() async {
+    final data = await _cachedRequest(
+      'anime-genres',
+      () async => (await _dio.get('/api/genres')).data,
+      freshFor: const Duration(hours: 12),
+    );
+    final genres = (data as List? ?? const [])
+        .whereType<Map>()
+        .where(
+          (item) =>
+              item['entry_type']?.toString().toLowerCase() == 'anime' &&
+              item['kind']?.toString().toLowerCase() == 'genre',
+        )
+        .map((item) => ShikimoriGenre.fromJson(Map<String, dynamic>.from(item)))
+        .where((genre) => genre.id > 0 && genre.label.isNotEmpty)
+        .toList();
+    genres.sort((left, right) => left.label.compareTo(right.label));
+    return genres;
+  }
+
   Future<ShikimoriAnimeDetail> getAnimeDetail(int id) async {
     final data = await _cachedRequest(
       'anime-detail:$id',
@@ -140,10 +221,10 @@ class ShikimoriApiClient {
       freshFor: const Duration(hours: 1),
     );
     return (data as List? ?? [])
-        .map((s) {
+        .map<String>((s) {
           final String path = s?['original'] ?? s?['preview'] ?? '';
           if (path.isEmpty) return '';
-          return path.startsWith('http') ? path : 'https://shikimori.io$path';
+          return Config.proxiedImageUrl(path);
         })
         .where((url) => url.isNotEmpty)
         .toList();
@@ -186,11 +267,51 @@ class ShikimoriApiClient {
   }
 
   Future<List<Map<String, dynamic>>> getUserAnimeRates(int userId) async {
-    final response = await _dio.get(
+    const pageSize = 100;
+    final current = <String, Map<String, dynamic>>{};
+    for (var page = 1; page <= 50; page++) {
+      final response = await _dio.get(
+        '/api/v2/user_rates',
+        queryParameters: {
+          'user_id': userId,
+          'target_type': 'Anime',
+          'page': page,
+          'limit': pageSize,
+        },
+      );
+      final chunk = (response.data as List? ?? const [])
+          .whereType<Map>()
+          .map((value) => Map<String, dynamic>.from(value))
+          .toList(growable: false);
+      var added = 0;
+      for (final rate in chunk) {
+        final nestedAnime = rate['anime'];
+        final targetId =
+            rate['target_id'] ??
+            (nestedAnime is Map ? nestedAnime['id'] : null);
+        final rateId = rate['id'];
+        final key = targetId?.toString().trim().isNotEmpty == true
+            ? 'anime:$targetId'
+            : rateId?.toString().trim().isNotEmpty == true
+            ? 'rate:$rateId'
+            : 'row:${rate.hashCode}';
+        if (!current.containsKey(key)) added++;
+        current[key] = rate;
+      }
+      // Shikimori occasionally ignores page/limit and returns the whole
+      // collection. Stop when the page size is non-canonical or a repeated
+      // page contributed no new anime instead of collecting it 50 times.
+      if (chunk.length != pageSize || added == 0) break;
+    }
+    if (current.isNotEmpty) return current.values.toList(growable: false);
+
+    // Compatibility fallback for accounts served by the legacy endpoint.
+    // Its anime id lives in `anime.id`, not in `target_id`.
+    final legacy = await _dio.get(
       '/api/users/$userId/anime_rates',
       queryParameters: const {'limit': 5000},
     );
-    return (response.data as List? ?? const [])
+    return (legacy.data as List? ?? const [])
         .whereType<Map>()
         .map((value) => Map<String, dynamic>.from(value))
         .toList();

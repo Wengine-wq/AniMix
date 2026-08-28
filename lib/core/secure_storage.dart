@@ -13,6 +13,8 @@ class SecureStorage {
 
   static const _tokenKey = 'shikimori_access_token';
   static const _refreshKey = 'shikimori_refresh_token';
+  static const _animixTokenKey = 'animix_access_token';
+  static const _animixRefreshKey = 'animix_refresh_token';
 
   static Future<void> saveTokens({
     required String accessToken,
@@ -30,8 +32,32 @@ class SecureStorage {
     return await _storage.read(key: _refreshKey);
   }
 
-  static Future<void> clear() async {
+  static Future<void> saveAniMixTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await _storage.write(key: _animixTokenKey, value: accessToken);
+    await _storage.write(key: _animixRefreshKey, value: refreshToken);
+  }
+
+  static Future<String?> getAniMixAccessToken() =>
+      _storage.read(key: _animixTokenKey);
+
+  static Future<String?> getAniMixRefreshToken() =>
+      _storage.read(key: _animixRefreshKey);
+
+  static Future<void> clearShikimori() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _refreshKey);
+  }
+
+  static Future<void> clearAniMix() async {
+    await _storage.delete(key: _animixTokenKey);
+    await _storage.delete(key: _animixRefreshKey);
+  }
+
+  static Future<void> clear() async {
+    await clearShikimori();
+    await clearAniMix();
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/media_cache.dart';
+import '../core/config.dart';
 import '../core/poster_fallback_service.dart';
 
 class SmartAnimePoster extends StatefulWidget {
@@ -36,6 +37,7 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
   String? _failedUrl;
   bool _resolvingFallback = false;
   bool _fallbackExhausted = false;
+  bool _alternateDomainAttempted = false;
   Timer? _networkDeadline;
   String? _reportedUrl;
 
@@ -54,11 +56,7 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
     if (_isKnownPlaceholder) return null;
     final original = widget.imageUrl;
     if (original == null || original.isEmpty) return null;
-    final absolute = original.startsWith('http')
-        ? original
-        : original.startsWith('//')
-        ? 'https:$original'
-        : 'https://shikimori.io$original';
+    final absolute = Config.proxiedImageUrl(original);
     return absolute == _failedUrl ? null : absolute;
   }
 
@@ -79,6 +77,7 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
       _providerUrl = null;
       _failedUrl = null;
       _fallbackExhausted = false;
+      _alternateDomainAttempted = false;
       _reportedUrl = null;
       _networkDeadline?.cancel();
       if (_isKnownPlaceholder) unawaited(_requestFallback());
@@ -130,6 +129,15 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
   void _handleImageFailure(String url) {
     if (!mounted || _failedUrl == url) return;
     _networkDeadline?.cancel();
+    final alternateUrl = Config.fallbackImageUrl(url);
+    if (!_alternateDomainAttempted && alternateUrl != url) {
+      setState(() {
+        _failedUrl = url;
+        _alternateDomainAttempted = true;
+        _providerUrl = alternateUrl;
+      });
+      return;
+    }
     PosterFallbackService.instance.markFailed(widget.animeId, url);
     setState(() {
       _failedUrl = url;

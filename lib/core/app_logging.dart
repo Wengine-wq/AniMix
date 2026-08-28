@@ -131,7 +131,7 @@ class AppLogBuffer extends ChangeNotifier {
       )
       .replaceAll(
         RegExp(
-          r'([?&](?:code|access_token|refresh_token)=)[^&\s]+',
+          r'([?&](?:code|state|ticket|access_token|refresh_token)=)[^&\s]+',
           caseSensitive: false,
         ),
         r'$1<redacted>',

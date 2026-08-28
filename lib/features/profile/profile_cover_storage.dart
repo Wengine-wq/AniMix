@@ -14,6 +14,8 @@ class ProfileCoverStorage {
   static const _preferenceKey = 'profile_custom_cover_v1';
   static const _directoryName = 'profile';
   static const _fileStem = 'custom_cover';
+  static const _animixAvatarKey = 'animix_profile_avatar_v1';
+  static const _animixBannerKey = 'animix_profile_banner_v1';
 
   static Future<String?> currentPath() async {
     final preferences = await SharedPreferences.getInstance();
@@ -25,12 +27,7 @@ class ProfileCoverStorage {
   }
 
   static Future<String?> chooseAndSave() async {
-    const imageTypes = XTypeGroup(
-      label: 'Изображения',
-      extensions: ['jpg', 'jpeg', 'png', 'webp'],
-      uniformTypeIdentifiers: ['public.image'],
-    );
-    final selected = await openFile(acceptedTypeGroups: const [imageTypes]);
+    final selected = await pickImage();
     if (selected == null) return null;
 
     final source = File(selected.path);
@@ -50,6 +47,26 @@ class ProfileCoverStorage {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_preferenceKey, destination.path);
     return destination.path;
+  }
+
+  static Future<XFile?> pickImage() => openFile(
+    acceptedTypeGroups: const [
+      XTypeGroup(
+        label: 'Изображения',
+        extensions: ['jpg', 'jpeg', 'png', 'webp'],
+        uniformTypeIdentifiers: ['public.image'],
+      ),
+    ],
+  );
+
+  static Future<void> clearAniMixMedia({required bool isBanner}) async {
+    final preferences = await SharedPreferences.getInstance();
+    final key = isBanner ? _animixBannerKey : _animixAvatarKey;
+    final path = preferences.getString(key);
+    await preferences.remove(key);
+    if (path == null) return;
+    final file = File(path);
+    if (await file.exists()) await file.delete();
   }
 
   static Future<void> clear() async {

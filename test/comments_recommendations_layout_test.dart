@@ -1,5 +1,6 @@
 import 'package:animix/core/animix_theme.dart';
 import 'package:animix/core/app_settings.dart';
+import 'package:animix/core/config.dart';
 import 'package:animix/core/shikimori_api_client.dart';
 import 'package:animix/features/data/comments_screen.dart';
 import 'package:animix/features/home/home_screen.dart';
@@ -115,9 +116,12 @@ void main() {
     );
 
     expect(document.images, [
-      'https://shikimori.io/system/user_images/thumbnail/1/1678532.jpg',
+      Config.proxiedImageUrl(
+        'https://shikimori.io/system/user_images/thumbnail/1/1678532.jpg',
+      ),
     ]);
-    expect(document.html, contains('https://shikimori.io/images/smileys/'));
+    expect(document.html, contains('https://shikimori.io/'));
+    expect(document.html, isNot(contains('/v1/media/proxy?url=')));
     expect(document.html, contains('class="smiley"'));
   });
 

@@ -1,0 +1,119 @@
+-- Run once against the serverless YDB database before deploying the API.
+-- Sessions are deliberately split into token lookup tables: YDB primary-key
+-- lookups remain predictable and no costly scans are needed on every request.
+
+CREATE TABLE users (
+  id Utf8 NOT NULL,
+  email Utf8 NOT NULL,
+  display_name Utf8 NOT NULL,
+  email_verified_at Uint64 NOT NULL,
+  created_at Uint64 NOT NULL,
+  updated_at Uint64 NOT NULL,
+  last_seen_at Uint64,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE users_by_email (
+  email Utf8 NOT NULL,
+  user_id Utf8 NOT NULL,
+  PRIMARY KEY (email)
+);
+
+CREATE TABLE sessions (
+  id Utf8 NOT NULL,
+  user_id Utf8 NOT NULL,
+  access_token_hash Utf8 NOT NULL,
+  refresh_token_hash Utf8 NOT NULL,
+  access_expires_at Uint64 NOT NULL,
+  refresh_expires_at Uint64 NOT NULL,
+  created_at Uint64 NOT NULL,
+  last_used_at Uint64 NOT NULL,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE access_tokens (
+  token_hash Utf8 NOT NULL,
+  session_id Utf8 NOT NULL,
+  expires_at Uint64 NOT NULL,
+  PRIMARY KEY (token_hash)
+);
+
+CREATE TABLE refresh_tokens (
+  token_hash Utf8 NOT NULL,
+  session_id Utf8 NOT NULL,
+  expires_at Uint64 NOT NULL,
+  PRIMARY KEY (token_hash)
+);
+
+CREATE TABLE external_accounts (
+  provider Utf8 NOT NULL,
+  provider_subject Utf8 NOT NULL,
+  user_id Utf8 NOT NULL,
+  provider_email Utf8,
+  created_at Uint64 NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (provider, provider_subject)
+);
+
+CREATE TABLE external_accounts_by_user (
+  user_id Utf8 NOT NULL,
+  provider Utf8 NOT NULL,
+  provider_subject Utf8 NOT NULL,
+  PRIMARY KEY (user_id, provider)
+);
+
+CREATE TABLE oauth_transactions (
+  state_hash Utf8 NOT NULL,
+  return_uri Utf8 NOT NULL,
+  created_at Uint64 NOT NULL,
+  expires_at Uint64 NOT NULL,
+  PRIMARY KEY (state_hash)
+);
+
+CREATE TABLE auth_tickets (
+  ticket_hash Utf8 NOT NULL,
+  state_hash Utf8 NOT NULL,
+  user_id Utf8 NOT NULL,
+  created_at Uint64 NOT NULL,
+  expires_at Uint64 NOT NULL,
+  consumed_at Uint64,
+  PRIMARY KEY (ticket_hash)
+);
+
+CREATE TABLE user_anime_entries (
+  user_id Utf8 NOT NULL,
+  shikimori_id Uint64 NOT NULL,
+  status Utf8 NOT NULL,
+  score Uint64 NOT NULL,
+  episodes_watched Uint64 NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id, shikimori_id)
+);
+
+CREATE TABLE user_history (
+  user_id Utf8 NOT NULL,
+  created_at Uint64 NOT NULL,
+  id Utf8 NOT NULL,
+  action Utf8 NOT NULL,
+  shikimori_id Uint64,
+  metadata_json Utf8,
+  PRIMARY KEY (user_id, created_at, id)
+);
+
+CREATE TABLE user_settings (
+  user_id Utf8 NOT NULL,
+  accent_color Utf8,
+  theme_mode Utf8 NOT NULL,
+  smart_connection_enabled Bool NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id)
+);
+
+CREATE TABLE profile_media (
+  user_id Utf8 NOT NULL,
+  kind Utf8 NOT NULL,
+  object_key Utf8 NOT NULL,
+  content_type Utf8 NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id, kind)
+);

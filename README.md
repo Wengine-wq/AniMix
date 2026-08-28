@@ -39,6 +39,14 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 - история активности и граф просмотра;
 - ручное изменение статуса прямо из закладок или detail.
 
+### Собственный аккаунт AniMix
+
+- основной вход через Google OAuth без собственного почтового домена;
+- профиль, сессии и пользовательская библиотека хранятся в Yandex Database;
+- аватары и фоны профиля размещаются в Yandex Object Storage;
+- Shikimori подключается отдельно и не является обязательным для входа;
+- OAuth-секреты находятся только в Yandex Lockbox и не попадают в IPA.
+
 ### Просмотр и загрузки
 
 - YummyAnime как источник релиза и озвучки;
@@ -89,15 +97,21 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 
 ```dotenv
 SHIKIMORI_CLIENT_ID=...
-SHIKIMORI_REDIRECT_URI=urn:ietf:wg:oauth:2.0:oob
-SHIKIMORI_OAUTH_PROXY_URL=https://your-worker.example.workers.dev
+SHIKIMORI_REDIRECT_URI=https://your-domain.example/callback
+SHIKIMORI_OAUTH_PROXY_URL=https://your-api-gateway.example
+ANIMIX_API_BASE_URL=https://your-api-gateway.example
 ```
+
+Redirect должен в точности совпадать с HTTPS callback, зарегистрированным в
+Shikimori. AniMix использует один и тот же callback на iOS и Windows; локальный
+HTTP-сервер для повторного входа не требуется.
 
 `SHIKIMORI_CLIENT_SECRET` намеренно отсутствует: Flutter-приложение нельзя
 использовать как защищённое хранилище секрета, потому что IPA/APK и Windows
-сборки можно распаковать. Для входа разверните готовый прокси из
-[`server/shikimori-oauth-proxy`](server/shikimori-oauth-proxy) и храните secret
-только в secrets хостинга и никогда не попадает в репозиторий или CI-артефакт.
+сборки можно распаковать. Production-бэкенд находится в
+[`server/yandex-cloud/api`](server/yandex-cloud/api); секреты хранятся в
+Lockbox и никогда не попадают в репозиторий или CI-артефакт. Старый
+Cloudflare Worker оставлен только как код аварийного отката.
 
 Важно: если секрет уже когда-либо был опубликован, его нужно отозвать и
 создать новый в Shikimori. Удаление строки из последнего коммита не делает
@@ -141,6 +155,7 @@ lib/
 ├─ providers/            # Riverpod-состояния
 └─ widgets/              # общие поверхности и компоненты AniMix
 test/                    # HLS, offline server и UI-регрессии
+server/yandex-cloud/     # AniMix API, YDB-схема и сценарии развёртывания
 ```
 
 ## Разработка
