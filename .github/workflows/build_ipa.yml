@@ -22,7 +22,7 @@ jobs:
     
     steps:
       - name: 📥 Скачивание кода проекта
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 🐦 Установка Flutter
         uses: subosito/flutter-action@v2

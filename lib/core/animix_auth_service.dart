@@ -176,7 +176,7 @@ class AniMixAuthService {
   }) async {
     final token = await SecureStorage.getAniMixAccessToken();
     if (token == null || token.isEmpty) {
-      return allowCachedFallback ? AniMixLocalCache.readProfile() : null;
+      return allowCachedFallback ? await AniMixLocalCache.readProfile() : null;
     }
     try {
       var requestToken = token;
@@ -201,7 +201,9 @@ class AniMixAuthService {
           'code=${errorCode ?? 'invalid_response'}.',
           source: 'AniMix profile',
         );
-        return allowCachedFallback ? AniMixLocalCache.readProfile() : null;
+        return allowCachedFallback
+            ? await AniMixLocalCache.readProfile()
+            : null;
       }
       final data = Map<String, dynamic>.from(response.data as Map);
       final profile = data['user'] is Map
@@ -215,7 +217,7 @@ class AniMixAuthService {
         stackTrace,
         source: 'AniMix profile',
       );
-      return allowCachedFallback ? AniMixLocalCache.readProfile() : null;
+      return allowCachedFallback ? await AniMixLocalCache.readProfile() : null;
     }
   }
 
@@ -270,10 +272,10 @@ class AniMixAuthService {
         retryTransient: true,
       );
       if (response?.statusCode != 200 || response?.data is! Map) {
-        return AniMixLocalCache.readLibrary();
+        return await AniMixLocalCache.readLibrary();
       }
       final entries = (response!.data as Map)['entries'];
-      if (entries is! List) return AniMixLocalCache.readLibrary();
+      if (entries is! List) return await AniMixLocalCache.readLibrary();
       final normalized = entries
           .whereType<Map>()
           .map((entry) => Map<String, dynamic>.from(entry))
@@ -286,7 +288,7 @@ class AniMixAuthService {
         stackTrace,
         source: 'AniMix library list',
       );
-      return AniMixLocalCache.readLibrary();
+      return await AniMixLocalCache.readLibrary();
     }
   }
 
