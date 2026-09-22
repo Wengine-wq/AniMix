@@ -1,0 +1,51 @@
+name: Build Windows Beta
+
+on: [workflow_dispatch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: animix-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      SHIKIMORI_CLIENT_ID: NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
+      SHIKIMORI_OAUTH_PROXY_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+      ANIMIX_API_BASE_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install and verify
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Build Windows release
+        run: |
+          flutter build windows --release `
+            --dart-define=SHIKIMORI_CLIENT_ID=$env:SHIKIMORI_CLIENT_ID `
+            --dart-define=SHIKIMORI_OAUTH_PROXY_URL=$env:SHIKIMORI_OAUTH_PROXY_URL `
+            --dart-define=ANIMIX_API_BASE_URL=$env:ANIMIX_API_BASE_URL
+
+      - name: Package app with its DLLs and data
+        run: |
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' `
+            -DestinationPath 'AniMix-Windows-2.1.0-beta.zip' -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniMix_Windows_Beta
+          path: AniMix-Windows-2.1.0-beta.zip
+          if-no-files-found: error
+          retention-days: 14

@@ -285,6 +285,29 @@ class HlsDownloadManager extends ChangeNotifier {
     return file.uri;
   }
 
+  /// Finds the next downloaded episode from the same provider/translation
+  /// scope. Matching only by anime id would jump between different dubs.
+  Future<DownloadItem?> nextCompletedEpisode(DownloadItem current) async {
+    await initialize();
+    final currentNumber = _episodeOrdinal(current.episodeId);
+    if (currentNumber == null) return null;
+    final scope = _episodeScope(current.episodeId);
+    final candidates =
+        _downloads.where((item) {
+          final number = _episodeOrdinal(item.episodeId);
+          return item.state == DownloadState.completed &&
+              item.animeId == current.animeId &&
+              _episodeScope(item.episodeId) == scope &&
+              number != null &&
+              number > currentNumber;
+        }).toList()..sort(
+          (a, b) => _episodeOrdinal(
+            a.episodeId,
+          )!.compareTo(_episodeOrdinal(b.episodeId)!),
+        );
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
   void _updateProgress(String episodeId, double progress) {
     final current = itemFor(episodeId);
     if (current == null) return;
@@ -353,6 +376,17 @@ class HlsDownloadManager extends ChangeNotifier {
 
   static String _safeName(String value) =>
       value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+  static String _episodeScope(String episodeId) {
+    final separator = episodeId.lastIndexOf('_');
+    return separator < 0 ? episodeId : episodeId.substring(0, separator);
+  }
+
+  static double? _episodeOrdinal(String episodeId) {
+    final separator = episodeId.lastIndexOf('_');
+    if (separator < 0 || separator == episodeId.length - 1) return null;
+    return double.tryParse(episodeId.substring(separator + 1));
+  }
 
   static Future<int> _directorySize(Directory directory) async {
     var size = 0;

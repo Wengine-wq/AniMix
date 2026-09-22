@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -13,10 +14,12 @@ import '../../core/animix_motion.dart';
 import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/user_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/animix_surface.dart';
 import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
+import '../watch/watch_storage.dart';
 
 class RecommendationScreen extends ConsumerStatefulWidget {
   const RecommendationScreen({super.key});
@@ -71,20 +74,212 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
     try {
       final api = ref.read(apiClientProvider);
       final results = <ShikimoriAnime>[];
-      for (var attempt = 0; attempt < 2; attempt++) {
-        final page = math.Random().nextInt(24) + 1;
-        final items = await api.getAnimes(
-          page: page,
-          limit: 20,
-          filters: const {'order': 'random', 'score': 6},
+      final seenAnimeIds = <int>{};
+      final genreWeights = <String, int>{};
+      final seeds = <int>[];
+      try {
+        final user = await ref.read(currentUserProvider.future);
+        if (user != null && user.isAniMix) {
+          unawaited(WatchStorage.syncPendingUsageEvents());
+          final localWatchedIds = await WatchStorage.getLocalWatchedAnimeIds();
+          seenAnimeIds.addAll(localWatchedIds);
+          final service = ref.read(animixAuthServiceProvider);
+          final usage = await service.getUsageStats();
+          final rawActivity = usage?['activity'];
+          if (rawActivity is List) {
+            for (final raw in rawActivity.whereType<Map>()) {
+              final id = int.tryParse(raw['anime_id']?.toString() ?? '') ?? 0;
+              if (id <= 0) continue;
+              if (raw['action'] == 'episode_watched') seenAnimeIds.add(id);
+              if (raw['action'] == 'recommendation_rejected') _rejected.add(id);
+            }
+            for (final raw in rawActivity.whereType<Map>()) {
+              if (raw['action'] != 'episode_watched') continue;
+              final id = int.tryParse(raw['anime_id']?.toString() ?? '') ?? 0;
+              if (id > 0 && !seeds.contains(id)) seeds.add(id);
+              if (seeds.length == 5) break;
+            }
+          }
+          final library = await service.getLibraryEntries();
+          final rows = [...?library];
+          if (rows.isEmpty && user.shikimoriLinked) {
+            final linkedId = int.tryParse(user.shikimoriUserId ?? '') ?? 0;
+            if (linkedId > 0) {
+              try {
+                final rates = await api.getUserAnimeRates(linkedId);
+                for (final rate in rates) {
+                  final anime = rate['anime'];
+                  final id =
+                      int.tryParse(
+                        rate['target_id']?.toString() ??
+                            (anime is Map ? anime['id']?.toString() : null) ??
+                            '',
+                      ) ??
+                      0;
+                  if (id <= 0) continue;
+                  seenAnimeIds.add(id);
+                  if (const {
+                        'completed',
+                        'watching',
+                        'rewatching',
+                      }.contains(rate['status']) &&
+                      !seeds.contains(id)) {
+                    seeds.add(id);
+                  }
+                }
+              } catch (error, stackTrace) {
+                AppLogBuffer.instance.recordError(
+                  error,
+                  stackTrace,
+                  source: 'Recommendations',
+                  context:
+                      'Не удалось прочитать связанную библиотеку Shikimori',
+                );
+              }
+            }
+          }
+          rows.sort((left, right) {
+            final leftCompleted =
+                const {
+                  'completed',
+                  'watching',
+                  'rewatching',
+                }.contains(left['status'])
+                ? 1
+                : 0;
+            final rightCompleted =
+                const {
+                  'completed',
+                  'watching',
+                  'rewatching',
+                }.contains(right['status'])
+                ? 1
+                : 0;
+            if (leftCompleted != rightCompleted) {
+              return rightCompleted.compareTo(leftCompleted);
+            }
+            return (int.tryParse(right['updated_at']?.toString() ?? '') ?? 0)
+                .compareTo(
+                  int.tryParse(left['updated_at']?.toString() ?? '') ?? 0,
+                );
+          });
+          for (final row in rows) {
+            final id = int.tryParse(row['shikimori_id']?.toString() ?? '') ?? 0;
+            if (id <= 0) continue;
+            seenAnimeIds.add(id);
+            if (const {
+                  'completed',
+                  'watching',
+                  'rewatching',
+                }.contains(row['status']) &&
+                !seeds.contains(id)) {
+              seeds.add(id);
+            }
+          }
+          for (final id in localWatchedIds) {
+            if (!seeds.contains(id)) seeds.add(id);
+            if (seeds.length >= 8) break;
+          }
+          if (seeds.length > 8) seeds.removeRange(8, seeds.length);
+          if (seeds.isNotEmpty) {
+            final similar = await Future.wait(
+              seeds.take(4).map((id) => api.getSimilarAnimes(id)),
+            );
+            results.addAll(similar.expand((items) => items));
+            final watchedDetails = await Future.wait(
+              seeds.take(5).map((id) async {
+                try {
+                  return await api.getAnimeDetail(id);
+                } catch (error, stackTrace) {
+                  AppLogBuffer.instance.recordError(
+                    error,
+                    stackTrace,
+                    source: 'Recommendations',
+                    context: 'Не удалось загрузить жанры аниме $id',
+                  );
+                  return null;
+                }
+              }),
+            );
+            for (var index = 0; index < watchedDetails.length; index++) {
+              final detail = watchedDetails[index];
+              if (detail == null) continue;
+              final weight = watchedDetails.length - index;
+              for (final genre in detail.genres) {
+                genreWeights[genre.toLowerCase()] =
+                    (genreWeights[genre.toLowerCase()] ?? 0) + weight;
+              }
+            }
+          }
+        }
+      } catch (error, stackTrace) {
+        AppLogBuffer.instance.recordError(
+          error,
+          stackTrace,
+          source: 'Recommendations',
+          context: 'Не удалось получить профиль активности AniMix',
         );
-        results.addAll(items);
       }
+      if (genreWeights.isNotEmpty) {
+        try {
+          final preferredGenres = genreWeights.entries.toList()
+            ..sort((left, right) => right.value.compareTo(left.value));
+          final genres = await api.getAnimeGenres();
+          final preferredIds = preferredGenres
+              .take(3)
+              .map((preference) => preference.key)
+              .map(
+                (name) => genres
+                    .where((genre) => genre.label.toLowerCase() == name)
+                    .firstOrNull
+                    ?.id,
+              )
+              .whereType<int>()
+              .where((id) => id > 0)
+              .toList();
+          final byGenre = await Future.wait(
+            preferredIds.map(
+              (genreId) => api.getAnimes(
+                limit: 20,
+                filters: {'genre': genreId, 'order': 'popularity', 'score': 6},
+              ),
+            ),
+          );
+          results.addAll(byGenre.expand((items) => items));
+        } catch (error, stackTrace) {
+          AppLogBuffer.instance.recordError(
+            error,
+            stackTrace,
+            source: 'Recommendations',
+            context: 'Персональный поиск по жанрам не удался',
+          );
+        }
+      } else if (seenAnimeIds.isEmpty) {
+        for (var attempt = 0; attempt < 2; attempt++) {
+          final page = math.Random().nextInt(24) + 1;
+          final items = await api.getAnimes(
+            page: page,
+            limit: 20,
+            filters: const {'order': 'random', 'score': 6},
+          );
+          results.addAll(items);
+        }
+      }
+      results.sort((left, right) {
+        int affinity(ShikimoriAnime anime) => anime.genres.fold<int>(
+          0,
+          (sum, genre) => sum + (genreWeights[genre.toLowerCase()] ?? 0),
+        );
+        final byTaste = affinity(right).compareTo(affinity(left));
+        if (byTaste != 0) return byTaste;
+        return (right.score ?? 0).compareTo(left.score ?? 0);
+      });
       if (!mounted) return;
       setState(() {
         if (reset) _recommendations.clear();
         for (final item in results) {
           if (!_rejected.contains(item.id) &&
+              !seenAnimeIds.contains(item.id) &&
               !_recommendations.any((existing) => existing.id == item.id)) {
             _recommendations.add(item);
           }
@@ -124,6 +319,7 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
       _rejected.add(anime.id);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_rejectedKey, jsonEncode(_rejected.toList()));
+      await _recordRecommendationChoice(anime.id, 'recommendation_rejected');
       if (advance && mounted) _advance('Пропущено');
       return true;
     } catch (error, stackTrace) {
@@ -147,10 +343,34 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
     final anime = _recommendations.first;
     try {
       final user = await ref.read(currentUserProvider.future);
-      if (user == null) throw StateError('auth');
-      await ref
-          .read(apiClientProvider)
-          .setUserRate(anime.id, 'planned', userId: user.id);
+      if (user == null) {
+        if (mounted) {
+          setState(() => _message = 'Войдите в AniMix, чтобы добавить в планы');
+        }
+        return false;
+      }
+      if (user.isAniMix) {
+        final service = ref.read(animixAuthServiceProvider);
+        // Recommendations shown here are filtered against the user's library,
+        // so no preliminary GET is needed. Save directly to YDB and surface
+        // the actual API failure instead of masking it as a generic toast.
+        final saved = await service.saveLibraryEntryWithResult(
+          animeId: anime.id,
+          status: 'planned',
+          score: 0,
+          episodesWatched: 0,
+        );
+        if (!saved.success) {
+          if (mounted) setState(() => _message = saved.message);
+          return false;
+        }
+        ref.read(userDataRevisionProvider.notifier).bump();
+        await _recordRecommendationChoice(anime.id, 'recommendation_planned');
+      } else {
+        await ref
+            .read(apiClientProvider)
+            .setUserRate(anime.id, 'planned', userId: user.id);
+      }
       if (mounted && advance) _advance('Добавлено в планы');
       return true;
     } catch (error, stackTrace) {
@@ -166,6 +386,22 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
       return false;
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _recordRecommendationChoice(int animeId, String action) async {
+    try {
+      final user = await ref.read(currentUserProvider.future);
+      if (user?.isAniMix != true) return;
+      await ref
+          .read(animixAuthServiceProvider)
+          .recordUsageEvent(
+            action: action,
+            animeId: animeId,
+            eventId: 'r${DateTime.now().microsecondsSinceEpoch}_$animeId',
+          );
+    } catch (_) {
+      // The choice itself is already saved; analytics must not block it.
     }
   }
 
@@ -294,19 +530,24 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
                   onPlan: () => _plan(advance: false),
                   onReject: () => _reject(advance: false),
                   onAdvance: _advance,
-                  onInfo: () => Navigator.push(
-                    context,
-                    CupertinoPageRoute<void>(
-                      builder: (_) =>
-                          AnimeDetailScreen(animeId: _recommendations.first.id),
-                    ),
-                  ),
+                  onInfo: () => _openAnimeDetail(_recommendations.first.id),
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Future<void> _openAnimeDetail(int animeId) async {
+    await _recordRecommendationChoice(animeId, 'anime_opened');
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      CupertinoPageRoute<void>(
+        builder: (_) => AnimeDetailScreen(animeId: animeId),
+      ),
     );
   }
 }

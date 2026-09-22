@@ -6,12 +6,13 @@
 
 **Кроссплатформенный Flutter-клиент для поиска, просмотра и ведения списков аниме.**
 
-Shikimori · YummyAnime · Kodik HLS · AniLiberty · iOS · Windows
+Shikimori · YummyAnime · Kodik HLS · AniLiberty · iOS · Android · Windows
 
 <p>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.x-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart">
   <img src="https://img.shields.io/badge/iOS-supported-111111?style=flat-square&logo=apple&logoColor=white" alt="iOS">
+  <img src="https://img.shields.io/badge/Android-supported-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Windows-supported-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows">
   <img src="https://img.shields.io/badge/license-MIT-35A854?style=flat-square" alt="MIT license">
 </p>
@@ -19,6 +20,8 @@ Shikimori · YummyAnime · Kodik HLS · AniLiberty · iOS · Windows
 </div>
 
 AniMix переносит идеи Swift-версии в единый Flutter-клиент: спокойный тёмный интерфейс, нативная iOS-композиция, быстрый каталог, синхронизация с Shikimori и просмотр через прямые медиапотоки вместо рекламных iframe.
+
+**Версия 2.1.0 beta.** Некоторые функции и внешние источники видео могут работать нестабильно. iOS IPA из CI собирается без подписи: для установки на устройство его нужно подписать своим сертификатом.
 
 ## Возможности
 
@@ -29,6 +32,7 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 - мгновенное переключение карточек и списка;
 - поиск с фильтрами по статусу и формату;
 - персональная лента с жестами «в планы» и «пропустить»;
+- рекомендации учитывают библиотеку и активность AniMix;
 - полноценный detail-экран: описание, жанры, кадры, связанные и похожие тайтлы.
 
 ### Shikimori
@@ -45,6 +49,9 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 - профиль, сессии и пользовательская библиотека хранятся в Yandex Database;
 - аватары и фоны профиля размещаются в Yandex Object Storage;
 - Shikimori подключается отдельно и не является обязательным для входа;
+- друзья: поиск, заявки, принятие, публичный профиль и библиотека;
+- двусторонняя настройка приватности библиотеки;
+- статистика тайтлов, серий, примерного времени просмотра и активности по дням;
 - OAuth-секреты находятся только в Yandex Lockbox и не попадают в IPA.
 
 ### Просмотр и загрузки
@@ -56,6 +63,7 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 - умные привязки релизов и кеширование ответов провайдеров;
 - скачивание HLS-плейлистов с доступными качествами для офлайн-просмотра;
 - сохранение позиции просмотра и отметка просмотренных серий.
+- переключение серий и экспериментальный автоскип вступления/титров;
 
 ### Внешний вид
 
@@ -83,7 +91,8 @@ AniMix переносит идеи Swift-версии в единый Flutter-к
 
 - Flutter 3.x;
 - Dart 3.x;
-- Xcode 15+ для iOS;
+- Xcode для iOS (подпись нужна для установки на устройство);
+- Android SDK для локальной сборки APK;
 - Visual Studio с Desktop development with C++ для Windows.
 
 ### Конфигурация

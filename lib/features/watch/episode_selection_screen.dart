@@ -219,24 +219,57 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
   String get _animeTitle =>
       widget.animeNameRu.isNotEmpty ? widget.animeNameRu : widget.animeNameEn;
 
-  void _playEpisode(EpisodeViewData item) {
+  Map<String, dynamic>? _nextEpisodeFor(String currentEpisode) {
+    final current = double.tryParse(currentEpisode);
+    if (current == null) return null;
+    final candidates =
+        episodes.where((episode) {
+          final number = double.tryParse(episode['number']?.toString() ?? '');
+          return episode['videoUrl']?.toString().isNotEmpty == true &&
+              number != null &&
+              number > current;
+        }).toList()..sort(
+          (a, b) => double.parse(
+            a['number'].toString(),
+          ).compareTo(double.parse(b['number'].toString())),
+        );
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  Future<void> _playEpisode(EpisodeViewData item) async {
     final episode = _episodeFor(item.number);
     if (episode == null || !item.available) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => WatchPlayerScreen(
-          animeId: widget.animeId,
-          episodeNumber: item.number,
-          videoUrl: episode['videoUrl']?.toString(),
-          sources: episode['qualities'] is Map
-              ? Map<String, String>.from(episode['qualities'] as Map)
-              : null,
-          episodeTitle: item.title,
-          animeTitle: _animeTitle,
-        ),
+    await _openEpisode(episode);
+  }
+
+  Future<void> _openEpisode(
+    Map<String, dynamic> episode, {
+    bool replaceCurrent = false,
+  }) async {
+    final number = episode['number']?.toString() ?? '1';
+    final next = _nextEpisodeFor(number);
+    final route = MaterialPageRoute<void>(
+      builder: (_) => WatchPlayerScreen(
+        animeId: widget.animeId,
+        episodeNumber: number,
+        videoUrl: episode['videoUrl']?.toString(),
+        sources: episode['qualities'] is Map
+            ? Map<String, String>.from(episode['qualities'] as Map)
+            : null,
+        episodeTitle: episode['title']?.toString() ?? 'Серия $number',
+        animeTitle: _animeTitle,
+        nextEpisodeTitle: next == null ? null : 'Серия ${next['number']}',
+        onPlayNext: next == null
+            ? null
+            : () => _openEpisode(next, replaceCurrent: true),
       ),
-    ).then((_) => _loadWatched());
+    );
+    if (replaceCurrent) {
+      await Navigator.of(context).pushReplacement<void, void>(route);
+    } else {
+      await Navigator.of(context).push<void>(route);
+    }
+    await _loadWatched();
   }
 
   Future<void> _downloadEpisode(EpisodeViewData item) async {

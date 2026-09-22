@@ -21,6 +21,7 @@ import '../watch/repositories/watch_mapping_repository.dart';
 import '../watch/services/provider_response_cache.dart';
 import '../watch/services/resolved_stream_cache.dart';
 import 'profile_cover_storage.dart';
+import 'privacy_screen.dart';
 import 'shikimori_integration_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -73,6 +74,14 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () =>
                           _push(context, const ShikimoriIntegrationScreen()),
                     ),
+                  if (authenticated)
+                    _SettingsRow(
+                      icon: CupertinoIcons.lock_shield_fill,
+                      color: const Color(0xFFAD7CFF),
+                      title: 'Приватность',
+                      subtitle: 'Кто видит вашу библиотеку',
+                      onTap: () => _push(context, const PrivacyScreen()),
+                    ),
                   _SettingsRow(
                     icon: CupertinoIcons.paintbrush_fill,
                     color: settings.accentColor,
@@ -103,6 +112,14 @@ class SettingsScreen extends ConsumerWidget {
               const _SettingsSectionLabel('Приложение'),
               _SettingsGroup(
                 children: [
+                  _SettingsRow(
+                    icon: Icons.science_rounded,
+                    color: const Color(0xFFAD7CFF),
+                    title: 'Экспериментальные функции',
+                    subtitle: 'Новые возможности просмотра',
+                    onTap: () =>
+                        _push(context, const _ExperimentalFeaturesScreen()),
+                  ),
                   _SettingsRow(
                     icon: CupertinoIcons.doc_text_search,
                     color: const Color(0xFFFFA34D),
@@ -700,6 +717,105 @@ class _ColorSlider extends StatelessWidget {
         ),
       ],
     ),
+  );
+}
+
+class _ExperimentalFeaturesScreen extends StatelessWidget {
+  const _ExperimentalFeaturesScreen();
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: AppSettingsController.instance,
+    builder: (context, _) {
+      final settings = AppSettingsController.instance;
+      return AniMixPage(
+        title: 'Экспериментальные функции',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          children: [
+            const _SettingsSectionLabel('Просмотр'),
+            AniMixSurface(
+              padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+              child: Row(
+                children: [
+                  _SettingsIcon(
+                    icon: CupertinoIcons.forward_end_alt_fill,
+                    color: settings.autoSkipOpenings
+                        ? Theme.of(context).colorScheme.primary
+                        : AniMixTheme.subtleText,
+                  ),
+                  const SizedBox(width: 13),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Автопропуск опенингов и эндингов',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Использует тайминги Anime Skip и локальные метки серии. Кнопка пропуска остаётся доступна при выключенной автоматике.',
+                          style: TextStyle(
+                            color: AniMixTheme.subtleText,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.autoSkipOpenings,
+                    onChanged: settings.setAutoSkipOpenings,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            AniMixSurface(
+              padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+              child: Row(
+                children: [
+                  _SettingsIcon(
+                    icon: CupertinoIcons.play_circle_fill,
+                    color: settings.autoPlayNextEpisode
+                        ? Theme.of(context).colorScheme.primary
+                        : AniMixTheme.subtleText,
+                  ),
+                  const SizedBox(width: 13),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Автопереход к следующей серии',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Запускает следующую серию в конце текущей. Переход можно отменить.',
+                          style: TextStyle(
+                            color: AniMixTheme.subtleText,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.autoPlayNextEpisode,
+                    onChanged: settings.setAutoPlayNextEpisode,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -1413,7 +1529,41 @@ class _AboutScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: AniMixTheme.subtleText),
             ),
+            const SizedBox(height: 13),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: .14),
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .4),
+                ),
+              ),
+              child: const Text(
+                'ВЕРСИЯ 2.1.0 · БЕТА',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ),
           ],
+        ),
+        const SizedBox(height: 22),
+        const AniMixSurface(
+          padding: EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.info_circle_fill, size: 25),
+              SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  'Это бета-версия: отдельные функции и источники видео могут работать нестабильно. Ваши списки и профиль AniMix хранятся в YDB.',
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 30),
         const _SettingsSectionLabel('Возможности'),
@@ -1425,19 +1575,20 @@ class _AboutScreen extends StatelessWidget {
           child: Column(
             children: [
               _ChangeRow(
-                icon: CupertinoIcons.rectangle_stack_fill,
-                title: 'Обновлённый интерфейс',
-                subtitle: 'Новая структура экранов и адаптивная навигация',
+                icon: CupertinoIcons.person_2_fill,
+                title: 'Друзья и публичные профили',
+                subtitle:
+                    'Поиск, заявки, принятие и просмотр открытой библиотеки',
               ),
               _ChangeRow(
-                icon: CupertinoIcons.play_rectangle_fill,
-                title: 'Прямой HLS-плеер',
-                subtitle: 'Перехват Kodik, качества и резервные источники',
+                icon: CupertinoIcons.chart_bar_fill,
+                title: 'Статистика профиля',
+                subtitle: 'Тайтлы, серии, время просмотра и активность по дням',
               ),
               _ChangeRow(
-                icon: CupertinoIcons.arrow_down_circle_fill,
-                title: 'Умные загрузки',
-                subtitle: 'Выбор серии и качества, офлайн-воспроизведение',
+                icon: CupertinoIcons.sparkles,
+                title: 'Лента «Для вас»',
+                subtitle: 'Подбор по библиотеке и активности в AniMix',
                 divider: false,
               ),
             ],
@@ -1478,10 +1629,10 @@ class _FeatureGrid extends StatelessWidget {
     builder: (context, constraints) {
       final columns = constraints.maxWidth >= 720 ? 4 : 2;
       const items = [
-        (CupertinoIcons.person_crop_circle_fill, 'Профиль', 'Shikimori sync'),
-        (CupertinoIcons.play_rectangle_fill, 'Плеер', 'Прямой HLS'),
-        (CupertinoIcons.arrow_down_circle_fill, 'Офлайн', 'Серии с собой'),
-        (CupertinoIcons.sparkles, 'Для вас', 'Личная лента'),
+        (CupertinoIcons.person_2_fill, 'Друзья', 'Заявки и профили'),
+        (CupertinoIcons.play_rectangle_fill, 'Плеер', 'Скип и переход'),
+        (CupertinoIcons.arrow_down_circle_fill, 'Офлайн', 'Загрузка серий'),
+        (CupertinoIcons.lock_shield_fill, 'Приватность', 'Контроль библиотеки'),
       ];
       return GridView.builder(
         shrinkWrap: true,

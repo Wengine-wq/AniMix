@@ -144,6 +144,61 @@ export class YdbStore {
     return this.one<UserRow>('SELECT * FROM users WHERE id = $id;', { id });
   }
 
+  async searchUsers(term: string): Promise<Array<Pick<UserRow, 'id' | 'display_name'>>> {
+    return this.rows<Pick<UserRow, 'id' | 'display_name'>>(
+      'SELECT id, display_name FROM users WHERE display_name ILIKE $pattern LIMIT 20;',
+      { pattern: `%${term}%` },
+    );
+  }
+
+  async libraryVisible(userId: string): Promise<boolean> {
+    const privacy = await this.one<{ library_visible: boolean }>(
+      'SELECT library_visible FROM user_privacy WHERE user_id = $userId;',
+      { userId },
+    );
+    return privacy?.library_visible ?? true;
+  }
+
+  async setLibraryVisible(userId: string, visible: boolean): Promise<void> {
+    await this.execute(
+      'UPSERT INTO user_privacy (user_id,library_visible,updated_at) VALUES ($userId,$visible,$now);',
+      { userId, visible, now: Date.now() },
+    );
+  }
+
+  async friendEdges(userId: string): Promise<Array<{ peer_id: string; status: string }>> {
+    return this.rows<{ peer_id: string; status: string }>(
+      'SELECT peer_id,status FROM user_friend_edges WHERE user_id = $userId;',
+      { userId },
+    );
+  }
+
+  async friendStatus(userId: string, peerId: string): Promise<string | null> {
+    const edge = await this.one<{ status: string }>(
+      'SELECT status FROM user_friend_edges WHERE user_id = $userId AND peer_id = $peerId;',
+      { userId, peerId },
+    );
+    return edge?.status ?? null;
+  }
+
+  async setFriendPair(userId: string, peerId: string, myStatus: string, peerStatus: string): Promise<void> {
+    await this.execute(
+      `UPSERT INTO user_friend_edges (user_id,peer_id,status,updated_at)
+       VALUES ($userId,$peerId,$myStatus,$now);
+       UPSERT INTO user_friend_edges (user_id,peer_id,status,updated_at)
+       VALUES ($peerId,$userId,$peerStatus,$now);`,
+      { userId, peerId, myStatus, peerStatus, now: Date.now() },
+    );
+  }
+
+  async deleteFriendPair(userId: string, peerId: string): Promise<void> {
+    await this.execute(
+      `DELETE FROM user_friend_edges WHERE user_id = $userId AND peer_id = $peerId;
+       DELETE FROM user_friend_edges WHERE user_id = $peerId AND peer_id = $userId;`,
+      { userId, peerId },
+    );
+  }
+
   async userByEmail(email: string): Promise<UserRow | null> {
     const mapping = await this.one<{ user_id: string }>(
       'SELECT user_id FROM users_by_email WHERE email = $email;',
@@ -396,6 +451,7 @@ export class YdbStore {
     timestamp: number,
     shikimoriId?: number,
     metadata?: Record<string, unknown>,
+    id: string = randomUUID(),
   ): Promise<void> {
     await this.execute(
       `UPSERT INTO user_history (user_id,created_at,id,action,shikimori_id,metadata_json)
@@ -403,12 +459,27 @@ export class YdbStore {
       {
         userId,
         createdAt: timestamp,
-        id: randomUUID(),
+        id,
         action,
         shikimoriId: shikimoriId ?? 0,
         metadata: JSON.stringify(metadata ?? {}),
       },
     );
+  }
+
+  async historyForUser(userId: string): Promise<Array<{
+    created_at: number;
+    action: string;
+    shikimori_id: number;
+    metadata_json: string;
+  }>> {
+    const rows = await this.rows<{
+      created_at: number;
+      action: string;
+      shikimori_id: number;
+      metadata_json: string;
+    }>('SELECT created_at,action,shikimori_id,metadata_json FROM user_history WHERE user_id = $userId;', { userId });
+    return rows.sort((a, b) => b.created_at - a.created_at);
   }
 
   async createOAuthTransaction(stateHash: string, returnUri: string, now: number, expiresAt: number): Promise<void> {

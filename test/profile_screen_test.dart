@@ -42,6 +42,9 @@ void main() {
         overrides: [
           currentUserProvider.overrideWith((ref) async => user),
           userHistoryProvider(user.id).overrideWith((ref) => history.future),
+          profileUsageProvider.overrideWith(
+            (ref) async => const <String, dynamic>{},
+          ),
         ],
         child: MaterialApp(
           theme: AniMixTheme.material(
@@ -112,6 +115,9 @@ void main() {
         overrides: [
           currentUserProvider.overrideWith((ref) async => user),
           userHistoryProvider(user.id).overrideWith((ref) async => history),
+          profileUsageProvider.overrideWith(
+            (ref) async => const <String, dynamic>{},
+          ),
         ],
         child: MaterialApp(
           theme: AniMixTheme.material(
@@ -122,13 +128,17 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Моя медиатека'), findsOneWidget);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Ритм просмотра'), findsOneWidget);
     expect(find.text('Последние штрихи'), findsOneWidget);
     expect(find.text('Выйти из аккаунта'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 13));
   });
 
   testWidgets('AniMix profile exposes inline server-backed edit mode', (
@@ -147,7 +157,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [currentUserProvider.overrideWith((ref) async => user)],
+        overrides: [
+          currentUserProvider.overrideWith((ref) async => user),
+          profileUsageProvider.overrideWith(
+            (ref) async => const <String, dynamic>{},
+          ),
+        ],
         child: MaterialApp(
           theme: AniMixTheme.material(
             const Color(0xFF8B5CF6),
@@ -157,7 +172,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.byTooltip('Редактировать профиль'), findsOneWidget);
     expect(find.text('Профиль Shikimori'), findsNothing);

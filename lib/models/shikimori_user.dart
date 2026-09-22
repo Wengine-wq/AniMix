@@ -20,6 +20,7 @@ class ShikimoriUser {
   final int onHold;
   final int dropped;
   final int rewatched;
+  final int episodesWatched;
   final bool isAniMix;
   final bool shikimoriLinked;
   final String? shikimoriUserId;
@@ -46,6 +47,7 @@ class ShikimoriUser {
       onHold = _parseStatus(json, 'on_hold'),
       dropped = _parseStatus(json, 'dropped'),
       rewatched = _parseStatus(json, 'rewatching'),
+      episodesWatched = _episodeCount(json),
       isAniMix = false,
       shikimoriLinked = true,
       shikimoriUserId = _safeInt(json['id']).toString() {
@@ -71,6 +73,7 @@ class ShikimoriUser {
       onHold = _stat(json, 'on_hold'),
       dropped = _stat(json, 'dropped'),
       rewatched = _stat(json, 'rewatching'),
+      episodesWatched = _stat(json, 'episodes_watched'),
       isAniMix = true,
       shikimoriLinked = json['shikimori_linked'] == true,
       shikimoriUserId = _nullableString(json['shikimori_user_id']);
@@ -83,6 +86,14 @@ class ShikimoriUser {
       return int.tryParse(value?.toString() ?? '') ?? 0;
     }
     return 0;
+  }
+
+  static int _episodeCount(Map<String, dynamic> json) {
+    final direct = _safeInt(json['episodes_watched']);
+    if (direct > 0) return direct;
+    final stats = json['stats'];
+    if (stats is! Map) return 0;
+    return _safeInt(stats['episodes_watched'] ?? stats['episodes']);
   }
 
   static int _safeInt(dynamic value) {

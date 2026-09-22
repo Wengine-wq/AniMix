@@ -10,8 +10,10 @@ class ShikimoriAnime {
   final String? kind;
   final int? episodes;
   final int? episodesAired;
+  final int? duration;
   final String? airedOn;
   final String? rating;
+  final List<String> genres;
 
   ShikimoriAnime.fromJson(Map<String, dynamic> json)
     : id = json['id'],
@@ -29,8 +31,17 @@ class ShikimoriAnime {
       kind = json['kind']?.toString(),
       episodes = int.tryParse(json['episodes']?.toString() ?? ''),
       episodesAired = int.tryParse(json['episodes_aired']?.toString() ?? ''),
+      duration = int.tryParse(json['duration']?.toString() ?? ''),
       airedOn = json['aired_on']?.toString(),
-      rating = json['rating']?.toString();
+      rating = json['rating']?.toString(),
+      genres = (json['genres'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (genre) =>
+                (genre['russian'] ?? genre['name'] ?? '').toString().trim(),
+          )
+          .where((name) => name.isNotEmpty)
+          .toList(growable: false);
 
   int? get year => int.tryParse(airedOn?.split('-').first ?? '');
 

@@ -297,6 +297,18 @@ class AniMixAuthService {
     required String status,
     required int score,
     required int episodesWatched,
+  }) async => (await saveLibraryEntryWithResult(
+    animeId: animeId,
+    status: status,
+    score: score,
+    episodesWatched: episodesWatched,
+  )).success;
+
+  Future<AniMixLibrarySaveResult> saveLibraryEntryWithResult({
+    required int animeId,
+    required String status,
+    required int score,
+    required int episodesWatched,
   }) async {
     try {
       final response = await _authorizedRequest(
@@ -309,9 +321,30 @@ class AniMixAuthService {
           },
           options: _authorizedOptions(token),
         ),
+        retryTransient: true,
       );
-      if (response?.statusCode != 200) return false;
-      final responseData = response?.data;
+      if (response == null) {
+        return const AniMixLibrarySaveResult.failure(
+          'Войдите в AniMix, чтобы сохранить тайтл в планы.',
+        );
+      }
+      if (response.statusCode != 200) {
+        final payload = response.data is Map ? response.data as Map : null;
+        final code = payload?['error']?.toString();
+        AppLogBuffer.instance.warning(
+          'Library save failed: HTTP ${response.statusCode}, code=${code ?? 'unknown'}.',
+          source: 'AniMix library',
+        );
+        final message = switch (response.statusCode) {
+          400 => 'AniMix отклонил запись: проверьте данные аниме.',
+          401 => 'Сессия AniMix истекла. Войдите снова.',
+          404 || 405 => 'API AniMix устарел. Нужно обновить сервер.',
+          503 => 'YDB временно недоступна. Повторите позже.',
+          _ => 'Ошибка AniMix: HTTP ${response.statusCode}.',
+        };
+        return AniMixLibrarySaveResult.failure(message);
+      }
+      final responseData = response.data;
       final entry = responseData is Map ? responseData['entry'] : null;
       await AniMixLocalCache.upsertLibraryEntry(
         entry is Map
@@ -329,16 +362,160 @@ class AniMixAuthService {
           Map<String, dynamic>.from(responseData['user'] as Map),
         );
       }
-      return true;
+      return const AniMixLibrarySaveResult.success();
     } catch (error, stackTrace) {
       AppLogBuffer.instance.recordError(
         error,
         stackTrace,
         source: 'AniMix library',
       );
+      return const AniMixLibrarySaveResult.failure(
+        'Нет связи с AniMix. Проверьте сеть и повторите.',
+      );
+    }
+  }
+
+  Future<bool> recordUsageEvent({
+    required String action,
+    required int animeId,
+    required String eventId,
+    Map<String, Object?> metadata = const {},
+  }) async {
+    try {
+      final response = await _authorizedRequest(
+        (token) => _dio.post<dynamic>(
+          '${Config.animixApiBaseUrl}/v1/usage',
+          data: {
+            'action': action,
+            'anime_id': animeId,
+            'event_id': eventId,
+            'metadata': metadata,
+          },
+          options: _authorizedOptions(token),
+        ),
+        retryTransient: true,
+      );
+      return response?.statusCode == 200;
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'AniMix usage event',
+        context: action,
+      );
       return false;
     }
   }
+
+  Future<Map<String, dynamic>?> getUsageStats() async {
+    try {
+      final response = await _authorizedRequest(
+        (token) => _dio.get<dynamic>(
+          '${Config.animixApiBaseUrl}/v1/usage',
+          options: _authorizedOptions(token),
+        ),
+        retryTransient: true,
+      );
+      if (response?.statusCode != 200 || response?.data is! Map) return null;
+      final stats = (response!.data as Map)['stats'];
+      return stats is Map ? Map<String, dynamic>.from(stats) : null;
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'AniMix usage stats',
+      );
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> _socialRequest(
+    String method,
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final response = await _authorizedRequest(
+      (token) => _dio.request<dynamic>(
+        '${Config.animixApiBaseUrl}$path',
+        data: data,
+        queryParameters: queryParameters,
+        options: _authorizedOptions(token, method: method),
+      ),
+      retryTransient: method == 'GET',
+    );
+    if (response?.statusCode != 200 || response?.data is! Map) {
+      final payload = response?.data is Map ? response!.data as Map : null;
+      throw AniMixApiException(
+        operation: '$method $path',
+        statusCode: response?.statusCode,
+        errorCode: payload?['error']?.toString() ?? 'invalid_response',
+      );
+    }
+    return Map<String, dynamic>.from(response!.data as Map);
+  }
+
+  Future<bool> getLibraryVisible() async =>
+      (await _socialRequest('GET', '/v1/me/privacy'))['library_visible'] ==
+      true;
+
+  Future<bool> setLibraryVisible(bool visible) async =>
+      (await _socialRequest(
+        'PUT',
+        '/v1/me/privacy',
+        data: {'library_visible': visible},
+      ))['library_visible'] ==
+      true;
+
+  Future<List<Map<String, dynamic>>> searchAniMixUsers(String query) async {
+    final payload = await _socialRequest(
+      'GET',
+      '/v1/users/search',
+      queryParameters: {'q': query},
+    );
+    return (payload['users'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getFriends() async {
+    final payload = await _socialRequest('GET', '/v1/friends');
+    return (payload['users'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> getPublicProfile(String userId) async {
+    final payload = await _socialRequest('GET', '/v1/users/$userId');
+    return Map<String, dynamic>.from(payload['user'] as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> getPublicLibrary(String userId) async {
+    final payload = await _socialRequest('GET', '/v1/users/$userId/library');
+    return (payload['entries'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<String> getFriendStatus(String userId) async =>
+      (await _socialRequest(
+        'GET',
+        '/v1/friends/$userId',
+      ))['status']?.toString() ??
+      'none';
+
+  Future<String> addFriend(String userId) async =>
+      (await _socialRequest(
+        'POST',
+        '/v1/friends/$userId',
+      ))['status']?.toString() ??
+      'none';
+
+  Future<void> removeFriend(String userId) async =>
+      _socialRequest('DELETE', '/v1/friends/$userId').then((_) {});
 
   Future<AniMixLibraryImportResult> importShikimoriLibrary({
     required int shikimoriUserId,
@@ -633,6 +810,18 @@ class AniMixAuthService {
 }
 
 enum AniMixProfileMediaKind { avatar, banner }
+
+class AniMixLibrarySaveResult {
+  const AniMixLibrarySaveResult._({required this.success, this.message});
+
+  const AniMixLibrarySaveResult.success() : this._(success: true);
+
+  const AniMixLibrarySaveResult.failure(String message)
+    : this._(success: false, message: message);
+
+  final bool success;
+  final String? message;
+}
 
 class AniMixAuthResult {
   const AniMixAuthResult._({required this.success, this.errorMessage});

@@ -357,19 +357,20 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWith((ref) => _FakeApiClient(ref, anime)),
+          currentUserProvider.overrideWith((ref) async => null),
         ],
         child: const RecommendationScreen(),
       ),
       size: const Size(390, 844),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Аниме 1'), findsOneWidget);
     final card = find.byKey(const ValueKey('recommendation_1'));
     expect(card, findsOneWidget);
 
     await tester.drag(card, const Offset(-280, 0));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Аниме 1'), findsNothing);
     expect(find.text('Аниме 2'), findsOneWidget);

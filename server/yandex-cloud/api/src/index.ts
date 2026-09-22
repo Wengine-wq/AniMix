@@ -399,6 +399,89 @@ async function publicProfile(
   return json(event, config, { user: result });
 }
 
+async function privacy(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (event.httpMethod === 'PUT') {
+    const visible = jsonBody(event).library_visible;
+    if (typeof visible !== 'boolean') return json(event, config, { error: 'invalid_privacy' }, 400);
+    await store.setLibraryVisible(session.user.id, visible);
+  }
+  return json(event, config, { library_visible: await store.libraryVisible(session.user.id) });
+}
+
+async function publicLibrary(
+  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, userId: string,
+): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (!await store.userById(userId)) return json(event, config, { error: 'not_found' }, 404);
+  if (session.user.id !== userId) {
+    const [mine, theirs] = await Promise.all([
+      store.libraryVisible(session.user.id), store.libraryVisible(userId),
+    ]);
+    if (!mine || !theirs) return json(event, config, { error: 'library_private' }, 403);
+  }
+  return json(event, config, { entries: await store.libraryEntries(userId) });
+}
+
+async function searchUsers(
+  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage,
+): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  const term = query(event, 'q').replace(/[%_\\]/g, '').slice(0, 32);
+  if (term.length < 2) return json(event, config, { users: [] });
+  const matches = (await store.searchUsers(term)).filter((user) => user.id !== session.user.id);
+  const users = await Promise.all(matches.map(async (user) => {
+    const avatar = (await store.mediaForUser(user.id)).find((row) => row.kind === 'avatar');
+    return { id: user.id, display_name: user.display_name, avatar_url: avatar ? media.publicUrl(avatar.object_key) : null };
+  }));
+  return json(event, config, { users });
+}
+
+async function friends(
+  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage,
+  peerId?: string,
+): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  const userId = session.user.id;
+  if (!peerId) {
+    const edges = await store.friendEdges(userId);
+    const users = await Promise.all(edges.map(async (edge) => {
+      const peer = await store.userById(edge.peer_id);
+      if (!peer) return null;
+      const avatar = (await store.mediaForUser(peer.id)).find((row) => row.kind === 'avatar');
+      return {
+        id: peer.id, display_name: peer.display_name, status: edge.status,
+        avatar_url: avatar ? media.publicUrl(avatar.object_key) : null,
+      };
+    }));
+    return json(event, config, { users: users.filter((user) => user !== null) });
+  }
+  if (peerId === userId) return json(event, config, { error: 'cannot_friend_self' }, 400);
+  if (!await store.userById(peerId)) return json(event, config, { error: 'not_found' }, 404);
+  const status = await store.friendStatus(userId, peerId);
+  if (event.httpMethod === 'GET') return json(event, config, { status: status ?? 'none' });
+  if (event.httpMethod === 'DELETE') {
+    if (status) await store.deleteFriendPair(userId, peerId);
+    return json(event, config, { status: 'none' });
+  }
+  if (event.httpMethod === 'POST') {
+    if (status === 'incoming') {
+      await store.setFriendPair(userId, peerId, 'friends', 'friends');
+      return json(event, config, { status: 'friends' });
+    }
+    if (status) return json(event, config, { status });
+    const outgoing = (await store.friendEdges(userId)).filter((edge) => edge.status === 'outgoing').length;
+    if (outgoing >= 50) return json(event, config, { error: 'too_many_pending_requests' }, 429);
+    await store.setFriendPair(userId, peerId, 'outgoing', 'incoming');
+    return json(event, config, { status: 'outgoing' });
+  }
+  return json(event, config, { error: 'method_not_allowed' }, 405);
+}
+
 async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage, animeId?: number): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
@@ -418,6 +501,55 @@ async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: 
   });
   const user = await store.userById(session.user.id);
   return json(event, config, { entry: saved, user: user ? await profile(user, store, media) : null });
+}
+
+async function usage(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (event.httpMethod === 'GET') {
+    const rows = await store.historyForUser(session.user.id);
+    const parsedRows = rows.map((row) => {
+      let metadata: Record<string, unknown> = {};
+      try {
+        const parsed: unknown = JSON.parse(row.metadata_json || '{}');
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>;
+      } catch { /* Ignore malformed legacy metadata. */ }
+      return { created_at: row.created_at, action: row.action, anime_id: row.shikimori_id, metadata };
+    });
+    const watchSeconds = parsedRows.reduce((sum, item) => sum + (item.action === 'watch_seconds' ? Number(item.metadata.seconds ?? 0) : 0), 0);
+    const episodesWatched = new Set(parsedRows.filter((item) => item.action === 'episode_watched').map((item) => `${item.anime_id}:${String(item.metadata.episode ?? '')}`)).size;
+    const lastWatchAt = parsedRows.reduce((latest, item) => item.action === 'watch_seconds' && item.created_at > latest ? item.created_at : latest, 0);
+    const cutoff = nowSeconds() - 365 * 24 * 60 * 60;
+    const activity = parsedRows
+      .filter((item) => item.created_at >= cutoff && ['watch_seconds', 'episode_watched', 'recommendation_rejected', 'recommendation_planned', 'anime_opened'].includes(item.action))
+      .slice(0, 5000);
+    return json(event, config, { stats: { watch_seconds: watchSeconds, episodes_watched: episodesWatched, last_watch_at: lastWatchAt || null, activity } });
+  }
+  if (event.httpMethod !== 'POST') return json(event, config, { error: 'method_not_allowed' }, 405);
+  const payload = jsonBody(event);
+  const action = typeof payload.action === 'string' ? payload.action : '';
+  const allowed = new Set(['watch_seconds', 'episode_watched', 'recommendation_rejected', 'recommendation_planned', 'anime_opened']);
+  const animeId = Number(payload.anime_id ?? 0);
+  const eventId = typeof payload.event_id === 'string' ? payload.event_id.trim() : '';
+  if (!allowed.has(action) || !Number.isSafeInteger(animeId) || animeId <= 0 || !/^[a-zA-Z0-9_-]{1,80}$/.test(eventId)) {
+    return json(event, config, { error: 'invalid_usage_event' }, 400);
+  }
+  const rawMetadata = payload.metadata;
+  const metadata = rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
+    ? rawMetadata as Record<string, unknown>
+    : {};
+  if (action === 'watch_seconds') {
+    const seconds = Number(metadata.seconds ?? 0);
+    if (!Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 3600) return json(event, config, { error: 'invalid_watch_seconds' }, 400);
+    metadata.seconds = seconds;
+  }
+  const now = nowSeconds();
+  const occurredAt = Number(metadata.occurred_at ?? now);
+  if (!Number.isSafeInteger(occurredAt) || occurredAt <= 0 || occurredAt > now + 300) {
+    return json(event, config, { error: 'invalid_event_time' }, 400);
+  }
+  await store.addHistory(session.user.id, action, occurredAt, animeId, metadata, eventId);
+  return json(event, config, { ok: true });
 }
 
 async function importShikimori(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
@@ -553,6 +685,7 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
       return current ? json(event, config, { user: await profile(current.user, store, media) }) : json(event, config, { error: 'unauthorized' }, 401);
     }
     if (path === '/v1/me/profile' && method === 'PATCH') return updateProfile(event, config, store, media);
+    if (path === '/v1/me/privacy' && (method === 'GET' || method === 'PUT')) return privacy(event, config, store);
     const mediaMatch = /^\/v1\/me\/media\/(avatar|banner)$/.exec(path);
     if (mediaMatch && method === 'PUT') return changeMedia(event, config, store, media, mediaMatch[1] as 'avatar' | 'banner');
     if (mediaMatch && method === 'DELETE') return removeMedia(event, config, store, media, mediaMatch[1] as 'avatar' | 'banner');
@@ -562,7 +695,14 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
     }
     const publicProfileMatch = /^\/v1\/users\/([0-9a-f-]{36})$/i.exec(path);
     if (publicProfileMatch && method === 'GET') return publicProfile(event, config, store, media, publicProfileMatch[1]);
+    const publicLibraryMatch = /^\/v1\/users\/([0-9a-f-]{36})\/library$/i.exec(path);
+    if (publicLibraryMatch && method === 'GET') return publicLibrary(event, config, store, publicLibraryMatch[1]);
+    if (path === '/v1/users/search' && method === 'GET') return searchUsers(event, config, store, media);
+    if (path === '/v1/friends' && method === 'GET') return friends(event, config, store, media);
+    const friendMatch = /^\/v1\/friends\/([0-9a-f-]{36})$/i.exec(path);
+    if (friendMatch && ['GET', 'POST', 'DELETE'].includes(method)) return friends(event, config, store, media, friendMatch[1]);
     if (path === '/v1/library' && method === 'GET') return library(event, config, store, media);
+    if (path === '/v1/usage' && (method === 'GET' || method === 'POST')) return usage(event, config, store);
     const libraryMatch = /^\/v1\/library\/(\d+)$/.exec(path);
     if (libraryMatch && (method === 'GET' || method === 'PUT')) return library(event, config, store, media, Number(libraryMatch[1]));
     if ((path === '/v1/library/import/shikimori' || path === '/v1/integrations/shikimori/import') && method === 'POST') return importShikimori(event, config, store, media);

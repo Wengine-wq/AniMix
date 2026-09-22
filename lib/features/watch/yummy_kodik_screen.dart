@@ -22,8 +22,10 @@ Future<void> launchKodikPlayer(
   String animeTitle,
   int animeId,
   String episodeNumber,
-  VoidCallback onReturn,
-) async {
+  VoidCallback onReturn, {
+  Future<void> Function()? onPlayNext,
+  String? nextEpisodeTitle,
+}) async {
   if (urlRaw.isEmpty) {
     showCupertinoDialog(
       context: context,
@@ -63,18 +65,13 @@ Future<void> launchKodikPlayer(
     return;
   }
 
-  // Let the platform view detach before FVP claims the native texture.
+  // The resolver route must be gone before the video backend owns a native
+  // texture. This keeps resolving and playback as separate lifecycles.
   await WidgetsBinding.instance.endOfFrame;
   if (Platform.isWindows) {
-    // WebView2 releases its composition surface asynchronously. One frame is
-    // not always enough before FVP requests a D3D texture of its own.
     await Future<void>.delayed(const Duration(milliseconds: 180));
   }
   if (!context.mounted) return;
-
-  // WebView2/WebKit must be fully removed before the native video surface is
-  // attached. Replacing the resolver route directly races its disposal on
-  // Windows and can leave a captured stream with no visible player.
   await Navigator.push<void>(
     context,
     MaterialPageRoute<void>(
@@ -85,6 +82,8 @@ Future<void> launchKodikPlayer(
         animeTitle: animeTitle,
         videoUrl: sources['Авто'] ?? sources.values.first,
         sources: sources,
+        onPlayNext: onPlayNext,
+        nextEpisodeTitle: nextEpisodeTitle,
       ),
     ),
   );
@@ -586,40 +585,78 @@ class _YummyEpisodesScreenState extends State<_YummyEpisodesScreen> {
     return null;
   }
 
-  void _playEpisode(EpisodeViewData item) {
+  Map<String, dynamic>? _nextEpisodeFor(String currentEpisode) {
+    final current = double.tryParse(currentEpisode);
+    if (current == null) return null;
+    final candidates =
+        widget.episodes.where((episode) {
+          final number = double.tryParse(episode['number']?.toString() ?? '');
+          final playable =
+              episode['videoUrl']?.toString().isNotEmpty == true ||
+              episode['url']?.toString().isNotEmpty == true;
+          return playable && number != null && number > current;
+        }).toList()..sort((a, b) {
+          final aNumber = double.parse(a['number'].toString());
+          final bNumber = double.parse(b['number'].toString());
+          return aNumber.compareTo(bNumber);
+        });
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  Future<void> _playEpisode(EpisodeViewData item) async {
     final episode = _episodeFor(item.number);
     if (episode == null) return;
+    await _openEpisode(episode);
+  }
+
+  Future<void> _openEpisode(
+    Map<String, dynamic> episode, {
+    bool replaceCurrent = false,
+  }) async {
+    final number = episode['number']?.toString() ?? '1';
+    final title = 'Серия $number';
+    final next = _nextEpisodeFor(number);
     final directUrl = episode['videoUrl']?.toString() ?? '';
     final qualities = episode['qualities'] is Map
         ? Map<String, String>.from(episode['qualities'] as Map)
         : <String, String>{};
     if (directUrl.isNotEmpty) {
-      Navigator.of(context)
-          .push(
-            MaterialPageRoute<void>(
-              builder: (_) => WatchPlayerScreen(
-                animeId: widget.animeId,
-                episodeNumber: item.number,
-                episodeTitle: '${widget.translationName} • ${item.title}',
-                animeTitle: widget.animeTitle,
-                videoUrl: directUrl,
-                sources: qualities,
-              ),
-            ),
-          )
-          .then((_) => _loadWatched());
+      final route = MaterialPageRoute<void>(
+        builder: (_) => WatchPlayerScreen(
+          animeId: widget.animeId,
+          episodeNumber: number,
+          episodeTitle: '${widget.translationName} • $title',
+          animeTitle: widget.animeTitle,
+          videoUrl: directUrl,
+          sources: qualities,
+          nextEpisodeTitle: next == null ? null : 'Серия ${next['number']}',
+          onPlayNext: next == null
+              ? null
+              : () => _openEpisode(next, replaceCurrent: true),
+        ),
+      );
+      if (replaceCurrent) {
+        await Navigator.of(context).pushReplacement<void, void>(route);
+      } else {
+        await Navigator.of(context).push<void>(route);
+      }
+      await _loadWatched();
       return;
     }
     final url = episode['url']?.toString() ?? '';
     if (url.isEmpty) return;
-    launchKodikPlayer(
+    await launchKodikPlayer(
       context,
       url,
-      '${widget.translationName} • ${item.title}',
+      '${widget.translationName} • $title',
       widget.animeTitle,
       widget.animeId,
-      item.number,
+      number,
       _loadWatched,
+      onPlayNext: next == null
+          ? null
+          : () => _openEpisode(next, replaceCurrent: true),
+      nextEpisodeTitle: next == null ? null : 'Серия ${next['number']}',
     );
   }
 

@@ -453,27 +453,42 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  Future<void> _play(DownloadItem item) async {
+  Future<void> _play(DownloadItem item) => _openOffline(item);
+
+  Future<void> _openOffline(
+    DownloadItem item, {
+    bool replaceCurrent = false,
+  }) async {
     final uri = await _manager.playbackUriFor(item.episodeId);
-    if (uri == null || !mounted) return;
+    if (uri == null || !mounted) {
+      throw StateError('Офлайн-файл следующей серии недоступен');
+    }
+    final next = await _manager.nextCompletedEpisode(item);
+    if (!mounted) return;
     final animeId = item.animeId > 0
         ? item.animeId
         : int.tryParse(item.episodeId.split('_').first) ?? 0;
     final episode = item.episodeId.split('_').last;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WatchPlayerScreen(
-          animeId: animeId,
-          episodeNumber: episode,
-          episodeTitle: item.episodeName,
-          animeTitle: item.animeTitle,
-          videoUrl: uri.toString(),
-          sources: {'Офлайн': uri.toString()},
-          posterUrl: item.posterUrl,
-        ),
+    final route = MaterialPageRoute<void>(
+      builder: (_) => WatchPlayerScreen(
+        animeId: animeId,
+        episodeNumber: episode,
+        episodeTitle: item.episodeName,
+        animeTitle: item.animeTitle,
+        videoUrl: uri.toString(),
+        sources: {'Офлайн': uri.toString()},
+        posterUrl: item.posterUrl,
+        nextEpisodeTitle: next?.episodeName,
+        onPlayNext: next == null
+            ? null
+            : () => _openOffline(next, replaceCurrent: true),
       ),
     );
+    if (replaceCurrent) {
+      await Navigator.of(context).pushReplacement<void, void>(route);
+    } else {
+      await Navigator.of(context).push<void>(route);
+    }
   }
 
   Future<void> _confirmDelete(DownloadItem item) async {

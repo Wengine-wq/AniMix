@@ -1,0 +1,15 @@
+-- Apply once after 001_initial.yql. Existing users default to a visible library.
+CREATE TABLE user_privacy (
+  user_id Utf8 NOT NULL,
+  library_visible Bool NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id)
+);
+
+CREATE TABLE user_friend_edges (
+  user_id Utf8 NOT NULL,
+  peer_id Utf8 NOT NULL,
+  status Utf8 NOT NULL,
+  updated_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id, peer_id)
+);

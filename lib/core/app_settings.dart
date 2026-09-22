@@ -53,6 +53,8 @@ class AppSettingsController extends ChangeNotifier {
   static const _themeStyleKey = 'appearance_theme_style_v1';
   static const _themeModeKey = 'appearance_theme_mode_v1';
   static const _smartConnectionKey = 'watch_smart_connection_v1';
+  static const _autoSkipOpeningsKey = 'watch_auto_skip_openings_v1';
+  static const _autoPlayNextEpisodeKey = 'watch_auto_play_next_episode_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
@@ -60,6 +62,8 @@ class AppSettingsController extends ChangeNotifier {
   AniMixThemeStyle _themeStyle = AniMixThemeStyle.graphite;
   AniMixThemeMode _themeMode = AniMixThemeMode.system;
   bool _smartConnectionEnabled = true;
+  bool _autoSkipOpenings = true;
+  bool _autoPlayNextEpisode = true;
   bool _initialized = false;
 
   AniMixAccent get accent => _accent;
@@ -70,6 +74,8 @@ class AppSettingsController extends ChangeNotifier {
   AniMixThemeStyle get themeStyle => _themeStyle;
   AniMixThemeMode get themeMode => _themeMode;
   bool get smartConnectionEnabled => _smartConnectionEnabled;
+  bool get autoSkipOpenings => _autoSkipOpenings;
+  bool get autoPlayNextEpisode => _autoPlayNextEpisode;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -93,6 +99,8 @@ class AppSettingsController extends ChangeNotifier {
       orElse: () => AniMixThemeMode.system,
     );
     _smartConnectionEnabled = prefs.getBool(_smartConnectionKey) ?? true;
+    _autoSkipOpenings = prefs.getBool(_autoSkipOpeningsKey) ?? true;
+    _autoPlayNextEpisode = prefs.getBool(_autoPlayNextEpisodeKey) ?? true;
     _initialized = true;
     notifyListeners();
   }
@@ -144,5 +152,21 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_smartConnectionKey, value);
+  }
+
+  Future<void> setAutoSkipOpenings(bool value) async {
+    if (_autoSkipOpenings == value) return;
+    _autoSkipOpenings = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoSkipOpeningsKey, value);
+  }
+
+  Future<void> setAutoPlayNextEpisode(bool value) async {
+    if (_autoPlayNextEpisode == value) return;
+    _autoPlayNextEpisode = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoPlayNextEpisodeKey, value);
   }
 }

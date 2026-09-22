@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -10,6 +11,8 @@ import '../../core/animix_auth_service.dart';
 import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/profile_media_codec.dart';
+import '../../core/shikimori_library_import.dart';
+import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_history.dart';
 import '../../models/shikimori_user.dart';
 import '../../providers/auth_provider.dart';
@@ -19,7 +22,9 @@ import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../auth/login_screen.dart';
+import '../watch/watch_storage.dart';
 import 'profile_cover_storage.dart';
+import 'friends_screen.dart';
 import 'settings_screen.dart';
 
 final userHistoryProvider = FutureProvider.family
@@ -27,6 +32,119 @@ final userHistoryProvider = FutureProvider.family
       if (userId <= 0) return const <ShikimoriHistory>[];
       return ref.watch(apiClientProvider).getUserHistory(userId, limit: 60);
     });
+
+final profileUsageProvider = FutureProvider.autoDispose<Map<String, dynamic>>((
+  ref,
+) async {
+  ref.watch(userDataRevisionProvider);
+  unawaited(WatchStorage.syncPendingUsageEvents());
+  final service = ref.read(animixAuthServiceProvider);
+  final remote = await service.getUsageStats();
+  final local = await WatchStorage.getLocalUsageStats();
+  final pendingActivity = await WatchStorage.getPendingUsageActivity();
+  final usage = remote ?? local;
+  final currentUser = await ref.read(currentUserProvider.future);
+  final library = await service.getLibraryEntries();
+  var rows = library ?? const <Map<String, dynamic>>[];
+  if (rows.isEmpty && currentUser?.shikimoriLinked == true) {
+    final linkedId = int.tryParse(currentUser?.shikimoriUserId ?? '') ?? 0;
+    if (linkedId > 0) {
+      try {
+        final rates = await ref
+            .read(apiClientProvider)
+            .getUserAnimeRates(linkedId);
+        rows = rates
+            .map(normalizeShikimoriAnimeRate)
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+      } catch (error, stackTrace) {
+        AppLogBuffer.instance.recordError(
+          error,
+          stackTrace,
+          source: 'Profile watch statistics',
+          context: 'Не удалось прочитать связанную библиотеку Shikimori',
+        );
+      }
+    }
+  }
+  final metadataById = <int, ShikimoriAnime>{};
+  final completedIds = rows
+      .where((row) => row['status'] == 'completed')
+      .map((row) => _usageCount(row['shikimori_id']))
+      .where((id) => id > 0)
+      .toSet()
+      .take(250)
+      .toList();
+  final api = ref.read(apiClientProvider);
+  for (var start = 0; start < completedIds.length; start += 50) {
+    final ids = completedIds.skip(start).take(50).toList();
+    try {
+      final anime = await api.getAnimes(
+        limit: ids.length,
+        filters: {'ids': ids.join(',')},
+      );
+      for (final item in anime) {
+        metadataById[item.id] = item;
+      }
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Profile watch statistics',
+        context: 'Не удалось получить число эпизодов завершённых тайтлов',
+      );
+    }
+  }
+  var libraryEpisodes = 0;
+  var estimatedLibrarySeconds = 0;
+  for (final row in rows) {
+    final id = _usageCount(row['shikimori_id']);
+    final status = row['status']?.toString();
+    final anime = metadataById[id];
+    var episodes = _usageCount(row['episodes_watched']);
+    if (episodes == 0 && status == 'completed') {
+      episodes = (anime?.episodes ?? 0) > 0 ? anime!.episodes! : 12;
+    }
+    if (episodes <= 0) continue;
+    libraryEpisodes += episodes;
+    estimatedLibrarySeconds += (episodes * (anime?.duration ?? 24) * 60)
+        .toInt();
+  }
+  final remoteEpisodes = _usageCount(usage['episodes_watched']);
+  final localEpisodes = _usageCount(local['episodes_watched']);
+  final estimatedEpisodes = math.max(
+    libraryEpisodes,
+    math.max(
+      currentUser?.episodesWatched ?? 0,
+      math.max(remoteEpisodes, localEpisodes),
+    ),
+  );
+  final measuredSeconds = math.max(
+    _usageCount(usage['watch_seconds']),
+    _usageCount(local['watch_seconds']),
+  );
+  final episodeBaseline = math.max(
+    libraryEpisodes,
+    currentUser?.episodesWatched ?? 0,
+  );
+  return {
+    ...usage,
+    'pending_activity': currentUser?.isAniMix == true
+        ? pendingActivity
+        : const <Map<String, dynamic>>[],
+    'episodes_watched': estimatedEpisodes,
+    // Before session timing existed, library progress retained episode counts
+    // but no wall-clock duration. Estimate that historical watch time from
+    // anime episode counts and duration, then keep any larger measured total.
+    'watch_seconds': math.max(
+      measuredSeconds,
+      math.max(estimatedLibrarySeconds, episodeBaseline * 24 * 60),
+    ),
+  };
+});
+
+int _usageCount(Object? value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -73,7 +191,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ref.invalidate(currentUserProvider);
       final user = await ref.read(currentUserProvider.future);
       if (!mounted) return;
-      if (user != null) ref.invalidate(userHistoryProvider(user.id));
+      if (user != null) {
+        final historyUserId = user.id;
+        if (historyUserId > 0) {
+          ref.invalidate(userHistoryProvider(historyUserId));
+        }
+      }
+      ref.invalidate(profileUsageProvider);
     } catch (error, stackTrace) {
       AppLogBuffer.instance.recordError(
         error,
@@ -317,6 +441,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     : () => _startProfileEditing(loadedUser!),
                 icon: const Icon(CupertinoIcons.pencil_circle_fill),
               ),
+          if (loadedUser?.isAniMix == true)
+            IconButton(
+              tooltip: 'Друзья',
+              onPressed: () => Navigator.push(
+                context,
+                CupertinoPageRoute<void>(builder: (_) => const FriendsScreen()),
+              ),
+              icon: const Icon(CupertinoIcons.person_2_fill),
+            ),
           IconButton(
             tooltip: 'Настройки',
             onPressed: () async {
@@ -356,7 +489,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             );
           }
-          final history = ref.watch(userHistoryProvider(value.id));
+          final historyUserId = value.id;
+          final history = ref.watch(userHistoryProvider(historyUserId));
+          final usage = ref.watch(profileUsageProvider);
           return RefreshIndicator.adaptive(
             onRefresh: _refresh,
             child: CustomScrollView(
@@ -398,6 +533,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             child: Column(
                               children: [
                                 _LibraryOverview(user: value),
+                                const SizedBox(height: AniMixSpacing.lg),
+                                usage.when(
+                                  data: (stats) =>
+                                      _ProfileUsageCard(stats: stats),
+                                  loading: () =>
+                                      const AniMixProfileActivitySkeleton(),
+                                  error: (_, _) => const SizedBox.shrink(),
+                                ),
                                 const SizedBox(height: AniMixSpacing.lg),
                                 _ProfileInfoCard(user: value),
                               ],
@@ -848,6 +991,232 @@ class _BackdropOrbitsPainter extends CustomPainter {
 }
 
 typedef _LibraryStat = ({String label, int value, Color color});
+
+class _ProfileUsageCard extends StatelessWidget {
+  const _ProfileUsageCard({required this.stats});
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final rawActivity = stats['activity'];
+    final activity = rawActivity is List
+        ? rawActivity
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+        : <Map<String, dynamic>>[];
+    final dailySeconds = <DateTime, int>{};
+    final activeDays = <DateTime>{};
+    for (final item in activity) {
+      final rawTime = item['created_at'];
+      final timestamp = rawTime is num
+          ? rawTime.toInt()
+          : int.tryParse('$rawTime') ?? 0;
+      final date = DateTime.fromMillisecondsSinceEpoch(
+        timestamp > 100000000000 ? timestamp : timestamp * 1000,
+      ).toLocal();
+      final day = DateTime(date.year, date.month, date.day);
+      if (timestamp <= 0) continue;
+      activeDays.add(day);
+      if (item['action'] != 'watch_seconds') continue;
+      final rawMetadata = item['metadata'];
+      final metadata = rawMetadata is Map
+          ? rawMetadata
+          : const <String, dynamic>{};
+      final seconds = metadata['seconds'] is num
+          ? (metadata['seconds'] as num).toInt()
+          : int.tryParse('${metadata['seconds'] ?? 0}') ?? 0;
+      dailySeconds[day] = (dailySeconds[day] ?? 0) + seconds;
+    }
+    // Queued offline events belong to this AniMix account and count even
+    // before the server has acknowledged them.
+    final pendingActivity = stats['pending_activity'];
+    if (pendingActivity is List) {
+      for (final raw in pendingActivity.whereType<Map>()) {
+        final timestamp = _usageInt(raw['created_at']);
+        if (timestamp <= 0) continue;
+        final date = DateTime.fromMillisecondsSinceEpoch(
+          timestamp > 100000000000 ? timestamp : timestamp * 1000,
+        ).toLocal();
+        final day = DateTime(date.year, date.month, date.day);
+        activeDays.add(day);
+        if (raw['action'] != 'watch_seconds') continue;
+        final metadata = raw['metadata'];
+        final seconds = metadata is Map ? _usageInt(metadata['seconds']) : 0;
+        if (seconds <= 0) continue;
+        dailySeconds[day] = (dailySeconds[day] ?? 0) + seconds;
+      }
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayActive = activeDays.contains(today);
+    var streak = 0;
+    var cursor = todayActive ? today : today.subtract(const Duration(days: 1));
+    while (activeDays.contains(cursor)) {
+      streak++;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+    final latestActivityDay = activeDays.fold<DateTime?>(
+      null,
+      (latest, day) => latest == null || day.isAfter(latest) ? day : latest,
+    );
+    final lastWatchAt = stats['last_watch_at'];
+    final lastWatchTimestamp = lastWatchAt is num
+        ? lastWatchAt.toInt()
+        : int.tryParse('$lastWatchAt') ?? 0;
+    final lastWatchDay = lastWatchTimestamp > 0
+        ? DateTime.fromMillisecondsSinceEpoch(
+            lastWatchTimestamp > 100000000000
+                ? lastWatchTimestamp
+                : lastWatchTimestamp * 1000,
+          ).toLocal()
+        : null;
+    final latestDay =
+        latestActivityDay ??
+        (lastWatchDay == null
+            ? null
+            : DateTime(
+                lastWatchDay.year,
+                lastWatchDay.month,
+                lastWatchDay.day,
+              ));
+    final afkDays = latestDay == null
+        ? null
+        : today.difference(latestDay).inDays;
+    final watchSeconds = _usageInt(stats['watch_seconds']);
+    final episodes = _usageInt(stats['episodes_watched']);
+    final days = List.generate(
+      14,
+      (index) => today.subtract(Duration(days: 13 - index)),
+    );
+    final maxSeconds = days.fold<int>(
+      1,
+      (max, day) => math.max(max, dailySeconds[day] ?? 0),
+    );
+
+    return AniMixSurface(
+      elevated: true,
+      padding: const EdgeInsets.all(AniMixSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AniMixSectionHeader(
+            title: 'Статистика просмотра',
+            subtitle: 'Серии из библиотеки; часы рассчитаны по хронометражу',
+            icon: CupertinoIcons.play_rectangle_fill,
+          ),
+          const SizedBox(height: AniMixSpacing.lg),
+          Row(
+            children: [
+              _UsageValue(
+                value: _usageHours(watchSeconds),
+                label: 'часов контента ≈',
+              ),
+              _UsageValue(value: '$episodes', label: 'серий просмотрено'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _UsageValue(value: '$streak', label: 'дней подряд'),
+              _UsageValue(
+                value: afkDays?.toString() ?? '—',
+                label: 'дней без активности',
+              ),
+            ],
+          ),
+          const SizedBox(height: AniMixSpacing.lg),
+          SizedBox(
+            height: 48,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final day in days)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Tooltip(
+                        message:
+                            '${day.day}.${day.month}: '
+                            '${activeDays.contains(day) ? 'активность AniMix, ' : ''}'
+                            '${_usageHours(dailySeconds[day] ?? 0)} ч просмотра',
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: !activeDays.contains(day)
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(
+                                    alpha:
+                                        .3 +
+                                        .7 *
+                                            (dailySeconds[day]! / maxSeconds)
+                                                .clamp(0, 1),
+                                  ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: SizedBox(
+                            height: !activeDays.contains(day)
+                                ? 5
+                                : 9 +
+                                      39 *
+                                          (dailySeconds[day]! / maxSeconds)
+                                              .clamp(0, 1),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Просмотр по дням · последние 14 дней',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static int _usageInt(Object? value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  static String _usageHours(int seconds) =>
+      (seconds / 3600).toStringAsFixed(seconds >= 36000 ? 0 : 1);
+}
+
+class _UsageValue extends StatelessWidget {
+  const _UsageValue({required this.value, required this.label});
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 class _LibraryOverview extends StatelessWidget {
   const _LibraryOverview({required this.user});
