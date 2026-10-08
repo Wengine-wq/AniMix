@@ -948,7 +948,6 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: .10),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white24),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1072,7 +1071,6 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: .62),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24),
                     ),
                     child: SizedBox.square(
                       dimension: 82,
@@ -1127,7 +1125,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 icon: const Icon(Icons.skip_next_rounded, size: 20),
                 label: Text(
                   _activeSkipSegment!.buttonLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -1140,7 +1138,6 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: .78),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white24),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
@@ -1200,10 +1197,10 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xCC000000),
+                    Color(0x99000000),
                     Color(0x18000000),
                     Color(0x18000000),
-                    Color(0xE0000000),
+                    Color(0xB3000000),
                   ],
                   stops: [0, .28, .58, 1],
                 ),
@@ -1234,7 +1231,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                           decoration: TextDecoration.none,
                           shadows: [Shadow(blurRadius: 8)],
                         ),
@@ -1282,20 +1279,20 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         size: 52,
                         onPressed: () => unawaited(_seekRelative(-10)),
                       ),
-                      const SizedBox(width: 22),
+                      const SizedBox(width: 36),
                       _playerIconButton(
                         key: const Key('pause_play_button'),
                         tooltip: value.isPlaying ? 'Пауза' : 'Воспроизвести',
                         icon: value.isPlaying
                             ? Icons.pause_rounded
                             : Icons.play_arrow_rounded,
-                        iconSize: 43,
-                        size: 68,
-                        background: Colors.white,
-                        foreground: Colors.black,
+                        iconSize: 54,
+                        size: 76,
+                        background: const Color(0x33000000),
+                        foreground: Colors.white,
                         onPressed: () => unawaited(_togglePause()),
                       ),
-                      const SizedBox(width: 22),
+                      const SizedBox(width: 36),
                       _playerIconButton(
                         key: const Key('forward_10_button'),
                         tooltip: 'Вперёд на 10 секунд',
@@ -1385,7 +1382,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                               decoration: TextDecoration.none,
                             ),
                           ),
@@ -1421,7 +1418,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     required VoidCallback onPressed,
     double size = 42,
     double iconSize = 23,
-    Color background = const Color(0x52000000),
+    Color background = Colors.transparent,
     Color foreground = Colors.white,
   }) => Tooltip(
     message: tooltip,
