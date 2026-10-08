@@ -75,9 +75,10 @@ node .\scripts\apply-friends-privacy.cjs `
 Достижения (миграция `003_achievements.yql`) применяются так же, до обновления API:
 
 ```powershell
-node .\scripts\apply-achievements.cjs `
-  'grpcs://ydb.serverless.yandexcloud.net:2135' `
-  '/ru-central1/<CLOUD_ID>/<DATABASE_ID>'
+.\scripts\apply-schema.ps1 `
+  -Endpoint 'grpcs://ydb.serverless.yandexcloud.net:2135' `
+  -Database '/ru-central1/<CLOUD_ID>/<DATABASE_ID>' `
+  -SchemaFile '003_achievements.yql'
 ```
 
 `GET/PUT /v1/me/achievements` хранит открытые награды аккаунта: PUT принимает `{ achievements: { id: unlocked_at_ms } }`, сохраняет самое раннее время и возвращает объединённый список. `GET /v1/users/:id/achievements` показывает награды другого пользователя любому вошедшему участнику.
