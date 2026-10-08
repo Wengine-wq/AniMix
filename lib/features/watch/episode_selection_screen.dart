@@ -389,6 +389,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
                           borderRadius: BorderRadius.circular(12),
                           child: CachedNetworkImage(
                             imageUrl: rawPoster,
+                            memCacheWidth: 240,
                             width: 64,
                             height: 86,
                             fit: BoxFit.cover,

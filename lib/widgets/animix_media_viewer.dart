@@ -200,6 +200,7 @@ class _ZoomableMediaState extends State<_ZoomableMedia> {
           imageUrl: widget.imageUrl,
           httpHeaders: widget.headers,
           fit: BoxFit.contain,
+          resizeToLayout: false,
           fadeInDuration: const Duration(milliseconds: 120),
           placeholder: (_, _) =>
               const CupertinoActivityIndicator(radius: 15, color: Colors.white),

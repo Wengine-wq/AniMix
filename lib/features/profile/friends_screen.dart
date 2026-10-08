@@ -277,7 +277,7 @@ class _UserTile extends StatelessWidget {
       leading: CircleAvatar(
         backgroundImage: avatar.isEmpty
             ? null
-            : CachedNetworkImageProvider(avatar),
+            : ResizeImage(CachedNetworkImageProvider(avatar), width: 128),
         child: avatar.isEmpty ? const Icon(CupertinoIcons.person_fill) : null,
       ),
       title: Text(user['display_name']?.toString() ?? 'Пользователь AniMix'),
@@ -662,6 +662,7 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
           child: anime?.imageUrl?.isNotEmpty == true
               ? CachedNetworkImage(
                   imageUrl: anime!.imageUrl!,
+                  memCacheWidth: 160,
                   fit: BoxFit.cover,
                   errorWidget: (_, _, _) => const Icon(CupertinoIcons.film),
                 )

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/media_cache.dart';
 import '../core/config.dart';
 import '../core/poster_fallback_service.dart';
+import 'image_decode_size.dart';
 
 class SmartAnimePoster extends StatefulWidget {
   final int animeId;
@@ -171,11 +172,21 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
             : null,
       );
     }
+    return LayoutBuilder(
+      builder: (context, constraints) => _networkImage(
+        url,
+        decodeWidthFor(context, constraints, fit: widget.fit),
+      ),
+    );
+  }
+
+  Widget _networkImage(String url, int? decodeWidth) {
     return CachedNetworkImage(
       imageUrl: url,
       cacheManager: AniMixMediaCache.posters,
       fit: widget.fit,
       alignment: widget.alignment,
+      memCacheWidth: decodeWidth,
       fadeInDuration: const Duration(milliseconds: 180),
       imageBuilder: (_, provider) {
         _handleImageLoaded(url);

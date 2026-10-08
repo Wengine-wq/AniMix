@@ -36,6 +36,7 @@ Future<void> showReleasePicker({
                   borderRadius: BorderRadius.circular(8),
                   child: CachedNetworkImage(
                     imageUrl: c['poster'],
+                    memCacheWidth: 180,
                     width: 48,
                     height: 68,
                     fit: BoxFit.cover,

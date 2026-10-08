@@ -4,6 +4,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart'
     show BaseCacheManager;
 
 import '../core/config.dart';
+import 'image_decode_size.dart';
 
 /// Loads media directly and retries through Shikimori's alternate public
 /// domain. Catalog images never spend an AniMix/Yandex API invocation.
@@ -18,8 +19,12 @@ class AniMixNetworkImage extends StatefulWidget {
     this.fadeInDuration = const Duration(milliseconds: 160),
     this.placeholder,
     this.errorWidget,
+    this.resizeToLayout = true,
     super.key,
   });
+
+  /// Decode at the drawn size. Turn off for zoomable full-screen viewers.
+  final bool resizeToLayout;
 
   final String imageUrl;
   final BaseCacheManager? cacheManager;
@@ -65,13 +70,39 @@ class _AniMixNetworkImageState extends State<AniMixNetworkImage> {
   }
 
   @override
-  Widget build(BuildContext context) => CachedNetworkImage(
+  Widget build(BuildContext context) {
+    if (!widget.resizeToLayout) return _image(null);
+    if (widget.width != null) {
+      return _image(
+        decodeWidthFor(
+          context,
+          const BoxConstraints(),
+          width: widget.width,
+          height: widget.height,
+          fit: widget.fit,
+        ),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) => _image(
+        decodeWidthFor(
+          context,
+          constraints,
+          height: widget.height,
+          fit: widget.fit,
+        ),
+      ),
+    );
+  }
+
+  Widget _image(int? decodeWidth) => CachedNetworkImage(
     imageUrl: _url,
     cacheManager: widget.cacheManager,
     httpHeaders: widget.httpHeaders,
     fit: widget.fit,
     width: widget.width,
     height: widget.height,
+    memCacheWidth: decodeWidth,
     fadeInDuration: widget.fadeInDuration,
     placeholder: widget.placeholder,
     errorWidget: (context, url, error) {

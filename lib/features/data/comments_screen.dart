@@ -1456,7 +1456,21 @@ class CommentDocument {
   final String text;
   final List<String> images;
 
+  static final Map<String, CommentDocument> _parsed =
+      <String, CommentDocument>{};
+
+  /// Comments are re-built on every scroll/expand; parsing HTML each time was
+  /// the most expensive part of a comment tile. Memoise the latest results.
   factory CommentDocument.parse(String source, {String htmlBody = ''}) {
+    final key = '$source\u0000$htmlBody';
+    final cached = _parsed.remove(key);
+    if (cached != null) return _parsed[key] = cached;
+    final document = CommentDocument._parse(source, htmlBody: htmlBody);
+    if (_parsed.length >= 300) _parsed.remove(_parsed.keys.first);
+    return _parsed[key] = document;
+  }
+
+  factory CommentDocument._parse(String source, {String htmlBody = ''}) {
     final resolved = htmlBody.trim().isNotEmpty
         ? htmlBody
         : _legacyBbCodeToHtml(source);

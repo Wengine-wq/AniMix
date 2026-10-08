@@ -240,6 +240,37 @@ class AchievementService {
     await _reconcileLibraryRows(prefs, rows, overwriteStatus: true);
   }
 
+  Future<Map<String, DateTime>>? _unlockedSnapshot;
+  Future<Map<String, String>>? _progressSnapshot;
+  int _snapshotRevision = -1;
+  DateTime _snapshotAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _refreshSnapshotsIfStale() {
+    final now = DateTime.now();
+    if (_snapshotRevision == revision.value &&
+        now.difference(_snapshotAt) < const Duration(seconds: 15)) {
+      return;
+    }
+    _snapshotRevision = revision.value;
+    _snapshotAt = now;
+    _unlockedSnapshot = null;
+    _progressSnapshot = null;
+  }
+
+  /// For `FutureBuilder`s: [unlocked] re-runs every backfill and creates a new
+  /// future on each rebuild, which recomputed everything and flashed the
+  /// widgets back to their empty state. This one is shared until the revision
+  /// changes (or 15 s pass, to pick up watch-time milestones).
+  Future<Map<String, DateTime>> unlockedSnapshot() {
+    _refreshSnapshotsIfStale();
+    return _unlockedSnapshot ??= unlocked();
+  }
+
+  Future<Map<String, String>> titleProgressSnapshot() {
+    _refreshSnapshotsIfStale();
+    return _progressSnapshot ??= titleProgress();
+  }
+
   Future<Map<String, String>> titleProgress() async {
     final prefs = await SharedPreferences.getInstance();
     final result = <String, String>{};

@@ -376,6 +376,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                             ? const ColoredBox(color: Color(0xFF27272A))
                             : CachedNetworkImage(
                                 imageUrl: poster,
+                                memCacheWidth: 200,
                                 fit: BoxFit.cover,
                                 errorWidget: (_, _, _) =>
                                     const ColoredBox(color: Color(0xFF27272A)),

@@ -935,19 +935,23 @@ class _AmbientBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Transform.scale(
-            scale: 1.12,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-              child: Opacity(
-                opacity: 0.34,
-                child: SmartAnimePoster(
-                  animeId: animeId,
-                  imageUrl: imageUrl,
-                  title: title,
-                  russianTitle: russianTitle,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
+          // Static once loaded: isolate the expensive blur from repaints of
+          // the content scrolling above it.
+          RepaintBoundary(
+            child: Transform.scale(
+              scale: 1.12,
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: Opacity(
+                  opacity: 0.34,
+                  child: SmartAnimePoster(
+                    animeId: animeId,
+                    imageUrl: imageUrl,
+                    title: title,
+                    russianTitle: russianTitle,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                  ),
                 ),
               ),
             ),

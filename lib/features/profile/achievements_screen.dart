@@ -85,11 +85,11 @@ class AchievementsScreen extends StatelessWidget {
       body: ValueListenableBuilder<int>(
         valueListenable: AchievementService.instance.revision,
         builder: (context, _, _) => FutureBuilder<Map<String, DateTime>>(
-          future: AchievementService.instance.unlocked(),
+          future: AchievementService.instance.unlockedSnapshot(),
           builder: (context, snapshot) {
             final earned = snapshot.data ?? const <String, DateTime>{};
             return FutureBuilder<Map<String, String>>(
-              future: AchievementService.instance.titleProgress(),
+              future: AchievementService.instance.titleProgressSnapshot(),
               builder: (context, progressSnapshot) => LayoutBuilder(
                 builder: (context, limits) {
                   final columns = limits.maxWidth >= 900

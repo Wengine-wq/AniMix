@@ -290,11 +290,8 @@ class _FloatingTabBar extends StatelessWidget {
         minimum: const EdgeInsets.fromLTRB(12, 6, 12, 10),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(25),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: translucent ? 16 : 0,
-              sigmaY: translucent ? 16 : 0,
-            ),
+          child: _MaybeBackdropBlur(
+            enabled: translucent,
             child: Container(
               height: 66,
               padding: const EdgeInsets.all(6),
@@ -522,4 +519,21 @@ class _DesktopSidebar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A zero-sigma [BackdropFilter] still forces a backdrop layer that is
+/// re-composited on every scrolled frame, so only add one when it blurs.
+class _MaybeBackdropBlur extends StatelessWidget {
+  const _MaybeBackdropBlur({required this.enabled, required this.child});
+
+  final bool enabled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => enabled
+      ? BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: child,
+        )
+      : child;
 }

@@ -551,7 +551,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   builder: (context, _, _) =>
                                       FutureBuilder<Map<String, DateTime>>(
                                         future: AchievementService.instance
-                                            .unlocked(),
+                                            .unlockedSnapshot(),
                                         builder: (context, snapshot) => AniMixSurface(
                                           onTap: () => Navigator.push(
                                             context,
