@@ -13,11 +13,15 @@ import 'package:animix/widgets/animix_media_viewer.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    FlutterSecureStorage.setMockInitialValues({});
+  });
 
   final theme = AniMixTheme.material(
     const Color(0xFF8B5CF6),
@@ -322,6 +326,9 @@ void main() {
   testWidgets('comment composer inserts a real Shikimori smiley token', (
     tester,
   ) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'shikimori_access_token': 'test-token',
+    });
     await pumpAt(
       tester,
       ProviderScope(
@@ -346,6 +353,143 @@ void main() {
     );
     expect(input.controller?.text, ':) ');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('comments require a connected Shikimori account to write', (
+    tester,
+  ) async {
+    await pumpAt(
+      tester,
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWith(_FakeCommentsApiClient.new)],
+        child: const CommentsScreen(topicId: 42),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('shikimori_connect_banner')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('comment_input')), findsNothing);
+    expect(find.byKey(const ValueKey('comment_send')), findsNothing);
+    expect(find.text('Автор 1'), findsOneWidget);
+  });
+
+  testWidgets('failed live session check keeps the comment draft', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'shikimori_access_token': 'test-token',
+    });
+    late _FakeCommentsApiClient api;
+    await pumpAt(
+      tester,
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWith(
+            (ref) => api = _FakeCommentsApiClient(ref, failVerification: true),
+          ),
+        ],
+        child: const CommentsScreen(topicId: 42),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('comment_input')),
+      'Мой черновик',
+    );
+    await tester.tap(find.byKey(const ValueKey('comment_send')));
+    await tester.pumpAndSettle();
+
+    expect(api.verifications, 1);
+    expect(api.posts, 0);
+    expect(
+      find.byKey(const ValueKey('shikimori_connection_warning')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('comment_input')))
+          .controller
+          ?.text,
+      'Мой черновик',
+    );
+  });
+
+  testWidgets('a different linked Shikimori identity cannot post', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'animix_profile_cache_v2':
+          '{"shikimori_linked":true,"shikimori_user_id":"8"}',
+    });
+    FlutterSecureStorage.setMockInitialValues({
+      'shikimori_access_token': 'test-token',
+    });
+    late _FakeCommentsApiClient api;
+    await pumpAt(
+      tester,
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWith(
+            (ref) => api = _FakeCommentsApiClient(ref),
+          ),
+        ],
+        child: const CommentsScreen(topicId: 42),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('comment_input')),
+      'Нельзя отправлять',
+    );
+    await tester.tap(find.byKey(const ValueKey('comment_send')));
+    await tester.pumpAndSettle();
+
+    expect(api.posts, 0);
+    expect(
+      find.textContaining('Подключён другой аккаунт Shikimori'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('confirmed comment appears immediately despite stale list', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'shikimori_access_token': 'test-token',
+    });
+    late _FakeCommentsApiClient api;
+    await pumpAt(
+      tester,
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWith(
+            (ref) => api = _FakeCommentsApiClient(ref),
+          ),
+        ],
+        child: const CommentsScreen(topicId: 42),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('comment_input')),
+      'Новый комментарий',
+    );
+    await tester.tap(find.byKey(const ValueKey('comment_send')));
+    await tester.pumpAndSettle();
+
+    expect(api.verifications, 1);
+    expect(api.posts, 1);
+    expect(find.byKey(const ValueKey('comment_thread_99')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('comment_input')))
+          .controller
+          ?.text,
+      isEmpty,
+    );
   });
 
   testWidgets('recommendation swipe dismisses exactly one card', (
@@ -487,11 +631,32 @@ class _FakeApiClient extends ShikimoriApiClient {
 }
 
 class _FakeCommentsApiClient extends ShikimoriApiClient {
-  _FakeCommentsApiClient(super.ref, {this.failFirst = false, this.firstPage});
+  _FakeCommentsApiClient(
+    super.ref, {
+    this.failFirst = false,
+    this.firstPage,
+    this.failVerification = false,
+  });
 
   final bool failFirst;
   final List<ShikimoriComment>? firstPage;
+  final bool failVerification;
   int calls = 0;
+  int verifications = 0;
+  int posts = 0;
+
+  @override
+  Future<int> verifyCommentSession() async {
+    verifications++;
+    if (failVerification) throw StateError('offline');
+    return 7;
+  }
+
+  @override
+  Future<ShikimoriComment> postComment(int topicId, String text) async {
+    posts++;
+    return _comment(99, text);
+  }
 
   @override
   Future<List<ShikimoriComment>> getComments(

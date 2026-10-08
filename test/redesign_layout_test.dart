@@ -7,15 +7,71 @@ import 'package:animix/features/home/home_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/providers/auth_provider.dart';
 import 'package:animix/providers/user_provider.dart';
+import 'package:animix/models/shikimori_user.dart';
 import 'package:animix/widgets/animix_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    FlutterSecureStorage.setMockInitialValues({});
+  });
+
+  testWidgets('connected services explains comments and optional import', (
+    tester,
+  ) async {
+    final profile = ShikimoriUser.localFromAniMixJson({
+      'display_name': 'Tester',
+      'shikimori_linked': false,
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isLoggedInProvider.overrideWith((ref) async => true),
+          currentUserProvider.overrideWith((ref) async => profile),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Привязанные сервисы'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Зачем подключать Shikimori?'), findsOneWidget);
+    expect(
+      find.textContaining('Писать комментарии и отвечать'),
+      findsOneWidget,
+    );
+    expect(find.text('Перенести библиотеку'), findsOneWidget);
+  });
+
+  testWidgets('settings labels use the light theme foreground', (tester) async {
+    final theme = AniMixTheme.material(
+      const Color(0xFF8B5CF6),
+      AniMixThemeStyle.graphite,
+      brightness: Brightness.light,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isLoggedInProvider.overrideWith((ref) async => false),
+          currentUserProvider.overrideWith((ref) async => null),
+        ],
+        child: MaterialApp(theme: theme, home: const SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final label in ['Оформление', 'Умное соединение']) {
+      expect(
+        tester.widget<Text>(find.text(label)).style?.color,
+        theme.colorScheme.onSurface,
+      );
+    }
+    expect(tester.takeException(), isNull);
   });
 
   Future<void> pumpAt(WidgetTester tester, Widget root, Size size) async {

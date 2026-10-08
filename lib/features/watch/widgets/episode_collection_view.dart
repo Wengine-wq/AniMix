@@ -157,7 +157,9 @@ class _EpisodeCard extends StatelessWidget {
             episode.available
                 ? Icons.play_circle_fill_rounded
                 : Icons.error_outline_rounded,
-            color: episode.available ? Colors.white54 : Colors.redAccent,
+            color: episode.available
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : Theme.of(context).colorScheme.error,
           ),
         ],
       ),

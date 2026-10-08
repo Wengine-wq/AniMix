@@ -49,7 +49,7 @@ class AniMixLocalCache {
   }
 
   static Future<void> upsertLibraryEntry(Map<String, dynamic> entry) async {
-    final current = await readLibrary() ?? <Map<String, dynamic>>[];
+    final current = [...?await readLibrary()];
     final id = entry['shikimori_id']?.toString();
     if (id == null || id.isEmpty) return;
     final index = current.indexWhere(

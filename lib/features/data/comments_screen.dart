@@ -12,9 +12,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_logging.dart';
+import '../../core/animix_local_cache.dart';
 import '../../core/animix_theme.dart';
 import '../../core/config.dart';
 import '../../core/media_cache.dart';
+import '../../core/secure_storage.dart';
 import '../../core/shikimori_smileys.dart';
 import '../../models/shikimori_comment.dart';
 import '../../providers/user_provider.dart';
@@ -22,6 +24,7 @@ import '../../widgets/animix_media_viewer.dart';
 import '../../widgets/animix_surface.dart';
 import '../../widgets/animix_network_image.dart';
 import '../../widgets/animix_skeletons.dart';
+import '../profile/shikimori_integration_screen.dart';
 
 const _shikimoriUrl = 'https://shikimori.io';
 
@@ -69,13 +72,54 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   CommentOrder _order = CommentOrder.newest;
   CommentFilter _filter = CommentFilter.all;
   bool _apiExhausted = false;
+  bool _checkingConnection = true;
+  bool _shikimoriConnected = false;
+  String? _connectionError;
+  int? _justPostedId;
+  int _listGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    unawaited(_checkConnection());
     unawaited(_loadTopicCount());
     unawaited(_loadFirstPage());
+  }
+
+  Future<void> _checkConnection() async {
+    try {
+      final token = await SecureStorage.getAccessToken();
+      if (!mounted) return;
+      setState(() {
+        _shikimoriConnected = token != null && token.isNotEmpty;
+        _checkingConnection = false;
+        _connectionError = null;
+        if (!_shikimoriConnected) _replyingTo = null;
+      });
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments auth',
+      );
+      if (mounted) {
+        setState(() {
+          _shikimoriConnected = false;
+          _checkingConnection = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openConnectedServices() async {
+    await Navigator.push<void>(
+      context,
+      CupertinoPageRoute<void>(
+        builder: (_) => const ShikimoriIntegrationScreen(),
+      ),
+    );
+    if (mounted) await _checkConnection();
   }
 
   @override
@@ -120,6 +164,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _loadFirstPage() async {
+    final generation = ++_listGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -134,7 +179,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             widget.topicId,
             descending: _order == CommentOrder.newest,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _listGeneration) return;
       setState(() {
         _comments
           ..clear()
@@ -151,14 +196,19 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         source: 'Comments',
         context: 'Не удалось загрузить тему ${widget.topicId}',
       );
-      if (mounted) setState(() => _loadError = error);
+      if (mounted && generation == _listGeneration) {
+        setState(() => _loadError = error);
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _listGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
+    final generation = _listGeneration;
     setState(() {
       _loadingMore = true;
       _loadMoreError = null;
@@ -172,7 +222,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             page: nextPage,
             descending: _order == CommentOrder.newest,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _listGeneration) return;
       final knownIds = _comments.map((comment) => comment.id).toSet();
       final unique = next.where((comment) => knownIds.add(comment.id)).toList();
       setState(() {
@@ -201,25 +251,61 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   Future<bool> _send(String text) async {
     final body = text.trim();
     if (body.isEmpty) return false;
+    var publishing = false;
     final target = _replyingTo;
     final payload = target == null
         ? body
         : '[comment=${target.id};${target.userId ?? 0}]'
               '${target.userNickname ?? 'Пользователь'}[/comment], $body';
     try {
+      final token = await SecureStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        if (mounted) {
+          setState(() => _shikimoriConnected = false);
+        }
+        return false;
+      }
+      // A cached profile or stored token does not prove that Shikimori is
+      // reachable or still accepts this account right now.
+      final api = ref.read(apiClientProvider);
+      final shikimoriUserId = await api.verifyCommentSession();
+      final profile = await AniMixLocalCache.readProfile();
+      final linkedUserId = int.tryParse('${profile?['shikimori_user_id']}');
+      if (profile?['shikimori_linked'] == true &&
+          linkedUserId != null &&
+          linkedUserId > 0 &&
+          linkedUserId != shikimoriUserId) {
+        throw StateError('A different Shikimori account is signed in.');
+      }
+      publishing = true;
       final created = await ref
           .read(apiClientProvider)
           .postComment(widget.topicId, payload);
       if (!mounted) return true;
       setState(() {
-        if (_order == CommentOrder.newest) {
-          _comments.insert(0, created);
-        } else {
-          _comments.add(created);
-        }
+        ++_listGeneration;
+        _loading = false;
+        _loadError = null;
+        _filter = CommentFilter.all;
+        _order = CommentOrder.newest;
+        _comments.removeWhere((item) => item.id == created.id);
+        _comments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        _comments.insert(0, created);
+        _justPostedId = created.id;
         _replyingTo = null;
         _totalCount = (_totalCount ?? _comments.length - 1) + 1;
+        _connectionError = null;
       });
+      if (_scrollController.hasClients) {
+        unawaited(
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOut,
+          ),
+        );
+      }
+      unawaited(_refreshAfterPost(created));
       return true;
     } catch (error, stackTrace) {
       AppLogBuffer.instance.recordError(
@@ -229,18 +315,66 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         context: 'Не удалось отправить комментарий',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось отправить комментарий')),
-        );
+        final token = await SecureStorage.getAccessToken();
+        if (!mounted) return false;
+        final linkedMismatch =
+            error is StateError &&
+            error.toString().contains('different Shikimori account');
+        final message = linkedMismatch
+            ? 'Подключён другой аккаунт Shikimori. Войдите заново в привязанных сервисах.'
+            : token == null || token.isEmpty
+            ? 'Сессия Shikimori истекла. Подключите аккаунт заново.'
+            : publishing
+            ? 'Shikimori не подтвердил публикацию. Текст сохранён — попробуйте ещё раз.'
+            : 'Не удалось проверить связь с Shikimori. Текст сохранён — попробуйте ещё раз.';
+        setState(() {
+          _shikimoriConnected = token != null && token.isNotEmpty;
+          _connectionError = message;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
       return false;
+    }
+  }
+
+  Future<void> _refreshAfterPost(ShikimoriComment created) async {
+    final generation = _listGeneration;
+    try {
+      final fresh = await ref
+          .read(apiClientProvider)
+          .getComments(widget.topicId);
+      if (!mounted || generation != _listGeneration) return;
+      final canonical =
+          fresh.where((item) => item.id == created.id).firstOrNull ?? created;
+      final ids = <int>{created.id};
+      setState(() {
+        _comments
+          ..clear()
+          ..add(canonical)
+          ..addAll(fresh.where((item) => ids.add(item.id)));
+        _page = 1;
+        _apiExhausted = fresh.isEmpty;
+        _hasMore =
+            fresh.isNotEmpty &&
+            (_totalCount == null || _comments.length < _totalCount!);
+      });
+    } catch (error, stackTrace) {
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Comments',
+        context: 'Комментарий отправлен, но список не обновился',
+      );
+      // The confirmed response remains visible even when refresh fails.
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final visibleComments = _comments.where(_matchesFilter).toList();
-    final tree = CommentTree.from(visibleComments);
+    final tree = CommentTree.from(visibleComments, promoteId: _justPostedId);
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -290,11 +424,25 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             onSelected: (value) => setState(() => _filter = value),
           ),
           Expanded(child: _buildContent(tree)),
-          CommentComposer(
-            replyTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-            onSend: _send,
-          ),
+          if (_checkingConnection)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: CupertinoActivityIndicator(),
+            )
+          else if (!_shikimoriConnected)
+            _ShikimoriConnectBanner(onConnect: _openConnectedServices)
+          else ...[
+            if (_connectionError != null)
+              _ShikimoriConnectionWarning(
+                message: _connectionError!,
+                onConnect: _openConnectedServices,
+              ),
+            CommentComposer(
+              replyTo: _replyingTo,
+              onCancelReply: () => setState(() => _replyingTo = null),
+              onSend: _send,
+            ),
+          ],
         ],
       ),
     );
@@ -329,7 +477,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             ? 'Обсуждение пока пустое'
             : 'По фильтру ничего нет',
         message: _comments.isEmpty
-            ? 'Можно оставить первый комментарий.'
+            ? _shikimoriConnected
+                  ? 'Можно оставить первый комментарий.'
+                  : 'Подключите Shikimori, чтобы оставить первый комментарий.'
             : 'Попробуйте другой фильтр или загрузите больше комментариев.',
         actionLabel: canLoadMore
             ? (_loadMoreError == null ? 'Загрузить ещё' : 'Повторить загрузку')
@@ -361,7 +511,17 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             key: ValueKey('comment_thread_${comment.id}'),
             comment: comment,
             replies: tree.replies[comment.id] ?? const [],
-            onReply: (target) => setState(() => _replyingTo = target),
+            onReply: (target) {
+              if (!_shikimoriConnected) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Чтобы ответить, подключите Shikimori.'),
+                  ),
+                );
+                return;
+              }
+              setState(() => _replyingTo = target);
+            },
           );
         },
       ),
@@ -445,6 +605,90 @@ class _CommentsEmptyState extends StatelessWidget {
   }
 }
 
+class _ShikimoriConnectBanner extends StatelessWidget {
+  const _ShikimoriConnectBanner({required this.onConnect});
+
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: const ValueKey('shikimori_connect_banner'),
+        margin: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              CupertinoIcons.link,
+              size: 18,
+              color: scheme.onPrimaryContainer,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                'Чтобы писать и отвечать, подключите Shikimori.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            TextButton(onPressed: onConnect, child: const Text('Подключить')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShikimoriConnectionWarning extends StatelessWidget {
+  const _ShikimoriConnectionWarning({
+    required this.message,
+    required this.onConnect,
+  });
+
+  final String message;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('shikimori_connection_warning'),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            CupertinoIcons.exclamationmark_circle,
+            size: 17,
+            color: scheme.onErrorContainer,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 11, color: scheme.onErrorContainer),
+            ),
+          ),
+          TextButton(onPressed: onConnect, child: const Text('Сервис')),
+        ],
+      ),
+    );
+  }
+}
+
 class _CommentsFilterBar extends StatelessWidget {
   const _CommentsFilterBar({required this.selected, required this.onSelected});
 
@@ -494,13 +738,13 @@ class CommentTree {
   final List<ShikimoriComment> roots;
   final Map<int, List<ShikimoriComment>> replies;
 
-  factory CommentTree.from(List<ShikimoriComment> comments) {
+  factory CommentTree.from(List<ShikimoriComment> comments, {int? promoteId}) {
     final ids = comments.map((comment) => comment.id).toSet();
     final roots = <ShikimoriComment>[];
     final replies = <int, List<ShikimoriComment>>{};
     for (final comment in comments) {
       final parent = commentParentId(comment.body);
-      if (parent != null && ids.contains(parent)) {
+      if (comment.id != promoteId && parent != null && ids.contains(parent)) {
         replies.putIfAbsent(parent, () => []).add(comment);
       } else {
         roots.add(comment);

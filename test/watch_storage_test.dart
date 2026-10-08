@@ -1,8 +1,26 @@
+import 'package:animix/core/achievement_service.dart';
 import 'package:animix/features/watch/watch_storage.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test(
+    'recording a watched episode advances its title challenge once',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      FlutterSecureStorage.setMockInitialValues({});
+      await WatchStorage.markEpisodeWatched(16498, '01');
+      await WatchStorage.markEpisodeWatched(16498, '01');
+
+      expect(
+        (await AchievementService.instance.titleProgress())['titan_wall'],
+        '1/25 серий',
+      );
+      expect(await WatchStorage.getWatchedEpisodes(16498), ['01']);
+    },
+  );
+
   test('stores opening timing separately for each episode', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
 

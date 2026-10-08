@@ -348,7 +348,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
           child: Text(
             'Автоматическое совпадение неоднозначно. Выберите правильный релиз:',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.35,
             ),
           ),
@@ -391,8 +391,8 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                             candidate['title']?.toString() ?? 'Без названия',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -400,16 +400,18 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                           Text(
                             '${candidate['year'] ?? '—'} • ${candidate['episodes'] ?? '—'} эп. • совпадение $score%',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: Colors.white38,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       size: 20,
                     ),
                   ],
@@ -482,9 +484,9 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -492,7 +494,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                           const SizedBox(height: 4),
                           Text(
                             '$count эпизодов${isKodik ? ' • прямой поток' : ' • резерв'}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               color: CupertinoColors.systemGrey,
                             ),
@@ -501,9 +503,9 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                       ],
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: Colors.white38,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ],
               ),

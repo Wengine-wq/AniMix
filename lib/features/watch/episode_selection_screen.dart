@@ -302,11 +302,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
             const SizedBox(height: 20),
             const Text(
               'Аниме не найдено',
-              style: TextStyle(
-                fontSize: 20,
-                color: CupertinoColors.white,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -414,7 +410,6 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
-                                color: CupertinoColors.white,
                               ),
                             ),
                             const SizedBox(height: 4),

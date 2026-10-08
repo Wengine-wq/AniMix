@@ -36,7 +36,37 @@ void main() {
 
     expect(await AniMixLocalCache.readProfile(), profile);
     expect(await AniMixLocalCache.readLibrary(), library);
+    await AniMixLocalCache.upsertLibraryEntry({
+      'shikimori_id': 2,
+      'status': 'planned',
+    });
+    expect((await AniMixLocalCache.readLibrary())!.length, 2);
   });
+
+  test(
+    'social reads share requests, mutations invalidate, private reads revalidate',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'animix_access_token': 'access-1',
+      });
+      final adapter = _SocialAdapter();
+      final service = AniMixAuthService(
+        dio: Dio()..httpClientAdapter = adapter,
+      );
+      await Future.wait([service.getFriends(), service.getFriends()]);
+      await service.getFriends();
+      expect(adapter.reads, 1);
+      await service.addFriend('friend');
+      await service.getFriends();
+      expect(adapter.reads, 2);
+      await service.getPublicLibrary('friend');
+      await service.getPublicLibrary('friend');
+      expect(adapter.privateReads, 2);
+      await service.getLibraryVisible();
+      await service.getLibraryVisible();
+      expect(adapter.privacyReads, 2);
+    },
+  );
 
   test('parallel refresh requests rotate the token only once', () async {
     FlutterSecureStorage.setMockInitialValues({
@@ -416,6 +446,39 @@ class _DelayedSessionAdapter implements HttpClientAdapter {
           Headers.contentTypeHeader: [Headers.jsonContentType],
         },
       );
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _SocialAdapter implements HttpClientAdapter {
+  int reads = 0;
+  int privateReads = 0;
+  int privacyReads = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final path = Uri.parse(options.path).path;
+    if (path == '/v1/friends' && options.method == 'GET') reads++;
+    if (path.endsWith('/library')) privateReads++;
+    if (path.endsWith('/privacy')) privacyReads++;
+    return ResponseBody.fromString(
+      jsonEncode({
+        'users': [],
+        'status': 'friends',
+        'entries': [],
+        'library_visible': true,
+      }),
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
 
   @override
   void close({bool force = false}) {}

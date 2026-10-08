@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'request_cache.dart';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -6,6 +8,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 
 import 'app_logging.dart';
+import 'achievement_service.dart';
 import 'animix_local_cache.dart';
 import 'config.dart';
 import 'secure_storage.dart';
@@ -14,6 +17,26 @@ class AniMixAuthService {
   AniMixAuthService({Dio? dio, FutureOr<void> Function()? onSessionInvalidated})
     : _dio = dio ?? _createDio(),
       _onSessionInvalidated = onSessionInvalidated;
+
+  final RequestCache _reads = RequestCache();
+  int _readSession = -1;
+  static int _readRevision = 0;
+  int _seenReadRevision = -1;
+
+  void invalidateReadCache() {
+    _readRevision++;
+    _reads.clear();
+  }
+
+  Future<T> _cachedRead<T>(String key, Future<T> Function() load) {
+    if (_readSession != _sessionGeneration ||
+        _seenReadRevision != _readRevision) {
+      _reads.clear();
+      _readSession = _sessionGeneration;
+      _seenReadRevision = _readRevision;
+    }
+    return _reads.read(key, load);
+  }
 
   final Dio _dio;
   final FutureOr<void> Function()? _onSessionInvalidated;
@@ -158,10 +181,11 @@ class AniMixAuthService {
   }) {
     final active = _profileRequestInFlight;
     if (active != null) return active;
-    final request = _getCurrentUser(
+    Future<Map<String, dynamic>?> load() => _getCurrentUser(
       allowCachedFallback: allowCachedFallback,
       generation: _sessionGeneration,
     );
+    final request = allowCachedFallback ? _cachedRead('profile', load) : load();
     _profileRequestInFlight = request;
     return request.whenComplete(() {
       if (identical(_profileRequestInFlight, request)) {
@@ -262,7 +286,10 @@ class AniMixAuthService {
         : null;
   }
 
-  Future<List<Map<String, dynamic>>?> getLibraryEntries() async {
+  Future<List<Map<String, dynamic>>?> getLibraryEntries() =>
+      _cachedRead('library', _loadLibraryEntries);
+
+  Future<List<Map<String, dynamic>>?> _loadLibraryEntries() async {
     try {
       final response = await _authorizedRequest(
         (token) => _dio.get<dynamic>(
@@ -344,8 +371,18 @@ class AniMixAuthService {
         };
         return AniMixLibrarySaveResult.failure(message);
       }
+      invalidateReadCache();
       final responseData = response.data;
       final entry = responseData is Map ? responseData['entry'] : null;
+      try {
+        await AchievementService.instance.librarySaved(animeId, status);
+      } catch (error, stackTrace) {
+        AppLogBuffer.instance.recordError(
+          error,
+          stackTrace,
+          source: 'Local achievements',
+        );
+      }
       await AniMixLocalCache.upsertLibraryEntry(
         entry is Map
             ? Map<String, dynamic>.from(entry)
@@ -395,6 +432,7 @@ class AniMixAuthService {
         ),
         retryTransient: true,
       );
+      if (response?.statusCode == 200) invalidateReadCache();
       return response?.statusCode == 200;
     } catch (error, stackTrace) {
       AppLogBuffer.instance.recordError(
@@ -407,7 +445,10 @@ class AniMixAuthService {
     }
   }
 
-  Future<Map<String, dynamic>?> getUsageStats() async {
+  Future<Map<String, dynamic>?> getUsageStats() =>
+      _cachedRead('usage', _loadUsageStats);
+
+  Future<Map<String, dynamic>?> _loadUsageStats() async {
     try {
       final response = await _authorizedRequest(
         (token) => _dio.get<dynamic>(
@@ -430,6 +471,42 @@ class AniMixAuthService {
   }
 
   Future<Map<String, dynamic>> _socialRequest(
+    String method,
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    // Private library and privacy reads always revalidate access on the server.
+    final cacheable =
+        method == 'GET' &&
+        !path.endsWith('/library') &&
+        path != '/v1/me/privacy';
+    if (cacheable) {
+      final payload = await _cachedRead(
+        '$path:${jsonEncode(queryParameters)}',
+        () => _performSocialRequest(
+          method,
+          path,
+          data: data,
+          queryParameters: queryParameters,
+        ),
+      );
+      return Map<String, dynamic>.from(jsonDecode(jsonEncode(payload)) as Map);
+    }
+    if (method != 'GET') invalidateReadCache();
+    try {
+      return await _performSocialRequest(
+        method,
+        path,
+        data: data,
+        queryParameters: queryParameters,
+      );
+    } finally {
+      if (method != 'GET') invalidateReadCache();
+    }
+  }
+
+  Future<Map<String, dynamic>> _performSocialRequest(
     String method,
     String path, {
     Object? data,
@@ -548,6 +625,7 @@ class AniMixAuthService {
     if (profile is Map) {
       await AniMixLocalCache.writeProfile(Map<String, dynamic>.from(profile));
     }
+    invalidateReadCache();
     final imported = _intFromPayload(payload['imported']);
     if (imported == null) {
       throw const AniMixApiException(
@@ -608,7 +686,10 @@ class AniMixAuthService {
     final profile = payload['user'] is Map
         ? Map<String, dynamic>.from(payload['user'] as Map)
         : null;
-    if (profile != null) await AniMixLocalCache.writeProfile(profile);
+    if (profile != null) {
+      invalidateReadCache();
+      await AniMixLocalCache.writeProfile(profile);
+    }
     return profile;
   }
 

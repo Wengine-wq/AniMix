@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/animix_auth_service.dart';
+import '../../core/achievement_service.dart';
 import '../../core/secure_storage.dart';
 
 class OpeningTiming {
@@ -36,6 +37,10 @@ class WatchStorage {
     if (!list.contains(episodeNumber)) {
       list.add(episodeNumber);
       await prefs.setStringList(key, list);
+      await AchievementService.instance.episodeWatched(
+        DateTime.now(),
+        animeId: animeId,
+      );
       final timestamp = DateTime.now().microsecondsSinceEpoch;
       await _enqueueUsageEvent({
         'action': 'episode_watched',
@@ -57,6 +62,7 @@ class WatchStorage {
         '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
     final key = 'usage_seconds_v1_$dateKey';
     await prefs.setInt(key, (prefs.getInt(key) ?? 0) + seconds);
+    await AchievementService.instance.watchSecondsAdded();
     final timestamp = DateTime.now();
     await _enqueueUsageEvent({
       'action': 'watch_seconds',

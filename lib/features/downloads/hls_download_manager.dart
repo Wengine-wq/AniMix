@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'download_item.dart';
 import 'offline_media_server.dart';
 import '../../core/config.dart';
+import '../../core/achievement_service.dart';
 
 class HlsDownloadManager extends ChangeNotifier {
   HlsDownloadManager._();
@@ -127,6 +128,7 @@ class HlsDownloadManager extends ChangeNotifier {
           fileSizeBytes: size,
         ),
       );
+      unawaited(AchievementService.instance.episodeDownloaded());
     } catch (error) {
       final wasCancelled = error is DioException && CancelToken.isCancel(error);
       if (!wasCancelled) {

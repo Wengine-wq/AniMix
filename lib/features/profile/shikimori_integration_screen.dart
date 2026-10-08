@@ -258,7 +258,7 @@ class _ShikimoriIntegrationScreenState
   Widget build(BuildContext context) {
     final profile = ref.watch(currentUserProvider);
     return AniMixPage(
-      title: 'Shikimori',
+      title: 'Привязанные сервисы',
       child: profile.when(
         loading: () => const Center(child: CupertinoActivityIndicator()),
         error: (_, _) => AniMixEmptyState(
@@ -288,6 +288,49 @@ class _ShikimoriIntegrationScreenState
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 72),
             children: [
+              AniMixSurface(
+                elevated: true,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Зачем подключать Shikimori?',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const _ServiceBenefit(
+                      icon: CupertinoIcons.chat_bubble_2_fill,
+                      text:
+                          'Писать комментарии и отвечать в обсуждениях аниме от своего имени.',
+                    ),
+                    const SizedBox(height: 8),
+                    const _ServiceBenefit(
+                      icon: CupertinoIcons.smiley_fill,
+                      text:
+                          'Использовать смайлы и разметку Shikimori в сообщениях.',
+                    ),
+                    const SizedBox(height: 8),
+                    const _ServiceBenefit(
+                      icon: CupertinoIcons.square_stack_3d_up_fill,
+                      text:
+                          'При желании перенести библиотеку, оценки и прогресс в AniMix.',
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Комментарии публикуются непосредственно в Shikimori. Перенос библиотеки — отдельное действие.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
               AniMixSurface(
                 padding: const EdgeInsets.all(18),
                 child: _checkingSession
@@ -322,8 +365,8 @@ class _ShikimoriIntegrationScreenState
                                 ),
                                 Text(
                                   _shikimoriUser == null
-                                      ? 'Войдите перед переносом библиотеки'
-                                      : 'OAuth-сессия активна',
+                                      ? 'Подключите аккаунт для комментариев и переноса библиотеки'
+                                      : 'Связь подтверждена · комментарии доступны',
                                   style: TextStyle(
                                     color: Theme.of(
                                       context,
@@ -383,9 +426,7 @@ class _ShikimoriIntegrationScreenState
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      linked
-                          ? 'Библиотека уже в AniMix'
-                          : 'Одноразовый перенос библиотеки',
+                      linked ? 'Библиотека уже в AniMix' : 'Перенос библиотеки',
                       style: const TextStyle(
                         fontSize: 23,
                         fontWeight: FontWeight.w900,
@@ -395,7 +436,7 @@ class _ShikimoriIntegrationScreenState
                     Text(
                       linked
                           ? '$total тайтлов хранятся в вашем аккаунте AniMix. Закладки больше не зависят от сессии Shikimori.'
-                          : 'Мы скопируем статусы, оценки и просмотренные серии. После этого источником закладок станет AniMix.',
+                          : 'По желанию скопируйте статусы, оценки и просмотренные серии. Для комментариев достаточно подключить аккаунт выше.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         height: 1.45,
@@ -412,7 +453,7 @@ class _ShikimoriIntegrationScreenState
                               )
                             : const Icon(CupertinoIcons.link),
                         label: Text(
-                          _busy ? 'Переносим…' : 'Подключить и перенести',
+                          _busy ? 'Переносим…' : 'Перенести библиотеку',
                         ),
                       ),
                     ],
@@ -433,4 +474,21 @@ class _ShikimoriIntegrationScreenState
       ),
     );
   }
+}
+
+class _ServiceBenefit extends StatelessWidget {
+  const _ServiceBenefit({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 10),
+      Expanded(child: Text(text, style: const TextStyle(height: 1.35))),
+    ],
+  );
 }

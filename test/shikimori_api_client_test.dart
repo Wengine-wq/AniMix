@@ -53,6 +53,80 @@ void main() {
     expect('${uri.scheme}://${uri.host}', Config.shikimoriBaseUrl);
     expect(uri.path, isEmpty);
   });
+
+  test('comment session is checked live on every send attempt', () async {
+    FlutterSecureStorage.setMockInitialValues({
+      'shikimori_access_token': 'test-token',
+    });
+    final adapter = _CommentAdapter();
+    final dio = Dio(BaseOptions(baseUrl: 'https://shikimori.io'))
+      ..httpClientAdapter = adapter;
+    final provider = Provider<ShikimoriApiClient>(
+      (ref) => ShikimoriApiClient(ref, dio: dio),
+    );
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    expect(await container.read(provider).verifyCommentSession(), 7);
+    expect(await container.read(provider).verifyCommentSession(), 7);
+    expect(adapter.whoamiRequests, 2);
+  });
+
+  test(
+    'posting does not report success without a confirmed comment id',
+    () async {
+      final adapter = _CommentAdapter(invalidPost: true);
+      final dio = Dio(BaseOptions(baseUrl: 'https://shikimori.io'))
+        ..httpClientAdapter = adapter;
+      final provider = Provider<ShikimoriApiClient>(
+        (ref) => ShikimoriApiClient(ref, dio: dio),
+      );
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await expectLater(
+        container.read(provider).postComment(42, 'Привет'),
+        throwsFormatException,
+      );
+    },
+  );
+}
+
+class _CommentAdapter implements HttpClientAdapter {
+  _CommentAdapter({this.invalidPost = false});
+
+  final bool invalidPost;
+  int whoamiRequests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.path.endsWith('/api/users/whoami')) {
+      whoamiRequests++;
+      return _json('{"id":7}');
+    }
+    if (options.path.endsWith('/api/comments')) {
+      return _json(
+        invalidPost ? '{"body":"Привет"}' : '{"id":91,"body":"Привет"}',
+      );
+    }
+    return _json('{}', status: 404);
+  }
+
+  ResponseBody _json(String body, {int status = 200}) =>
+      ResponseBody.fromString(
+        body,
+        status,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
+      );
+
+  @override
+  void close({bool force = false}) {}
 }
 
 class _RepeatedRatesAdapter implements HttpClientAdapter {

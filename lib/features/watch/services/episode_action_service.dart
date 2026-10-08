@@ -62,9 +62,11 @@ class EpisodeActionService {
                 style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 5),
-              const Text(
+              Text(
                 'Будет сохранён прямой поток без рекламного плеера.',
-                style: TextStyle(color: Colors.white60),
+                style: TextStyle(
+                  color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               for (final entry in entries)

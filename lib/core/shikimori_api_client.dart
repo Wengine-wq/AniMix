@@ -163,6 +163,22 @@ class ShikimoriApiClient {
     return ShikimoriUser.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
+  /// Checks the live OAuth session without relying on the cached profile.
+  /// The interceptor may refresh an expired access token once.
+  Future<int> verifyCommentSession() async {
+    final token = await SecureStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('Shikimori is not connected.');
+    }
+    final response = await _dio.get<dynamic>('/api/users/whoami');
+    final data = response.data;
+    final userId = data is Map ? int.tryParse('${data['id']}') : null;
+    if (userId == null || userId <= 0) {
+      throw const FormatException('Shikimori did not confirm the session.');
+    }
+    return userId;
+  }
+
   Future<List<ShikimoriAnime>> getAnimes({
     int page = 1,
     int limit = 30,
@@ -417,7 +433,19 @@ class ShikimoriApiClient {
         },
       },
     );
-    return ShikimoriComment.fromJson(res.data);
+    final payload = res.data;
+    final raw = payload is Map ? (payload['comment'] ?? payload) : null;
+    if (raw is! Map) {
+      throw const FormatException('Shikimori returned no published comment.');
+    }
+    final created = ShikimoriComment.fromJson(Map<String, dynamic>.from(raw));
+    if (created.id <= 0 ||
+        (created.body.trim().isEmpty && created.htmlBody.trim().isEmpty)) {
+      throw const FormatException(
+        'Shikimori did not confirm a published comment.',
+      );
+    }
+    return created;
   }
 
   Future<dynamic> _cachedRequest(

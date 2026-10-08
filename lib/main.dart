@@ -11,6 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/profile/achievement_toast.dart';
 import 'features/recommendation/recommendation_screen.dart';
 import 'features/catalog/catalog_screen.dart';
 import 'features/downloads/downloads_screen.dart';
@@ -98,7 +99,15 @@ class MyApp extends ConsumerWidget {
             ),
             child: DefaultTextStyle(
               style: Theme.of(context).textTheme.bodyMedium!,
-              child: child ?? const SizedBox.shrink(),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  child ?? const SizedBox.shrink(),
+                  const Positioned.fill(
+                    child: IgnorePointer(child: AchievementToast()),
+                  ),
+                ],
+              ),
             ),
           );
         },

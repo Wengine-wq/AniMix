@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/app_logging.dart';
+import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/auth_provider.dart';
@@ -364,6 +365,7 @@ class CatalogScreen extends ConsumerWidget {
               episodes: entry.watchedEpisodes,
               userId: user.id,
             );
+        await AchievementService.instance.librarySaved(entry.anime.id, value);
       }
       ref.invalidate(bookmarksProvider);
     } catch (_) {
@@ -415,7 +417,9 @@ class _TabBar extends StatelessWidget {
                   Text(
                     tab.label,
                     style: TextStyle(
-                      color: active ? Colors.white : Colors.white,
+                      color: active
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),

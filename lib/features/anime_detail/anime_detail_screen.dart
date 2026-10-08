@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
+import '../../core/achievement_service.dart';
 import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_anime_detail.dart';
 import '../../models/shikimori_user.dart';
@@ -826,6 +827,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
             episodes: _watchedEpisodes,
             userId: user.id,
           );
+      await AchievementService.instance.librarySaved(widget.animeId, status);
     } catch (error) {
       if (!mounted) return;
       setState(() {

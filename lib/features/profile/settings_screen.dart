@@ -67,10 +67,10 @@ class SettingsScreen extends ConsumerWidget {
                       color: profile.shikimoriLinked
                           ? const Color(0xFF35D07F)
                           : const Color(0xFF43C6FF),
-                      title: 'Shikimori',
+                      title: 'Привязанные сервисы',
                       subtitle: profile.shikimoriLinked
-                          ? 'Библиотека перенесена в AniMix'
-                          : 'Перенести статусы, оценки и прогресс',
+                          ? 'Shikimori: обсуждения и библиотека'
+                          : 'Shikimori: комментарии и перенос библиотеки',
                       onTap: () =>
                           _push(context, const ShikimoriIntegrationScreen()),
                     ),
@@ -1928,7 +1928,7 @@ class _SettingsRow extends StatelessWidget {
                     style: TextStyle(
                       color: destructive
                           ? const Color(0xFFFF606A)
-                          : Colors.white,
+                          : Theme.of(context).colorScheme.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1951,10 +1951,10 @@ class _SettingsRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             trailing ??
-                const Icon(
+                Icon(
                   CupertinoIcons.chevron_forward,
                   size: 16,
-                  color: Colors.white30,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ],
         ),

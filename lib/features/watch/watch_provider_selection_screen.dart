@@ -196,9 +196,12 @@ class _ProviderCard extends StatelessWidget {
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.only(top: 18),
-            child: Icon(Icons.chevron_right_rounded, color: Colors.white38),
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: Icon(
+              Icons.chevron_right_rounded,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/animix_auth_service.dart';
+import '../../core/achievement_service.dart';
 import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
+import '../../models/shikimori_user.dart';
+import 'profile_components.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
@@ -40,7 +45,8 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
     super.dispose();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool force = false}) async {
+    if (force) ref.read(animixAuthServiceProvider).invalidateReadCache();
     setState(() {
       _busy = true;
       _error = null;
@@ -103,6 +109,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
       if (status != 'friends') {
         throw StateError('Unexpected friendship state: $status');
       }
+      unawaited(AchievementService.instance.friendAccepted());
       if (!mounted) return;
       setState(() {
         _friends = [
@@ -150,14 +157,14 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
         title: const Text('Друзья'),
         actions: [
           IconButton(
-            onPressed: _refresh,
+            onPressed: () => _refresh(force: true),
             tooltip: 'Обновить',
             icon: const Icon(CupertinoIcons.refresh),
           ),
         ],
       ),
       body: RefreshIndicator.adaptive(
-        onRefresh: _refresh,
+        onRefresh: () => _refresh(force: true),
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -298,6 +305,11 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
   String? _libraryError;
   bool _busy = true;
   bool _actionBusy = false;
+  bool _libraryLoading = false;
+  int _loadGeneration = 0;
+  static const _pageSize = 30;
+  int _visibleEntries = _pageSize;
+  bool _moreBusy = false;
   String? _error;
 
   @override
@@ -306,15 +318,32 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
+    if (force) ref.read(animixAuthServiceProvider).invalidateReadCache();
+    final generation = ++_loadGeneration;
     setState(() {
       _busy = true;
       _error = null;
+      _library = null;
+      _libraryError = null;
+      _libraryLoading = true;
+      _visibleEntries = _pageSize;
+      _moreBusy = false;
     });
     final service = ref.read(animixAuthServiceProvider);
     try {
-      final user = await service.getPublicProfile(widget.userId);
-      final status = await service.getFriendStatus(widget.userId);
+      final values = await Future.wait<Object>([
+        service.getPublicProfile(widget.userId),
+        service.getFriendStatus(widget.userId),
+      ]);
+      if (!mounted || generation != _loadGeneration) return;
+      final user = values[0] as Map<String, dynamic>;
+      final status = values[1] as String;
+      setState(() {
+        _user = user;
+        _friendStatus = status;
+        _busy = false;
+      });
       List<Map<String, dynamic>>? library;
       var private = false;
       String? libraryError;
@@ -326,9 +355,12 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
         } else {
           libraryError = 'Библиотека временно недоступна.';
         }
+      } catch (_) {
+        libraryError = 'Библиотека временно недоступна.';
       }
       final anime = <int, ShikimoriAnime>{};
       final ids = (library ?? const <Map<String, dynamic>>[])
+          .take(_pageSize)
           .map((entry) => int.tryParse('${entry['shikimori_id']}') ?? 0)
           .where((id) => id > 0)
           .toSet()
@@ -349,10 +381,8 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
           /* Numeric IDs remain available if metadata fails. */
         }
       }
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
-          _user = user;
-          _friendStatus = status;
           _library = library;
           _private = private;
           _libraryError = libraryError;
@@ -360,9 +390,16 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Не удалось загрузить профиль.');
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = 'Не удалось загрузить профиль.');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _busy = false;
+          _libraryLoading = false;
+        });
+      }
     }
   }
 
@@ -373,6 +410,9 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
       String status;
       if (_friendStatus == 'none' || _friendStatus == 'incoming') {
         status = await service.addFriend(widget.userId);
+        if (status == 'friends') {
+          unawaited(AchievementService.instance.friendAccepted());
+        }
       } else {
         await service.removeFriend(widget.userId);
         status = 'none';
@@ -389,14 +429,41 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
     }
   }
 
+  Future<void> _loadMore() async {
+    if (_moreBusy || _library == null) return;
+    final generation = _loadGeneration;
+    setState(() => _moreBusy = true);
+    try {
+      final ids = _library!
+          .skip(_visibleEntries)
+          .take(_pageSize)
+          .map((entry) => int.tryParse('${entry['shikimori_id']}') ?? 0)
+          .where((id) => id > 0)
+          .toList();
+      if (ids.isNotEmpty) {
+        final items = await ref
+            .read(apiClientProvider)
+            .getAnimes(limit: ids.length, filters: {'ids': ids.join(',')});
+        if (!mounted || generation != _loadGeneration) return;
+        for (final item in items) {
+          _anime[item.id] = item;
+        }
+      }
+    } catch (_) {
+      // Entries remain accessible by ID when catalog metadata is unavailable.
+    } finally {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _visibleEntries += _pageSize;
+          _moreBusy = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _user;
-    final stats = user?['stats'] is Map
-        ? user!['stats'] as Map
-        : const <String, dynamic>{};
-    final avatar = user?['avatar_url']?.toString() ?? '';
-    final banner = user?['banner_url']?.toString() ?? '';
     final friendLabel = switch (_friendStatus) {
       'incoming' => 'Принять заявку',
       'outgoing' => 'Отменить заявку',
@@ -408,7 +475,7 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
         title: const Text('Профиль AniMix'),
         actions: [
           IconButton(
-            onPressed: _load,
+            onPressed: () => _load(force: true),
             tooltip: 'Обновить',
             icon: const Icon(CupertinoIcons.refresh),
           ),
@@ -422,12 +489,15 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(_error!),
-                  TextButton(onPressed: _load, child: const Text('Повторить')),
+                  TextButton(
+                    onPressed: () => _load(force: true),
+                    child: const Text('Повторить'),
+                  ),
                 ],
               ),
             )
           : RefreshIndicator.adaptive(
-              onRefresh: _load,
+              onRefresh: () => _load(force: true),
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 48),
                 children: [
@@ -439,79 +509,8 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.bottomCenter,
-                            children: [
-                              Container(
-                                height: 220,
-                                clipBehavior: Clip.antiAlias,
-                                decoration: const BoxDecoration(
-                                  borderRadius: BorderRadius.vertical(
-                                    bottom: Radius.circular(30),
-                                  ),
-                                ),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    if (banner.isNotEmpty)
-                                      CachedNetworkImage(
-                                        imageUrl: banner,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (_, _, _) =>
-                                            const _PublicProfileBackdrop(),
-                                      )
-                                    else
-                                      const _PublicProfileBackdrop(),
-                                    const DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [
-                                            Colors.transparent,
-                                            Color(0x99000000),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Positioned(
-                                bottom: -48,
-                                child: Container(
-                                  width: 104,
-                                  height: 104,
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: CircleAvatar(
-                                    backgroundImage: avatar.isEmpty
-                                        ? null
-                                        : CachedNetworkImageProvider(avatar),
-                                    child: avatar.isEmpty
-                                        ? const Icon(
-                                            CupertinoIcons.person_fill,
-                                            size: 44,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 62),
-                          Text(
-                            user?['display_name']?.toString() ??
-                                'Пользователь AniMix',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ProfileHeader(
+                            user: ShikimoriUser.localFromAniMixJson(user!),
                           ),
                           const SizedBox(height: 5),
                           Text(
@@ -546,87 +545,13 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                AniMixSurface(
-                                  elevated: true,
-                                  padding: const EdgeInsets.all(
-                                    AniMixSpacing.lg,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const AniMixSectionHeader(
-                                        title: 'Медиатека',
-                                        subtitle:
-                                            'Что пользователь добавил в AniMix',
-                                        icon:
-                                            CupertinoIcons.rectangle_stack_fill,
-                                      ),
-                                      const SizedBox(height: 18),
-                                      Wrap(
-                                        spacing: 12,
-                                        runSpacing: 12,
-                                        children: [
-                                          _PublicStat(
-                                            value: stats['total'],
-                                            label: 'тайтлов',
-                                          ),
-                                          _PublicStat(
-                                            value: stats['completed'],
-                                            label: 'просмотрено',
-                                          ),
-                                          _PublicStat(
-                                            value: stats['watching'],
-                                            label: 'смотрит',
-                                          ),
-                                          _PublicStat(
-                                            value: stats['planned'],
-                                            label: 'в планах',
-                                          ),
-                                          _PublicStat(
-                                            value: stats['episodes_watched'],
-                                            label: 'серий',
-                                          ),
-                                          _PublicStat(
-                                            value: stats['scores'],
-                                            label: 'оценок',
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                ProfileLibraryOverview(
+                                  user: ShikimoriUser.localFromAniMixJson(user),
+                                  ownProfile: false,
                                 ),
                                 const SizedBox(height: AniMixSpacing.lg),
-                                AniMixSurface(
-                                  padding: const EdgeInsets.all(
-                                    AniMixSpacing.lg,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const AniMixSectionHeader(
-                                        title: 'О пользователе',
-                                        subtitle: 'Публичные данные аккаунта',
-                                        icon: CupertinoIcons
-                                            .person_crop_circle_fill,
-                                      ),
-                                      const SizedBox(height: 14),
-                                      _ProfileDetail(
-                                        icon: CupertinoIcons.calendar,
-                                        label: 'В AniMix с',
-                                        value: _publicDate(user?['created_at']),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _ProfileDetail(
-                                        icon: CupertinoIcons.link,
-                                        label: 'Shikimori',
-                                        value: user?['shikimori_linked'] == true
-                                            ? 'Аккаунт подключён'
-                                            : 'Не подключён',
-                                      ),
-                                    ],
-                                  ),
+                                ProfileInfoCard(
+                                  user: ShikimoriUser.localFromAniMixJson(user),
                                 ),
                                 const SizedBox(height: AniMixSpacing.lg),
                                 const AniMixSectionHeader(
@@ -639,7 +564,12 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                                 AniMixSurface(
                                   child: Column(
                                     children: [
-                                      if (_private)
+                                      if (_libraryLoading)
+                                        const Padding(
+                                          padding: EdgeInsets.all(24),
+                                          child: LinearProgressIndicator(),
+                                        ),
+                                      if (!_libraryLoading && _private)
                                         const ListTile(
                                           leading: Icon(
                                             CupertinoIcons.lock_fill,
@@ -651,7 +581,8 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                                         ),
                                       if (_libraryError != null)
                                         ListTile(title: Text(_libraryError!)),
-                                      if (!_private &&
+                                      if (!_libraryLoading &&
+                                          !_private &&
                                           _libraryError == null &&
                                           (_library?.isEmpty ?? true))
                                         const ListTile(
@@ -661,9 +592,31 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                                         ),
                                       if (!_private)
                                         for (final entry
-                                            in _library ??
-                                                const <Map<String, dynamic>>[])
+                                            in (_library ??
+                                                    const <
+                                                      Map<String, dynamic>
+                                                    >[])
+                                                .take(_visibleEntries))
                                           _libraryTile(entry),
+                                      if (!_private &&
+                                          (_library?.length ?? 0) >
+                                              _visibleEntries)
+                                        Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: TextButton.icon(
+                                            onPressed: _moreBusy
+                                                ? null
+                                                : _loadMore,
+                                            icon: const Icon(
+                                              CupertinoIcons.chevron_down,
+                                            ),
+                                            label: Text(
+                                              _moreBusy
+                                                  ? 'Загружаем…'
+                                                  : 'Показать ещё',
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -678,12 +631,6 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
               ),
             ),
     );
-  }
-
-  String _publicDate(Object? value) {
-    final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
-    if (date == null) return 'Дата неизвестна';
-    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
 
   Widget _libraryTile(Map<String, dynamic> entry) {
@@ -706,7 +653,22 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
         statuses[entry['status']] ?? entry['status']?.toString() ?? '';
     final episodes = int.tryParse('${entry['episodes_watched']}') ?? 0;
     return ListTile(
-      title: Text(title),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 38,
+          height: 54,
+          child: anime?.imageUrl?.isNotEmpty == true
+              ? CachedNetworkImage(
+                  imageUrl: anime!.imageUrl!,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const Icon(CupertinoIcons.film),
+                )
+              : const Icon(CupertinoIcons.film),
+        ),
+      ),
+      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text('$status · $episodes серий'),
       trailing: const Icon(CupertinoIcons.chevron_right, size: 16),
       onTap: id <= 0
@@ -719,94 +681,4 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
             ),
     );
   }
-}
-
-class _PublicProfileBackdrop extends StatelessWidget {
-  const _PublicProfileBackdrop();
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Theme.of(context).colorScheme.primary.withValues(alpha: .7),
-          const Color(0xFF3B2C76),
-          const Color(0xFF0A1020),
-        ],
-      ),
-    ),
-  );
-}
-
-class _PublicStat extends StatelessWidget {
-  const _PublicStat({required this.value, required this.label});
-  final Object? value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 126,
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${value ?? 0}',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _ProfileDetail extends StatelessWidget {
-  const _ProfileDetail({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(15),
-    ),
-    child: Row(
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-          ],
-        ),
-      ],
-    ),
-  );
 }

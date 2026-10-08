@@ -85,10 +85,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           'Списки, оценки и прогресс — в одном аккаунте',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white60, fontSize: 16),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 16,
+                          ),
                         ),
                         if (sessionNotice != null || _error != null) ...[
                           const SizedBox(height: 20),

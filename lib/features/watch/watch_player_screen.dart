@@ -10,6 +10,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../downloads/download_item.dart';
 import '../downloads/hls_download_manager.dart';
 import '../../core/app_logging.dart';
+import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
 import '../../core/config.dart';
 import 'services/anime_skip_service.dart';
@@ -448,6 +449,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     _skipSegmentQueued = true;
     try {
       await video.seekTo(segment.end);
+      unawaited(AchievementService.instance.openingSkipped());
       if (mounted) {
         setState(() {
           _skippedSegments.add(segment.id);
