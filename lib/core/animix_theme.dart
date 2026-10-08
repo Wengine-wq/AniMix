@@ -29,6 +29,14 @@ abstract final class AniMixSpacing {
   static const xxl = 44.0;
 }
 
+/// Corner radii. Quiet UI keeps a small set so shapes read as one family.
+abstract final class AniMixRadius {
+  static const sm = 8.0;
+  static const md = 14.0;
+  static const lg = 18.0;
+  static const xl = 24.0;
+}
+
 abstract final class AniMixLayout {
   static const contentMaxWidth = 1180.0;
   static const readingMaxWidth = 960.0;
@@ -36,7 +44,7 @@ abstract final class AniMixLayout {
 }
 
 abstract final class AniMixTheme {
-  static const background = Color(0xFF09090C);
+  static const background = Color(0xFF0C0C0F);
   static const elevated = Color(0xFF0E0E12);
   static const surface = Color(0xFF141418);
   static const surfaceHigh = Color(0xFF1B1B20);
@@ -54,10 +62,10 @@ abstract final class AniMixTheme {
     final palette = dark
         ? switch (style) {
             AniMixThemeStyle.graphite => const (
-              background: Color(0xFF09090C),
-              elevated: Color(0xFF0E0E12),
-              surface: Color(0xFF141418),
-              surfaceHigh: Color(0xFF1B1B20),
+              background: Color(0xFF0C0C0F),
+              elevated: Color(0xFF121216),
+              surface: Color(0xFF16161A),
+              surfaceHigh: Color(0xFF1F1F24),
             ),
             AniMixThemeStyle.midnight => const (
               background: Color(0xFF070A12),
@@ -80,10 +88,10 @@ abstract final class AniMixTheme {
           }
         : switch (style) {
             AniMixThemeStyle.graphite => const (
-              background: Color(0xFFF5F6FA),
+              background: Color(0xFFF7F7F9),
               elevated: Color(0xFFFFFFFF),
               surface: Color(0xFFFFFFFF),
-              surfaceHigh: Color(0xFFEAECF2),
+              surfaceHigh: Color(0xFFEFEFF3),
             ),
             AniMixThemeStyle.midnight => const (
               background: Color(0xFFF2F6FC),
@@ -104,20 +112,29 @@ abstract final class AniMixTheme {
               surfaceHigh: Color(0xFFECECEC),
             ),
           };
-    final foreground = dark ? Colors.white : const Color(0xFF17171C);
-    final secondary = dark ? subtleText : const Color(0xFF666873);
-    final outline = dark ? divider : const Color(0x16000000);
+    final foreground = dark ? const Color(0xFFF4F4F6) : const Color(0xFF16161B);
+    final secondary = dark ? const Color(0xFF8B8C96) : const Color(0xFF6B6D78);
+    // Quiet UI: hairlines are a last resort, surfaces separate by tone.
+    final outline = dark ? const Color(0x14FFFFFF) : const Color(0x0F000000);
     final scheme =
         ColorScheme.fromSeed(
           seedColor: accent,
           brightness: brightness,
           surface: palette.surface,
         ).copyWith(
+          primary: accent,
           surface: palette.surface,
+          surfaceContainerLowest: palette.background,
+          surfaceContainerLow: palette.elevated,
           surfaceContainer: palette.elevated,
           surfaceContainerHigh: palette.surfaceHigh,
           surfaceContainerHighest: palette.surfaceHigh,
+          onSurface: foreground,
+          onSurfaceVariant: secondary,
+          outline: outline,
+          outlineVariant: outline,
         );
+    final radius = BorderRadius.circular(AniMixRadius.md);
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -125,37 +142,68 @@ abstract final class AniMixTheme {
       scaffoldBackgroundColor: palette.background,
       canvasColor: palette.background,
       dividerColor: outline,
-      splashFactory: InkSparkle.splashFactory,
+      splashFactory: InkRipple.splashFactory,
+      hoverColor: foreground.withValues(alpha: .04),
+      highlightColor: foreground.withValues(alpha: .03),
+      splashColor: foreground.withValues(alpha: .06),
       textTheme: TextTheme(
-        bodyLarge: TextStyle(fontSize: 16, height: 1.48, color: foreground),
-        bodyMedium: TextStyle(fontSize: 14, height: 1.44, color: foreground),
+        displaySmall: TextStyle(
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -1.1,
+          height: 1.08,
+          color: foreground,
+        ),
+        headlineSmall: TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -.7,
+          height: 1.12,
+          color: foreground,
+        ),
+        bodyLarge: TextStyle(fontSize: 16, height: 1.5, color: foreground),
+        bodyMedium: TextStyle(fontSize: 14, height: 1.46, color: foreground),
         bodySmall: TextStyle(fontSize: 12, height: 1.4, color: secondary),
         titleLarge: TextStyle(
-          fontSize: 24,
+          fontSize: 22,
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
           height: 1.16,
           color: foreground,
         ),
         titleMedium: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          height: 1.2,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -.15,
+          height: 1.22,
           color: foreground,
+        ),
+        titleSmall: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          height: 1.25,
+          color: foreground,
+        ),
+        labelLarge: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        labelMedium: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: secondary,
         ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: foreground,
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 72,
+        toolbarHeight: 64,
         titleTextStyle: TextStyle(
           color: foreground,
           fontSize: 20,
           fontWeight: FontWeight.w700,
-          letterSpacing: -0.35,
+          letterSpacing: -0.4,
         ),
       ),
       cardTheme: CardThemeData(
@@ -163,15 +211,34 @@ abstract final class AniMixTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: outline),
+          borderRadius: BorderRadius.circular(AniMixRadius.lg),
         ),
+      ),
+      dividerTheme: DividerThemeData(color: outline, thickness: 1, space: 1),
+      listTileTheme: ListTileThemeData(
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        iconColor: secondary,
+        subtitleTextStyle: TextStyle(fontSize: 12.5, color: secondary),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: palette.surfaceHigh,
+        selectedColor: accent.withValues(alpha: dark ? .22 : .14),
+        side: BorderSide.none,
+        shape: const StadiumBorder(),
+        labelStyle: TextStyle(
+          color: foreground,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        showCheckmark: false,
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 64,
         elevation: 0,
         backgroundColor: palette.elevated,
-        indicatorColor: accent.withValues(alpha: 0.16),
+        indicatorColor: accent.withValues(alpha: 0.14),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             color: states.contains(WidgetState.selected)
@@ -179,44 +246,128 @@ abstract final class AniMixTheme {
                 : secondary,
             fontSize: 11,
             fontWeight: states.contains(WidgetState.selected)
-                ? FontWeight.w700
+                ? FontWeight.w600
                 : FontWeight.w500,
           ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(50, 50),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          minimumSize: const Size(48, 48),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          foregroundColor: foreground,
+          backgroundColor: palette.surfaceHigh,
+          side: BorderSide.none,
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          side: BorderSide.none,
+          backgroundColor: palette.surfaceHigh,
+          selectedBackgroundColor: accent.withValues(alpha: dark ? .24 : .16),
+          selectedForegroundColor: foreground,
+          shape: RoundedRectangleBorder(borderRadius: radius),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: palette.surface,
+        fillColor: palette.surfaceHigh,
+        hintStyle: TextStyle(color: secondary),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 18,
+          vertical: 16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: outline),
+          borderRadius: radius,
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: outline),
+          borderRadius: radius,
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: accent.withValues(alpha: .6)),
         ),
       ),
-      progressIndicatorTheme: ProgressIndicatorThemeData(color: accent),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.elevated,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        dragHandleColor: secondary.withValues(alpha: .4),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AniMixRadius.xl),
+          ),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.elevated,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AniMixRadius.xl),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+        backgroundColor: palette.surfaceHigh,
+        contentTextStyle: TextStyle(color: foreground),
+        shape: RoundedRectangleBorder(borderRadius: radius),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: palette.surfaceHigh,
+        surfaceTintColor: Colors.transparent,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: radius),
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 500),
+        decoration: BoxDecoration(
+          color: palette.surfaceHigh,
+          borderRadius: BorderRadius.circular(AniMixRadius.sm),
+        ),
+        textStyle: TextStyle(color: foreground, fontSize: 12),
+      ),
+      switchTheme: SwitchThemeData(
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) =>
+              states.contains(WidgetState.selected) ? Colors.white : secondary,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? accent
+              : palette.surfaceHigh,
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
+        linearTrackColor: palette.surfaceHigh,
+      ),
       iconTheme: IconThemeData(color: foreground),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
         },
       ),
       extensions: <ThemeExtension<dynamic>>[
@@ -240,7 +391,7 @@ abstract final class AniMixTheme {
             AniMixThemeStyle.oled => Colors.black,
           }
         : switch (style) {
-            AniMixThemeStyle.graphite => const Color(0xFFF5F6FA),
+            AniMixThemeStyle.graphite => const Color(0xFFF7F7F9),
             AniMixThemeStyle.midnight => const Color(0xFFF2F6FC),
             AniMixThemeStyle.translucent => const Color(0xFFEFF7FB),
             AniMixThemeStyle.oled => const Color(0xFFF8F8F8),

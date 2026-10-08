@@ -281,7 +281,6 @@ class _FloatingTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accent = scheme.primary;
     final translucent = AniMixTheme.isTranslucent(context);
     return ColoredBox(
       color: Colors.transparent,
@@ -300,20 +299,15 @@ class _FloatingTabBar extends StatelessWidget {
                   alpha: translucent ? .76 : 1,
                 ),
                 borderRadius: BorderRadius.circular(25),
-                border: Border.all(
-                  color: scheme.onSurface.withValues(
-                    alpha: translucent ? .14 : .07,
-                  ),
-                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(
                       alpha: Theme.of(context).brightness == Brightness.dark
-                          ? .34
-                          : .13,
+                          ? .28
+                          : .07,
                     ),
-                    blurRadius: translucent ? 32 : 24,
-                    offset: const Offset(0, 10),
+                    blurRadius: 28,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
@@ -336,7 +330,7 @@ class _FloatingTabBar extends StatelessWidget {
                             curve: AniMixMotion.standardCurve,
                             decoration: BoxDecoration(
                               color: selectedIndex == index
-                                  ? accent.withValues(alpha: .17)
+                                  ? scheme.onSurface.withValues(alpha: .08)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(19),
                             ),
@@ -369,7 +363,7 @@ class _FloatingTabBar extends StatelessWidget {
                                     data: IconThemeData(
                                       size: 20,
                                       color: selectedIndex == index
-                                          ? accent
+                                          ? scheme.onSurface
                                           : scheme.onSurfaceVariant,
                                     ),
                                     child: selectedIndex == index
@@ -387,10 +381,10 @@ class _FloatingTabBar extends StatelessWidget {
                                       color: selectedIndex == index
                                           ? scheme.onSurface
                                           : scheme.onSurfaceVariant,
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       fontWeight: selectedIndex == index
-                                          ? FontWeight.w800
-                                          : FontWeight.w600,
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
                                     ),
                                   ),
                                 ),
@@ -435,9 +429,6 @@ class _DesktopSidebar extends StatelessWidget {
       width: 232,
       decoration: BoxDecoration(
         color: scheme.surfaceContainer.withValues(alpha: translucent ? .82 : 1),
-        border: Border(
-          right: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
-        ),
       ),
       child: SafeArea(
         child: Column(
@@ -467,7 +458,7 @@ class _DesktopSidebar extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 21,
                       letterSpacing: -.5,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -481,22 +472,20 @@ class _DesktopSidebar extends StatelessWidget {
                 ),
                 child: Material(
                   color: selectedIndex == index
-                      ? Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: .16)
+                      ? scheme.onSurface.withValues(alpha: .07)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AniMixRadius.md),
                   child: ListTile(
                     dense: false,
                     minTileHeight: 52,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AniMixRadius.md),
                     ),
                     leading: Icon(
                       items[index].$2,
                       size: 20,
                       color: selectedIndex == index
-                          ? scheme.primary
+                          ? scheme.onSurface
                           : scheme.onSurfaceVariant,
                     ),
                     title: Text(
@@ -506,8 +495,8 @@ class _DesktopSidebar extends StatelessWidget {
                             ? scheme.onSurface
                             : scheme.onSurfaceVariant,
                         fontWeight: selectedIndex == index
-                            ? FontWeight.w800
-                            : FontWeight.w600,
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                     ),
                     onTap: () => onSelected(index),
