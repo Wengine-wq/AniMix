@@ -550,27 +550,25 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 460),
-                child: AniMixSurface(
+                child: Padding(
                   padding: const EdgeInsets.all(30),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 70,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.16),
-                          shape: BoxShape.circle,
-                        ),
+                      SizedBox.square(
+                        dimension: 36,
                         child: _resolverError == null
-                            ? Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: CircularProgressIndicator(
-                                  color: accent,
-                                  strokeWidth: 3,
-                                ),
+                            ? CircularProgressIndicator(
+                                color: accent,
+                                strokeWidth: 2.5,
                               )
-                            : const Icon(Icons.link_off_rounded, size: 32),
+                            : Icon(
+                                Icons.link_off_rounded,
+                                size: 32,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                       ),
                       const SizedBox(height: 22),
                       Text(
@@ -579,7 +577,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
                             : 'Не удалось получить видео',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: 21,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
                       ),

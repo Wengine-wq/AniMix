@@ -68,8 +68,11 @@ Future<void> showReleasePicker({
                 '$score%',
                 style: TextStyle(
                   color: score >= 90
-                      ? const Color(0xFF4CAF50)
-                      : const Color(0xFFFF9800),
+                      ? CupertinoDynamicColor.resolve(
+                          CupertinoColors.label,
+                          context,
+                        )
+                      : CupertinoColors.systemGrey,
                   fontWeight: FontWeight.bold,
                 ),
               ),

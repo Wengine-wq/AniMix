@@ -291,18 +291,21 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
   }
 
   Widget _buildErrorState() {
-    final accent = Theme.of(context).colorScheme.primary;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(30),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(CupertinoIcons.search, size: 70, color: accent),
+            Icon(
+              CupertinoIcons.search,
+              size: 40,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 20),
             const Text(
               'Аниме не найдено',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -315,7 +318,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
             SearchBar(
               controller: _searchController,
               hintText: 'Введите название...',
-              leading: Icon(CupertinoIcons.search, color: accent),
+              leading: const Icon(CupertinoIcons.search),
               trailing: [
                 IconButton(
                   tooltip: 'Найти',
@@ -339,7 +342,6 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
   }
 
   Widget _buildPickerState() {
-    final accent = Theme.of(context).colorScheme.primary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -351,7 +353,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
               Text(
                 'Найдено несколько совпадений',
                 style: TextStyle(
-                  color: accent,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -396,7 +398,9 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
                             errorWidget: (_, _, _) => Container(
                               width: 64,
                               height: 86,
-                              color: const Color(0xFF2A2A2A),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHigh,
                             ),
                           ),
                         ),
@@ -424,25 +428,13 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
+                      Text(
+                        '$score%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
                           color: score >= 80
-                              ? accent.withValues(alpha: 0.2)
-                              : const Color(0xFFFF9800).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '$score%',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: score >= 80
-                                ? accent
-                                : const Color(0xFFFF9800),
-                          ),
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],

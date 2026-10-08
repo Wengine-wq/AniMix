@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/animix_theme.dart';
-import '../../../widgets/animix_surface.dart';
 import '../../downloads/download_item.dart';
 import '../../downloads/hls_download_manager.dart';
 
@@ -42,7 +41,7 @@ class EpisodeCollectionView extends StatelessWidget {
         key: const PageStorageKey<String>('episode-list'),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         itemCount: episodes.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        separatorBuilder: (_, _) => const SizedBox(height: 2),
         itemBuilder: (context, index) => _EpisodeCard(
           episode: episodes[index],
           download: downloads.itemFor(episodes[index].downloadId),
@@ -69,99 +68,111 @@ class _EpisodeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
     final state = download?.state;
-    return AniMixSurface(
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    final status = _statusText(state, episode.watched, download?.progress ?? 0);
+    final dim = episode.watched && state == null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AniMixRadius.md),
       onTap: episode.available ? () => onPlay(episode) : null,
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(AniMixRadius.md - 2),
+              ),
+              child: episode.watched
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: scheme.onSurfaceVariant,
+                    )
+                  : Text(
+                      episode.number,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
-            child: Text(
-              episode.number,
-              maxLines: 1,
-              style: TextStyle(color: accent, fontWeight: FontWeight.w800),
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  episode.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (episode.watched || state != null) ...[
-                  const SizedBox(height: 5),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    _statusText(
-                      state,
-                      episode.watched,
-                      download?.progress ?? 0,
-                    ),
+                    episode.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: state == DownloadState.failed
-                          ? Colors.redAccent
-                          : AniMixTheme.subtleText,
-                      fontSize: 12,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: dim ? scheme.onSurfaceVariant : scheme.onSurface,
                     ),
                   ),
+                  if (status.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: state == DownloadState.failed
+                            ? scheme.error
+                            : scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: state == DownloadState.completed
-                ? 'Скачано'
-                : 'Скачать серию',
-            onPressed:
-                episode.available &&
+            if (!episode.available)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  size: 20,
+                  color: scheme.error,
+                ),
+              )
+            else
+              IconButton(
+                tooltip: state == DownloadState.completed
+                    ? 'Скачано'
+                    : 'Скачать серию',
+                onPressed:
                     state != DownloadState.downloading &&
-                    state != DownloadState.completed
-                ? () => onDownload(episode)
-                : null,
-            icon: state == DownloadState.downloading
-                ? SizedBox(
-                    width: 21,
-                    height: 21,
-                    child: CircularProgressIndicator(
-                      value: download?.progress,
-                      strokeWidth: 2.4,
-                      color: accent,
-                    ),
-                  )
-                : Icon(
-                    state == DownloadState.completed
-                        ? Icons.download_done_rounded
-                        : Icons.download_rounded,
-                    color: state == DownloadState.completed
-                        ? Colors.greenAccent
-                        : accent,
-                  ),
-          ),
-          Icon(
-            episode.available
-                ? Icons.play_circle_fill_rounded
-                : Icons.error_outline_rounded,
-            color: episode.available
-                ? Theme.of(context).colorScheme.onSurfaceVariant
-                : Theme.of(context).colorScheme.error,
-          ),
-        ],
+                        state != DownloadState.completed
+                    ? () => onDownload(episode)
+                    : null,
+                icon: state == DownloadState.downloading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          value: download?.progress,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Icon(
+                        state == DownloadState.completed
+                            ? Icons.download_done_rounded
+                            : Icons.file_download_outlined,
+                        size: 21,
+                        color: state == DownloadState.completed
+                            ? scheme.onSurface
+                            : scheme.onSurfaceVariant,
+                      ),
+              ),
+          ],
+        ),
       ),
     );
   }

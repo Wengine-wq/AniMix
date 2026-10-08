@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../../core/animix_theme.dart';
 import 'models/watch_mapping.dart';
 import 'services/watch_resolver_service.dart';
 import 'repositories/watch_mapping_repository.dart';
@@ -314,7 +315,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
           children: [
             const Icon(
               CupertinoIcons.exclamationmark_triangle_fill,
-              color: CupertinoColors.systemOrange,
+              color: CupertinoColors.systemGrey,
               size: 44,
             ),
             const SizedBox(height: 14),
@@ -445,9 +446,9 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
           padding: const EdgeInsets.all(20),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            mainAxisExtent: 92,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            mainAxisExtent: 84,
           ),
           itemCount: studios.length,
           itemBuilder: (context, index) {
@@ -457,7 +458,6 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                 translation['name']?.toString() ??
                 'Неизвестная озвучка';
             final count = (translation['episodes'] as List?)?.length ?? 0;
-            final accent = Theme.of(context).colorScheme.primary;
             final isKodik = translation['isKodik'] == true;
             return AniMixSurface(
               onTap: () => _openTranslation(translation),
@@ -467,12 +467,12 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(AniMixRadius.md - 2),
                     ),
                     child: Icon(
                       CupertinoIcons.mic_fill,
-                      color: accent,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       size: 20,
                     ),
                   ),
@@ -486,9 +486,9 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         if (count > 0) ...[

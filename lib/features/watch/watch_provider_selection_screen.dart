@@ -74,13 +74,16 @@ class WatchProviderSelectionScreen extends StatelessWidget {
                 Text(
                   'Смотреть «$_title»',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Выберите каталог. После этого AniMix предложит озвучку, серию и качество.',
-                  style: TextStyle(color: AniMixTheme.subtleText, height: 1.45),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.45,
+                  ),
                 ),
                 const SizedBox(height: 28),
                 if (wide)
@@ -136,7 +139,6 @@ class _ProviderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
     return AniMixSurface(
       onTap: onTap,
       padding: const EdgeInsets.all(22),
@@ -144,13 +146,13 @@ class _ProviderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 58,
-            height: 58,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(18),
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(AniMixRadius.md),
             ),
-            child: Icon(icon, color: accent, size: 30),
+            child: Icon(icon, size: 26),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -164,15 +166,15 @@ class _ProviderCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.14),
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       badge!,
                       style: TextStyle(
-                        color: accent,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -181,15 +183,15 @@ class _ProviderCard extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: AniMixTheme.subtleText,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.4,
                   ),
                 ),
