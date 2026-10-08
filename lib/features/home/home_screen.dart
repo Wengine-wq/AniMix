@@ -644,22 +644,25 @@ class _DiscoveryStrip extends StatelessWidget {
         constraints: const BoxConstraints(
           maxWidth: AniMixLayout.contentMaxWidth,
         ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            AniMixLayout.pageInset,
-            AniMixSpacing.lg,
-            AniMixLayout.pageInset,
-            0,
-          ),
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) const SizedBox(width: AniMixSpacing.xs),
-                items[i],
+        child: SizedBox(
+          width: double.infinity,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AniMixLayout.pageInset,
+              AniMixSpacing.lg,
+              AniMixLayout.pageInset,
+              0,
+            ),
+            child: Row(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(width: AniMixSpacing.xs),
+                  items[i],
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
