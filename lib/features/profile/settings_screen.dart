@@ -1508,7 +1508,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.1.0 · БЕТА',
+                'ВЕРСИЯ 2.5.0',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -1523,7 +1523,7 @@ class _AboutScreen extends StatelessWidget {
               SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  'Это бета-версия: отдельные функции и источники видео могут работать нестабильно. Ваши списки и профиль AniMix хранятся в YDB.',
+                  'AniMix бесплатен и без рекламы в плеере. Списки, профиль и достижения AniMix синхронизируются с аккаунтом; внешние источники видео иногда могут быть недоступны.',
                 ),
               ),
             ],
@@ -1539,20 +1539,28 @@ class _AboutScreen extends StatelessWidget {
           child: Column(
             children: [
               _ChangeRow(
-                icon: CupertinoIcons.person_2_fill,
-                title: 'Друзья и публичные профили',
+                icon: CupertinoIcons.play_fill,
+                title: 'Плеер без задержек',
                 subtitle:
-                    'Поиск, заявки, принятие и просмотр открытой библиотеки',
+                    'Мгновенные тапы, суммирующаяся перемотка, смена качества без чёрного экрана',
               ),
               _ChangeRow(
-                icon: CupertinoIcons.chart_bar_fill,
-                title: 'Статистика профиля',
-                subtitle: 'Тайтлы, серии, время просмотра и активность по дням',
+                icon: CupertinoIcons.paintbrush_fill,
+                title: 'Новый тихий дизайн',
+                subtitle:
+                    'Главная с размытым фоном, новая карточка аниме, профиль и навигация',
               ),
               _ChangeRow(
-                icon: CupertinoIcons.sparkles,
-                title: 'Лента «Для вас»',
-                subtitle: 'Подбор по библиотеке и активности в AniMix',
+                icon: CupertinoIcons.arrow_down_circle_fill,
+                title: 'Загрузки заново',
+                subtitle:
+                    'Карточки тайтлов, массовое удаление, офлайн-обложки, одно качество для всех серий',
+              ),
+              _ChangeRow(
+                icon: CupertinoIcons.rosette,
+                title: 'Достижения онлайн',
+                subtitle:
+                    'Синхронизация с аккаунтом и награды друзей в профиле',
                 divider: false,
               ),
             ],

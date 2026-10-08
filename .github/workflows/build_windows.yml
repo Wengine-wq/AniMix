@@ -41,11 +41,11 @@ jobs:
       - name: Package app with its DLLs and data
         run: |
           Compress-Archive -Path 'build/windows/x64/runner/Release/*' `
-            -DestinationPath 'AniMix-Windows-2.1.0-beta.zip' -Force
+            -DestinationPath 'AniMix-Windows-2.5.0.zip' -Force
 
       - uses: actions/upload-artifact@v4
         with:
           name: AniMix_Windows_Beta
-          path: AniMix-Windows-2.1.0-beta.zip
+          path: AniMix-Windows-2.5.0.zip
           if-no-files-found: error
           retention-days: 14
