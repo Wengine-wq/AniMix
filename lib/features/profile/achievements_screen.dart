@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/animix_theme.dart';
 import '../../core/achievement_service.dart';
 
 class AchievementIcon extends StatelessWidget {
@@ -122,7 +123,7 @@ class AchievementsScreen extends StatelessWidget {
                       Text(
                         '${earned.length} из ${achievements.length} открыто',
                         style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -133,7 +134,7 @@ class AchievementsScreen extends StatelessWidget {
                       Text(
                         'Основные',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -142,7 +143,7 @@ class AchievementsScreen extends StatelessWidget {
                       Text(
                         'Испытания по тайтлам',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -185,13 +186,13 @@ class _AchievementCard extends StatelessWidget {
     final locked = unlockedAt == null;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: locked
-              ? scheme.outlineVariant
-              : scheme.primary.withValues(alpha: .55),
-        ),
+        color: locked
+            ? scheme.surfaceContainerLow
+            : Color.alphaBlend(
+                scheme.primary.withValues(alpha: .08),
+                scheme.surfaceContainerLow,
+              ),
+        borderRadius: BorderRadius.circular(AniMixRadius.lg),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -206,7 +207,7 @@ class _AchievementCard extends StatelessWidget {
                   Text(
                     achievement.title,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       fontSize: 15,
                     ),
                   ),

@@ -153,7 +153,7 @@ class _DetailHeroText extends StatelessWidget {
     children: [
       Bone.multiText(
         lines: desktop ? 3 : 2,
-        style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w800),
+        style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: AniMixLoadingTokens.itemGap),
       Bone.text(width: 180, style: const TextStyle(fontSize: 14)),

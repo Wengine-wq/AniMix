@@ -577,7 +577,7 @@ class _RecommendationHeader extends StatelessWidget {
           children: [
             const Text(
               'Персональная лента',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 3),
             Text(
@@ -807,7 +807,7 @@ class _RecommendationCard extends StatelessWidget {
                                 style: const TextStyle(
                                   fontSize: 19,
                                   height: 1.08,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                               const SizedBox(height: 7),
@@ -888,7 +888,7 @@ class _SwipeBackground extends StatelessWidget {
             style: TextStyle(
               color: color,
               fontSize: 11,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

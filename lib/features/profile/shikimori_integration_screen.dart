@@ -297,7 +297,7 @@ class _ShikimoriIntegrationScreenState
                     Text(
                       'Зачем подключать Shikimori?',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -360,7 +360,7 @@ class _ShikimoriIntegrationScreenState
                                   _shikimoriUser?.nickname ??
                                       'Shikimori не подключён',
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 Text(
@@ -429,7 +429,7 @@ class _ShikimoriIntegrationScreenState
                       linked ? 'Библиотека уже в AniMix' : 'Перенос библиотеки',
                       style: const TextStyle(
                         fontSize: 23,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 8),

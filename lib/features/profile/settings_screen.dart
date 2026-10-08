@@ -237,7 +237,7 @@ class _SettingsHero extends StatelessWidget {
           alignment: Alignment.center,
           child: const Text(
             'A',
-            style: TextStyle(fontSize: 31, fontWeight: FontWeight.w900),
+            style: TextStyle(fontSize: 31, fontWeight: FontWeight.w700),
           ),
         ),
         const SizedBox(width: 17),
@@ -247,7 +247,7 @@ class _SettingsHero extends StatelessWidget {
             children: [
               Text(
                 'AniMix',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 4),
               Text(
@@ -601,7 +601,7 @@ class _CustomAccentSheetState extends State<_CustomAccentSheet> {
         const SizedBox(height: 20),
         const Text(
           'Свой акцентный цвет',
-          style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 6),
         const Text(
@@ -620,7 +620,7 @@ class _CustomAccentSheetState extends State<_CustomAccentSheet> {
             '#${_color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
             style: const TextStyle(
               color: Colors.white,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               fontSize: 18,
               shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
             ),
@@ -752,7 +752,7 @@ class _ExperimentalFeaturesScreen extends StatelessWidget {
                       children: [
                         Text(
                           'Автопропуск опенингов и эндингов',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                         SizedBox(height: 4),
                         Text(
@@ -791,7 +791,7 @@ class _ExperimentalFeaturesScreen extends StatelessWidget {
                       children: [
                         Text(
                           'Автопереход к следующей серии',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                         SizedBox(height: 4),
                         Text(
@@ -884,7 +884,7 @@ class _ConnectionScreenState extends State<_ConnectionScreen> {
                           enabled
                               ? 'Автовыбор включён'
                               : 'Ручной выбор включён',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -953,7 +953,7 @@ class _ConnectionScreenState extends State<_ConnectionScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 21,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1118,7 +1118,7 @@ class _DiagnosticsScreen extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
@@ -1515,13 +1515,13 @@ class _AboutScreen extends StatelessWidget {
               alignment: Alignment.center,
               child: const Text(
                 'A',
-                style: TextStyle(fontSize: 43, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 43, fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(height: 14),
             const Text(
               'AniMix',
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
+              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 5),
             const Text(
@@ -1545,7 +1545,7 @@ class _AboutScreen extends StatelessWidget {
               ),
               child: const Text(
                 'ВЕРСИЯ 2.1.0 · БЕТА',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -1660,7 +1660,7 @@ class _FeatureGrid extends StatelessWidget {
                 const SizedBox(height: 11),
                 Text(
                   item.$2,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -1708,7 +1708,7 @@ class _ConnectionStep extends StatelessWidget {
             index,
             style: TextStyle(
               color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -1758,7 +1758,7 @@ class _DataStat extends StatelessWidget {
         FittedBox(
           child: Text(
             value,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
           ),
         ),
         const SizedBox(height: 3),
@@ -1862,7 +1862,7 @@ class _SettingsSectionLabel extends StatelessWidget {
       style: const TextStyle(
         color: AniMixTheme.subtleText,
         fontSize: 11,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         letterSpacing: .8,
       ),
     ),

@@ -576,7 +576,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                                       'Достижения',
                                                       style: TextStyle(
                                                         fontWeight:
-                                                            FontWeight.w800,
+                                                            FontWeight.w700,
                                                         fontSize: 17,
                                                       ),
                                                     ),
@@ -874,7 +874,7 @@ class _UsageValue extends StatelessWidget {
           value,
           style: Theme.of(
             context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         Text(
           label,
@@ -1009,7 +1009,7 @@ class _RhythmMetric extends StatelessWidget {
     children: [
       Text(
         value,
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 3),
       Text(
@@ -1226,7 +1226,7 @@ class _HistoryCard extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 16,
                     height: 1.15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 7),

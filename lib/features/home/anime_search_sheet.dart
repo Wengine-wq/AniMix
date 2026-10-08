@@ -150,7 +150,7 @@ class _AnimeSearchSheetState extends ConsumerState<AnimeSearchSheet> {
                 children: [
                   Text(
                     'Поиск и каталог',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
                   ),
                   SizedBox(height: 2),
                   Text(
@@ -323,7 +323,7 @@ class _SearchResultRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (anime.name?.isNotEmpty == true) ...[
@@ -406,7 +406,7 @@ class _AnimeFilterPanelState extends State<_AnimeFilterPanel> {
             const Expanded(
               child: Text(
                 'Фильтры каталога',
-                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
               ),
             ),
             TextButton(
@@ -629,7 +629,7 @@ class _FilterSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 10),
         child,

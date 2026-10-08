@@ -117,10 +117,7 @@ class _AchievementCard extends StatelessWidget {
     child: Container(
       width: 320,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: .65)),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(18)),
       child: Row(
         children: [
           AchievementIcon(index: index, size: 62),
@@ -136,7 +133,7 @@ class _AchievementCard extends StatelessWidget {
                     color: color,
                     fontSize: 10,
                     letterSpacing: .7,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -146,7 +143,7 @@ class _AchievementCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),

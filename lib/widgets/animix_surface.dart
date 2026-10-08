@@ -241,6 +241,7 @@ class AniMixSectionHeader extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+
   /// Kept for API compatibility; quiet headers are text-only.
   final IconData? icon;
   final Widget? trailing;

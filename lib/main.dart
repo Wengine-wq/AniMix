@@ -154,7 +154,7 @@ class _StartupError extends StatelessWidget {
             const Text(
               'Не удалось проверить авторизацию',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(

@@ -887,7 +887,7 @@ class CommentTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: compact ? 13 : 14,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -1911,7 +1911,7 @@ class _ComposerToolButton extends StatelessWidget {
             label!,
             style: TextStyle(
               fontSize: 16,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               fontStyle: italic ? FontStyle.italic : FontStyle.normal,
             ),
           ),
@@ -1941,7 +1941,7 @@ class _ShikimoriSmileyPicker extends StatelessWidget {
                       'Смайлы Shikimori',
                       style: TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 4),

@@ -133,7 +133,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             text: value,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           TextSpan(
@@ -187,7 +187,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -417,7 +417,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 22,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   decoration: TextDecoration.none,
                 ),
               ),
