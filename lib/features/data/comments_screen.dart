@@ -805,7 +805,7 @@ class _CommentThreadState extends State<CommentThread> {
                     left: BorderSide(
                       color: Theme.of(
                         context,
-                      ).colorScheme.primary.withValues(alpha: .32),
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: .25),
                       width: 2,
                     ),
                   ),
@@ -1979,12 +1979,6 @@ class _ShikimoriSmileyPicker extends StatelessWidget {
                               context,
                             ).colorScheme.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant
-                                  .withValues(alpha: .55),
-                            ),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(8),

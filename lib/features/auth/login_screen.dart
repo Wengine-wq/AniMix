@@ -16,15 +16,25 @@ class _LoginBackdrop extends StatelessWidget {
   const _LoginBackdrop();
 
   @override
-  Widget build(BuildContext context) => const DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF17172A), Color(0xFF251633), Color(0xFF11101A)],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.alphaBlend(
+              theme.colorScheme.primary.withValues(alpha: .10),
+              theme.scaffoldBackgroundColor,
+            ),
+            theme.scaffoldBackgroundColor,
+          ],
+          stops: const [0, .6],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -43,7 +53,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final sessionNotice = ref.watch(sessionNoticeProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF11101A),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           const Positioned.fill(child: _LoginBackdrop()),
@@ -55,7 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   constraints: const BoxConstraints(maxWidth: 400),
                   child: AniMixSurface(
                     radius: 24,
-                    elevated: true,
+                    elevated: false,
                     blurred: true,
                     padding: const EdgeInsets.all(30),
                     child: Column(

@@ -120,11 +120,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(13),
-      border: Border.all(
-        color: Theme.of(
-          context,
-        ).colorScheme.outlineVariant.withValues(alpha: .55),
-      ),
     ),
     child: Text.rich(
       TextSpan(
@@ -380,7 +375,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   );
 
   Widget _emptyState() {
-    final accent = Theme.of(context).colorScheme.primary;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(28),
@@ -392,20 +386,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.86, end: 1),
                 duration: const Duration(milliseconds: 700),
-                curve: Curves.easeOutBack,
+                curve: Curves.easeOutCubic,
                 builder: (_, scale, child) =>
                     Transform.scale(scale: scale, child: child),
                 child: Container(
                   width: 82,
                   height: 82,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.14),
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(27),
-                    border: Border.all(color: accent.withValues(alpha: 0.28)),
                   ),
                   child: Icon(
                     CupertinoIcons.arrow_down_to_line,
-                    color: accent,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     size: 36,
                   ),
                 ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
-import '../core/animix_theme.dart';
 
 /// Shared geometry for initial-content placeholders.
 ///
@@ -267,7 +266,6 @@ class _CatalogRowBone extends StatelessWidget {
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(AniMixLoadingTokens.cardRadius),
-      border: Border.all(color: AniMixTheme.divider),
     ),
     child: const Row(
       children: [
@@ -373,7 +371,6 @@ class _ProfileSummaryBones extends StatelessWidget {
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(AniMixLoadingTokens.cardRadius),
-      border: Border.all(color: AniMixTheme.divider),
     ),
     padding: const EdgeInsets.all(AniMixLoadingTokens.compactInset),
     child: const Column(
@@ -396,7 +393,6 @@ class _ProfileCardBones extends StatelessWidget {
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(AniMixLoadingTokens.cardRadius),
-      border: Border.all(color: AniMixTheme.divider),
     ),
     padding: const EdgeInsets.all(AniMixLoadingTokens.compactInset),
     child: const Column(
@@ -432,7 +428,6 @@ class _ProfileActivitySkeletonBody extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AniMixLoadingTokens.cardRadius),
-        border: Border.all(color: AniMixTheme.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,7 +633,6 @@ class AniMixEpisodeListSkeleton extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(AniMixLoadingTokens.smallRadius),
-          border: Border.all(color: AniMixTheme.divider),
         ),
         child: const Row(
           children: [
@@ -669,7 +663,6 @@ class _CommentBone extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AniMixLoadingTokens.cardRadius),
-        border: Border.all(color: AniMixTheme.divider),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
