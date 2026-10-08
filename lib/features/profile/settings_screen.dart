@@ -1917,8 +1917,11 @@ class _SettingsRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Row(
           children: [
-            _SettingsIcon(icon: icon, color: color),
-            const SizedBox(width: 13),
+            _SettingsIcon(
+              icon: icon,
+              color: destructive ? const Color(0xFFFF606A) : color,
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1930,7 +1933,7 @@ class _SettingsRow extends StatelessWidget {
                           ? const Color(0xFFFF606A)
                           : Theme.of(context).colorScheme.onSurface,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   if (subtitle?.isNotEmpty == true) ...[
@@ -1963,20 +1966,22 @@ class _SettingsRow extends StatelessWidget {
   );
 }
 
+/// Quiet settings glyph: a neutral outline icon instead of a coloured tile.
+/// `color` is kept so destructive or status rows can still opt in.
 class _SettingsIcon extends StatelessWidget {
   const _SettingsIcon({required this.icon, required this.color});
   final IconData icon;
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 37,
-    height: 37,
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: .16),
-      borderRadius: BorderRadius.circular(11),
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 28,
+    child: Icon(
+      icon,
+      color: color == const Color(0xFFFF606A)
+          ? color
+          : Theme.of(context).colorScheme.onSurfaceVariant,
+      size: 21,
     ),
-    alignment: Alignment.center,
-    child: Icon(icon, color: color, size: 20),
   );
 }

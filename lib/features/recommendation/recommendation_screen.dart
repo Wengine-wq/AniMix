@@ -433,8 +433,7 @@ class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Theme.of(context).colorScheme.primary.withValues(alpha: .10),
-            const Color(0xFF7C3AED).withValues(alpha: .06),
+            Theme.of(context).colorScheme.primary.withValues(alpha: .05),
             Colors.transparent,
           ],
         ),
@@ -567,7 +566,7 @@ class _RecommendationHeader extends StatelessWidget {
     children: [
       Icon(
         CupertinoIcons.sparkles,
-        color: Theme.of(context).colorScheme.primary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
         size: 19,
       ),
       const SizedBox(width: 8),
@@ -839,7 +838,9 @@ class _RecommendationCard extends StatelessWidget {
                           onPressed: onInfo,
                           icon: Icon(
                             CupertinoIcons.info_circle_fill,
-                            color: Theme.of(context).colorScheme.primary,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -872,7 +873,6 @@ class _SwipeBackground extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: color.withValues(alpha: .34)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
