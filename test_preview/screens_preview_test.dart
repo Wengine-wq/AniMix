@@ -1,4 +1,5 @@
 // ignore_for_file: invalid_use_of_visible_for_testing_member
+import 'dart:convert';
 // Visual previews of key screens for design review. Not part of the regular
 // suite (lives outside test/). Run:
 //   flutter test test_preview --update-goldens
@@ -9,6 +10,7 @@ import 'package:animix/core/animix_theme.dart';
 import 'package:animix/core/app_settings.dart';
 import 'package:animix/features/catalog/catalog_screen.dart';
 import 'package:animix/features/downloads/downloads_screen.dart';
+import 'package:animix/features/downloads/hls_download_manager.dart';
 import 'package:animix/features/home/home_screen.dart';
 import 'package:animix/features/profile/profile_screen.dart';
 import 'package:animix/features/profile/settings_screen.dart';
@@ -262,10 +264,30 @@ void main() {
     testWidgets('recs', (t) => shoot(t, 'recs', const RecommendationScreen()));
   }
   if (want('downloads')) {
-    testWidgets(
-      'downloads',
-      (t) => shoot(t, 'downloads', const DownloadsScreen()),
-    );
+    testWidgets('downloads', (t) async {
+      SharedPreferences.setMockInitialValues({
+        'animix_hls_downloads_v1': jsonEncode([
+          for (final (id, title) in [
+            (1, 'Фрирен, провожающая в последний путь'),
+            (2, 'Магическая битва'),
+            (3, 'Ванпанчмен'),
+          ])
+            for (var n = 1; n <= id + 1; n++)
+              {
+                'episodeId': '${id}_kodik_$n',
+                'animeId': id,
+                'animeTitle': title,
+                'episodeName': 'Серия $n',
+                'quality': '720p',
+                'progress': n == 2 && id == 3 ? .4 : 1.0,
+                'state': n == 2 && id == 3 ? 'downloading' : 'completed',
+                'fileSizeBytes': 180 * 1024 * 1024,
+              },
+        ]),
+      });
+      await t.runAsync(HlsDownloadManager.instance.initialize);
+      await shoot(t, 'downloads', const DownloadsScreen());
+    });
   }
   if (want('profile')) {
     testWidgets('profile', (t) => shoot(t, 'profile', const ProfileScreen()));

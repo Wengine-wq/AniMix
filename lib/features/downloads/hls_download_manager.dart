@@ -28,11 +28,70 @@ class HlsDownloadManager extends ChangeNotifier {
 
   final List<DownloadItem> _downloads = [];
   final Map<String, CancelToken> _cancelTokens = {};
+  final Map<String, String> _posterFiles = {};
+  final Set<String> _posterFetches = {};
   Future<void>? _initializing;
 
   List<DownloadItem> get downloads => List.unmodifiable(_downloads);
 
   Future<void> initialize() => _initializing ??= _load();
+
+  /// Key shared by all episodes of one title: its id, or its title for
+  /// legacy downloads saved without an id.
+  static String groupKey(DownloadItem item) => item.animeId > 0
+      ? 'id_${item.animeId}'
+      : 'title_${_safeName(item.animeTitle.trim().toLowerCase())}';
+
+  /// Locally saved cover for a title, so the downloads screen shows posters
+  /// without a network connection.
+  File? offlinePoster(DownloadItem item) {
+    final path = _posterFiles[groupKey(item)];
+    return path == null ? null : File(path);
+  }
+
+  Future<Directory> _posterDirectory() async {
+    final root = await getApplicationSupportDirectory();
+    return Directory(
+      '${root.path}${Platform.pathSeparator}animix_downloads${Platform.pathSeparator}_posters',
+    );
+  }
+
+  Future<void> _cachePoster(DownloadItem item) async {
+    final url = item.posterUrl;
+    final key = groupKey(item);
+    if (url == null || _posterFiles.containsKey(key)) return;
+    if (!_posterFetches.add(key)) return;
+    try {
+      final directory = await _posterDirectory();
+      await directory.create(recursive: true);
+      final path = '${directory.path}${Platform.pathSeparator}$key.img';
+      // Posters live on image CDNs, not the video host: no media headers.
+      await Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      ).download(url, path);
+      if (await File(path).length() > 0) {
+        _posterFiles[key] = path;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Offline or blocked: the screen falls back to the network poster.
+    } finally {
+      _posterFetches.remove(key);
+    }
+  }
+
+  Future<void> _dropPosterIfUnused(String key) async {
+    if (_downloads.any((item) => groupKey(item) == key)) return;
+    final path = _posterFiles.remove(key);
+    if (path == null) return;
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
 
   DownloadItem? itemFor(String episodeId) {
     for (final item in _downloads) {
@@ -63,6 +122,18 @@ class HlsDownloadManager extends ChangeNotifier {
     if (!changed) return;
     await _save();
     notifyListeners();
+    final updated = _downloads.firstWhere(
+      (item) => item.posterUrl == posterUrl,
+    );
+    final key = groupKey(updated);
+    // A newly resolved cover replaces a previously cached fallback.
+    final stale = _posterFiles.remove(key);
+    if (stale != null) {
+      try {
+        await File(stale).delete();
+      } catch (_) {}
+    }
+    unawaited(_cachePoster(updated));
   }
 
   Future<void> startDownload({
@@ -92,6 +163,7 @@ class HlsDownloadManager extends ChangeNotifier {
     );
     _replace(item);
     await _save();
+    unawaited(_cachePoster(item));
 
     final token = CancelToken();
     _cancelTokens[episodeId] = token;
@@ -255,24 +327,45 @@ class HlsDownloadManager extends ChangeNotifier {
     return response.data ?? '';
   }
 
-  Future<void> delete(String episodeId) async {
+  Future<void> delete(String episodeId) => deleteMany([episodeId]);
+
+  /// Deletes several episodes (for example a whole title) with one save and
+  /// one UI update instead of one per episode.
+  Future<void> deleteMany(Iterable<String> episodeIds) async {
     await initialize();
-    _cancelTokens.remove(episodeId)?.cancel('Удалено пользователем');
-    final item = itemFor(episodeId);
-    if (item?.localPath != null) {
-      final parent = File(item!.localPath!).parent;
-      if (await parent.exists()) await parent.delete(recursive: true);
-    } else {
-      final root = await getApplicationSupportDirectory();
-      final partial = Directory(
-        '${root.path}${Platform.pathSeparator}animix_downloads${Platform.pathSeparator}${_safeName(episodeId)}',
-      );
-      if (await partial.exists()) await partial.delete(recursive: true);
+    final ids = episodeIds.toSet();
+    if (ids.isEmpty) return;
+    final touchedGroups = <String>{};
+    for (final episodeId in ids) {
+      _cancelTokens.remove(episodeId)?.cancel('Удалено пользователем');
+      final item = itemFor(episodeId);
+      if (item != null) touchedGroups.add(groupKey(item));
+      try {
+        if (item?.localPath != null) {
+          final parent = File(item!.localPath!).parent;
+          if (await parent.exists()) await parent.delete(recursive: true);
+        } else {
+          final root = await getApplicationSupportDirectory();
+          final partial = Directory(
+            '${root.path}${Platform.pathSeparator}animix_downloads${Platform.pathSeparator}${_safeName(episodeId)}',
+          );
+          if (await partial.exists()) await partial.delete(recursive: true);
+        }
+      } catch (_) {
+        // A locked or already removed folder must not block the rest.
+      }
     }
-    _downloads.removeWhere((entry) => entry.episodeId == episodeId);
+    _downloads.removeWhere((entry) => ids.contains(entry.episodeId));
+    for (final key in touchedGroups) {
+      await _dropPosterIfUnused(key);
+    }
     await _save();
     notifyListeners();
   }
+
+  /// Episode number parsed from the id, for sorting episodes of a title.
+  static double? episodeNumber(DownloadItem item) =>
+      _episodeOrdinal(item.episodeId);
 
   Future<Uri?> playbackUriFor(String episodeId) async {
     final item = itemFor(episodeId);
@@ -356,6 +449,26 @@ class HlsDownloadManager extends ChangeNotifier {
     } catch (_) {
       // Ignore incompatible metadata from early development builds.
     }
+    await _loadPosters();
+  }
+
+  Future<void> _loadPosters() async {
+    try {
+      final directory = await _posterDirectory();
+      if (await directory.exists()) {
+        await for (final entity in directory.list()) {
+          if (entity is! File || !entity.path.endsWith('.img')) continue;
+          final name = entity.uri.pathSegments.last;
+          _posterFiles[name.substring(0, name.length - 4)] = entity.path;
+        }
+      }
+    } catch (_) {}
+    // Downloads made before covers were stored offline get theirs now.
+    final seen = <String>{};
+    for (final item in List<DownloadItem>.of(_downloads)) {
+      if (seen.add(groupKey(item))) unawaited(_cachePoster(item));
+    }
+    if (_posterFiles.isNotEmpty) notifyListeners();
   }
 
   Future<void> _save() async {

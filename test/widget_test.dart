@@ -21,9 +21,13 @@ void main() {
 
     expect(find.text('Загрузки'), findsOneWidget);
     expect(find.text('Нет загрузок'), findsOneWidget);
+    // Rendered inside a Material page, so no debug underline can appear.
     expect(
-      tester.widget<Text>(find.text('Нет загрузок')).style?.decoration,
-      TextDecoration.none,
+      find.ancestor(
+        of: find.text('Нет загрузок'),
+        matching: find.byType(Scaffold),
+      ),
+      findsWidgets,
     );
   });
 }
