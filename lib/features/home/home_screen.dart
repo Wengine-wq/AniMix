@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -170,46 +171,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final data = ref.watch(homeDataProvider);
     final user = ref.watch(currentUserProvider).value;
+    final hero = data.value?.hero ?? const <ShikimoriAnime>[];
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        bottom: false,
-        child: RefreshIndicator.adaptive(
-          onRefresh: _refresh,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(child: _DashboardHeader(user: user)),
-              ...data.when(
-                loading: () => const [
-                  SliverToBoxAdapter(child: AniMixHomeSkeleton()),
-                ],
-                error: (_, _) => [
-                  SliverFillRemaining(
-                    child: AniMixEmptyState(
-                      icon: CupertinoIcons.wifi_exclamationmark,
-                      title: 'Не удалось загрузить главную',
-                      message: 'Проверьте подключение и обновите страницу.',
-                      actionLabel: 'Повторить',
-                      onAction: _retryHome,
-                    ),
-                  ),
-                ],
-                data: (home) => _content(context, home),
-              ),
-            ],
+      body: RefreshIndicator.adaptive(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
           ),
+          slivers: [
+            SliverToBoxAdapter(
+              child: _HomeTop(user: user, hero: hero),
+            ),
+            ...data.when(
+              loading: () => const [
+                SliverToBoxAdapter(child: AniMixHomeSkeleton()),
+              ],
+              error: (_, _) => [
+                SliverFillRemaining(
+                  child: AniMixEmptyState(
+                    icon: CupertinoIcons.wifi_exclamationmark,
+                    title: 'Не удалось загрузить главную',
+                    message: 'Проверьте подключение и обновите страницу.',
+                    actionLabel: 'Повторить',
+                    onAction: _retryHome,
+                  ),
+                ),
+              ],
+              data: (home) => _content(context, home),
+            ),
+          ],
         ),
       ),
     );
   }
 
   List<Widget> _content(BuildContext context, HomeData data) => [
-    if (data.hero.isNotEmpty)
-      SliverToBoxAdapter(child: _HeroCarousel(items: data.hero)),
     SliverToBoxAdapter(
       child: _DiscoveryStrip(
         best: data.topRated.firstOrNull ?? data.popular.firstOrNull,
@@ -262,84 +261,223 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ];
 }
 
+/// The immersive top of the home screen: a softly blurred copy of the current
+/// hero poster bleeds behind the status bar, greeting and carousel, then fades
+/// into the page. It cross-fades as the carousel turns.
+class _HomeTop extends StatefulWidget {
+  const _HomeTop({required this.user, required this.hero});
+
+  final dynamic user;
+  final List<ShikimoriAnime> hero;
+
+  @override
+  State<_HomeTop> createState() => _HomeTopState();
+}
+
+class _HomeTopState extends State<_HomeTop> {
+  int _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final hero = widget.hero;
+    final current = hero.isEmpty ? null : hero[_page.clamp(0, hero.length - 1)];
+    final topInset = MediaQuery.paddingOf(context).top;
+    return Stack(
+      children: [
+        if (current != null)
+          Positioned.fill(child: _AmbientHeroBackdrop(anime: current)),
+        Column(
+          children: [
+            SizedBox(height: topInset),
+            _DashboardHeader(user: widget.user),
+            if (hero.isNotEmpty)
+              _HeroCarousel(
+                items: hero,
+                onPageChanged: (page) => setState(() => _page = page),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AmbientHeroBackdrop extends StatelessWidget {
+  const _AmbientHeroBackdrop({required this.anime});
+  final ShikimoriAnime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = Theme.of(context).scaffoldBackgroundColor;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // A tiny decode blown up under a light blur: looks like a heavy blur
+          // but costs a fraction of blurring a full-size poster every frame.
+          RepaintBoundary(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 600),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: ImageFiltered(
+                key: ValueKey(anime.id),
+                imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Opacity(
+                  opacity: dark ? .55 : .45,
+                  child: Transform.scale(
+                    scale: 1.2,
+                    child: SmartAnimePoster(
+                      animeId: anime.id,
+                      imageUrl: anime.imageUrl,
+                      title: anime.name ?? '',
+                      russianTitle: anime.russian,
+                      alignment: Alignment.topCenter,
+                      decodeWidth: 96,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  background.withValues(alpha: .25),
+                  background.withValues(alpha: .55),
+                  background,
+                ],
+                stops: const [0, .55, 1],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DashboardHeader extends StatelessWidget {
   const _DashboardHeader({required this.user});
 
   final dynamic user;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: AniMixLayout.contentMaxWidth),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AniMixLayout.pageInset,
-          AniMixSpacing.md,
-          AniMixLayout.pageInset,
-          AniMixSpacing.lg,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final name = user?.nickname?.toString().isNotEmpty == true
+        ? user.nickname.toString()
+        : null;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: AniMixLayout.contentMaxWidth,
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Добро пожаловать',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 14,
-                    ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AniMixLayout.pageInset,
+            AniMixSpacing.sm,
+            AniMixLayout.pageInset,
+            AniMixSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: name == null ? 'AniMix' : 'Привет, ',
+                        style: TextStyle(
+                          color: name == null
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (name != null) TextSpan(text: name),
+                    ],
                   ),
-                  const SizedBox(height: AniMixSpacing.xs),
-                  Text(
-                    user?.nickname?.toString().isNotEmpty == true
-                        ? user.nickname
-                        : 'в AniMix',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 28,
-                      height: 1.05,
-                      letterSpacing: -.8,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 24,
+                    height: 1.1,
+                    letterSpacing: -.6,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
-              ),
-            ),
-            AniMixIconButton(
-              icon: CupertinoIcons.search,
-              tooltip: 'Поиск',
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                useSafeArea: true,
-                isScrollControlled: true,
-                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                builder: (_) => const FractionallySizedBox(
-                  heightFactor: .94,
-                  child: AnimeSearchSheet(),
                 ),
               ),
-            ),
-          ],
+              _GlassIconButton(
+                icon: CupertinoIcons.search,
+                tooltip: 'Поиск',
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  useSafeArea: true,
+                  isScrollControlled: true,
+                  backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                  builder: (_) => const FractionallySizedBox(
+                    heightFactor: .94,
+                    child: AnimeSearchSheet(),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+/// Icon button that reads over the blurred backdrop without a hard tile.
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: scheme.onSurface.withValues(alpha: .08),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox.square(
+            dimension: 44,
+            child: Icon(icon, size: 20, color: scheme.onSurface),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HeroCarousel extends StatefulWidget {
-  const _HeroCarousel({required this.items});
+  const _HeroCarousel({required this.items, required this.onPageChanged});
   final List<ShikimoriAnime> items;
+  final ValueChanged<int> onPageChanged;
 
   @override
   State<_HeroCarousel> createState() => _HeroCarouselState();
 }
 
 class _HeroCarouselState extends State<_HeroCarousel> {
-  final _controller = PageController(viewportFraction: .92);
+  final _controller = PageController(viewportFraction: .86);
 
   @override
   void dispose() {
@@ -354,47 +492,41 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       return Column(
         children: [
           SizedBox(
-            height: desktop ? 380 : 300,
-            child: Stack(
-              children: [
-                PageView.builder(
-                  controller: _controller,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: widget.items.length,
-                  itemBuilder: (context, index) => AnimatedBuilder(
-                    animation: _controller,
-                    child: _HeroCard(anime: widget.items[index]),
-                    builder: (context, child) {
-                      final page = _controller.hasClients
-                          ? (_controller.page ??
-                                _controller.initialPage.toDouble())
-                          : _controller.initialPage.toDouble();
-                      final distance = (page - index).clamp(-1.0, 1.0);
-                      return Transform.scale(
-                        scale: 1 - distance.abs() * .025,
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 760),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              child: _HeroMotionScope(
-                                pageOffset: distance,
-                                child: child!,
-                              ),
-                            ),
+            height: desktop ? 400 : 380,
+            child: PageView.builder(
+              controller: _controller,
+              physics: const BouncingScrollPhysics(),
+              onPageChanged: widget.onPageChanged,
+              itemCount: widget.items.length,
+              itemBuilder: (context, index) => AnimatedBuilder(
+                animation: _controller,
+                child: _HeroCard(anime: widget.items[index]),
+                builder: (context, child) {
+                  final page = _controller.hasClients
+                      ? (_controller.page ?? _controller.initialPage.toDouble())
+                      : _controller.initialPage.toDouble();
+                  final distance = (page - index).clamp(-1.0, 1.0);
+                  return Transform.scale(
+                    scale: 1 - distance.abs() * .06,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: _HeroMotionScope(
+                            pageOffset: distance,
+                            child: child!,
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           if (widget.items.length > 1) ...[
-            const SizedBox(height: AniMixSpacing.sm),
+            const SizedBox(height: AniMixSpacing.md),
             _CarouselSignal(
               controller: _controller,
               itemCount: widget.items.length,

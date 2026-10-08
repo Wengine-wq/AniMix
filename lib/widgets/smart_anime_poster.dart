@@ -18,6 +18,9 @@ class SmartAnimePoster extends StatefulWidget {
   final Alignment alignment;
   final ValueChanged<String>? onResolved;
 
+  /// Forces a decode width in pixels (e.g. tiny for blurred backdrops).
+  final int? decodeWidth;
+
   const SmartAnimePoster({
     required this.animeId,
     required this.imageUrl,
@@ -26,6 +29,7 @@ class SmartAnimePoster extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
     this.onResolved,
+    this.decodeWidth,
     super.key,
   });
 
@@ -175,7 +179,8 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
     return LayoutBuilder(
       builder: (context, constraints) => _networkImage(
         url,
-        decodeWidthFor(context, constraints, fit: widget.fit),
+        widget.decodeWidth ??
+            decodeWidthFor(context, constraints, fit: widget.fit),
       ),
     );
   }
