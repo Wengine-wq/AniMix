@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/animix_theme.dart';
 import '../../core/config.dart';
 import '../../core/achievement_service.dart';
 import '../../models/shikimori_anime.dart';
@@ -312,74 +313,79 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         ? anime.russian!
         : anime.name ?? 'Без названия';
     final original = anime.name != title ? anime.name : anime.english;
+    final scheme = Theme.of(context).colorScheme;
+    final meta = [
+      _statusLabel(anime.status),
+      if (anime.kind?.isNotEmpty == true) _kindLabel(anime.kind),
+      if (anime.episodes != null) '${anime.episodes} эп.',
+      if (_duration?.isNotEmpty == true) '$_duration мин.',
+      if (_rating?.isNotEmpty == true)
+        _rating!.toUpperCase().replaceAll('_', '-'),
+    ].join('  ·  ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 30,
+            height: 1.1,
+            letterSpacing: -1,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (original?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 6),
+          Text(
+            original!,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 15,
+              height: 1.3,
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
         Wrap(
-          spacing: 12,
-          runSpacing: 10,
+          spacing: 16,
+          runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            AniMixMetadataPill(label: _statusLabel(anime.status), accent: true),
             if ((anime.score ?? 0) > 0)
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     CupertinoIcons.star_fill,
-                    color: Color(0xFFFFC638),
-                    size: 19,
+                    color: scheme.onSurface,
+                    size: 15,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
                     anime.score!.toStringAsFixed(1),
                     style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
             if (_currentScore > 0)
-              AniMixMetadataPill(label: 'Ваша оценка · $_currentScore'),
+              Text(
+                'Ваша оценка $_currentScore',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+              ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 8),
         Text(
-          title,
+          meta,
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontSize: 34,
-            height: 1.06,
-            letterSpacing: -1.2,
-            fontWeight: FontWeight.w900,
+            color: scheme.onSurfaceVariant,
+            fontSize: 13,
+            height: 1.4,
           ),
-        ),
-        if (original?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: 9),
-          Text(
-            original!,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 16,
-              height: 1.3,
-            ),
-          ),
-        ],
-        const SizedBox(height: 18),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            if (anime.kind?.isNotEmpty == true)
-              AniMixMetadataPill(label: _kindLabel(anime.kind)),
-            if (anime.episodes != null)
-              AniMixMetadataPill(label: '${anime.episodes} эп.'),
-            if (_duration?.isNotEmpty == true)
-              AniMixMetadataPill(label: '$_duration мин.'),
-            if (_rating?.isNotEmpty == true)
-              AniMixMetadataPill(label: _rating!.toUpperCase()),
-          ],
         ),
       ],
     );
@@ -397,29 +403,18 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           ),
         ),
       ),
-      icon: const Icon(CupertinoIcons.play_fill),
+      icon: const Icon(CupertinoIcons.play_fill, size: 18),
       label: const Text('Смотреть'),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(190, 54),
-        shape: const StadiumBorder(),
-      ),
+      style: FilledButton.styleFrom(minimumSize: const Size(190, 52)),
     );
     final status = OutlinedButton.icon(
       onPressed: _currentUser == null ? null : _showStatusSheet,
       icon: Icon(
         _currentStatus == null ? CupertinoIcons.add : CupertinoIcons.check_mark,
+        size: 17,
       ),
       label: Text(_statusActionLabel(_currentStatus)),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(150, 52),
-        foregroundColor: Theme.of(context).colorScheme.onSurface,
-        side: BorderSide(
-          color: Theme.of(
-            context,
-          ).colorScheme.outlineVariant.withValues(alpha: .65),
-        ),
-        shape: const StadiumBorder(),
-      ),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(150, 52)),
     );
     final comments = OutlinedButton.icon(
       onPressed: anime.topicId == null
@@ -430,18 +425,9 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 builder: (_) => CommentsScreen(topicId: anime.topicId!),
               ),
             ),
-      icon: const Icon(CupertinoIcons.chat_bubble),
+      icon: const Icon(CupertinoIcons.chat_bubble, size: 17),
       label: const Text('Отзывы'),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(130, 52),
-        foregroundColor: Theme.of(context).colorScheme.onSurface,
-        side: BorderSide(
-          color: Theme.of(
-            context,
-          ).colorScheme.outlineVariant.withValues(alpha: .65),
-        ),
-        shape: const StadiumBorder(),
-      ),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(130, 52)),
     );
     if (desktop) {
       return Wrap(
@@ -470,13 +456,10 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AniMixSectionHeader(
-          title: 'Об аниме',
-          subtitle: 'Кратко и по делу',
-        ),
-        const SizedBox(height: 14),
-        AniMixSurface(
-          padding: const EdgeInsets.all(20),
+        const AniMixSectionHeader(title: 'Об аниме'),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -487,10 +470,12 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                   overflow: _descriptionExpanded
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFFD1D1D8),
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: .82),
                     fontSize: 15,
-                    height: 1.55,
+                    height: 1.6,
                   ),
                 ),
                 if (description.length > 280)
@@ -571,15 +556,15 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 Row(
                   children: [
                     const Text(
-                      'Прогресс просмотра',
-                      style: TextStyle(fontWeight: FontWeight.w800),
+                      'Прогресс',
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
                     Text(
-                      '$watched / $total',
+                      '$watched из $total',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -588,7 +573,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
-                    minHeight: 7,
+                    minHeight: 4,
                     value: progress,
                     backgroundColor: Theme.of(
                       context,
@@ -633,7 +618,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
             title: 'Скриншот',
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(AniMixRadius.md),
             child: AspectRatio(
               aspectRatio: 16 / 9,
               child: AniMixNetworkImage(
@@ -709,7 +694,9 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                     width: 38,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.white24,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: .35),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -717,7 +704,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   'Мой список',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 14),
                 for (final option in const [
@@ -962,8 +949,12 @@ class _AmbientBackdrop extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Color(0x4D09090C),
-                  Color(0xCC09090C),
+                  Theme.of(
+                    context,
+                  ).scaffoldBackgroundColor.withValues(alpha: .3),
+                  Theme.of(
+                    context,
+                  ).scaffoldBackgroundColor.withValues(alpha: .8),
                   Theme.of(context).scaffoldBackgroundColor,
                 ],
                 stops: [0, 0.62, 1],
@@ -992,13 +983,12 @@ class _PosterFrame extends StatelessWidget {
     width: width,
     height: height,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(24),
-      border: Border.all(color: const Color(0x26FFFFFF)),
+      borderRadius: BorderRadius.circular(AniMixRadius.lg),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x66000000),
-          blurRadius: 30,
-          offset: Offset(0, 16),
+          color: Color(0x40000000),
+          blurRadius: 28,
+          offset: Offset(0, 12),
         ),
       ],
     ),
@@ -1039,7 +1029,7 @@ class _InfoGrid extends StatelessWidget {
                       item.$2,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -1062,7 +1052,7 @@ class _Stat extends StatelessWidget {
     children: [
       Text(
         _compact(value),
-        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 3),
       Text(
@@ -1101,7 +1091,7 @@ class _AnimeMiniCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(AniMixRadius.md),
             child: SizedBox(
               width: 132,
               height: 184,

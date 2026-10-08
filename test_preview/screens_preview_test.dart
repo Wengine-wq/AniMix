@@ -15,6 +15,8 @@ import 'package:animix/features/profile/settings_screen.dart';
 import 'package:animix/features/recommendation/recommendation_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/models/shikimori_anime.dart';
+import 'package:animix/models/shikimori_anime_detail.dart';
+import 'package:animix/features/anime_detail/anime_detail_screen.dart';
 import 'package:animix/models/shikimori_user.dart';
 import 'package:animix/core/shikimori_api_client.dart';
 import 'package:animix/providers/auth_provider.dart';
@@ -67,6 +69,51 @@ class _FakeApi extends ShikimoriApiClient {
     int limit = 30,
     Map<String, dynamic> filters = const {},
   }) async => page > 1 ? const [] : List.generate(limit.clamp(1, 12), _anime);
+
+  @override
+  Future<ShikimoriAnimeDetail> getAnimeDetail(int id) async =>
+      ShikimoriAnimeDetail.fromJson({
+        'id': id,
+        'russian': 'Фрирен, провожающая в последний путь',
+        'name': 'Sousou no Frieren',
+        'description':
+            'Эльфийка-волшебница Фрирен вместе с героем Химмелем и его отрядом '
+            'победила Короля демонов. Спустя пятьдесят лет она отправляется в '
+            'новое путешествие, чтобы лучше понять людей и время, которое '
+            'течёт для них совсем иначе.',
+        'image': <String, dynamic>{},
+        'score': '9.3',
+        'status': 'released',
+        'kind': 'tv',
+        'episodes': 28,
+        'episodes_aired': 28,
+        'aired_on': '2023-09-29',
+        'released_on': '2024-03-22',
+        'duration': 24,
+        'rating': 'pg_13',
+        'genres': [
+          {'russian': 'Приключения'},
+          {'russian': 'Драма'},
+          {'russian': 'Фэнтези'},
+        ],
+        'studios': [
+          {'name': 'Madhouse'},
+        ],
+        'rates_statuses_stats': [
+          {'name': 'Смотрю', 'value': 1200},
+        ],
+      });
+
+  @override
+  Future<List<String>> getAnimeScreenshots(int animeId) async => const [];
+
+  @override
+  Future<List<ShikimoriAnime>> getSimilarAnimes(int animeId) async =>
+      List.generate(6, _anime);
+
+  @override
+  Future<List<Map<String, dynamic>>> getRelatedAnimes(int animeId) async =>
+      const [];
 }
 
 void main() {
@@ -190,6 +237,21 @@ void main() {
         'home_wide',
         const MainWrapper(),
         size: const Size(1280, 800),
+      ),
+    );
+  }
+  if (want('detail')) {
+    testWidgets(
+      'detail',
+      (t) => shoot(t, 'detail', const AnimeDetailScreen(animeId: 5)),
+    );
+    testWidgets(
+      'detail_light',
+      (t) => shoot(
+        t,
+        'detail_light',
+        const AnimeDetailScreen(animeId: 5),
+        brightness: Brightness.light,
       ),
     );
   }

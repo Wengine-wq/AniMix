@@ -309,8 +309,6 @@ abstract final class AniMixTheme {
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: palette.elevated,
         surfaceTintColor: Colors.transparent,
-        showDragHandle: true,
-        dragHandleColor: secondary.withValues(alpha: .4),
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(AniMixRadius.xl),
