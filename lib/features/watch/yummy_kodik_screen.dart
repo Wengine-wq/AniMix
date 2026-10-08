@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-import '../../core/animix_theme.dart';
 import 'models/watch_mapping.dart';
 import 'services/watch_resolver_service.dart';
 import 'repositories/watch_mapping_repository.dart';
@@ -426,6 +425,8 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
     );
   }
 
+  /// Dubs as one grouped list: name, episode count and source in a row.
+  /// Easier to scan than a grid of tiles with identical microphone icons.
   Widget _buildStudiosList() {
     if (studios.isEmpty) {
       return const Center(
@@ -435,85 +436,96 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
         ),
       );
     }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 920
-            ? 3
-            : constraints.maxWidth >= 620
-            ? 2
-            : 1;
-        return GridView.builder(
-          padding: const EdgeInsets.all(20),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            mainAxisExtent: 84,
-          ),
-          itemCount: studios.length,
-          itemBuilder: (context, index) {
-            final translation = studios[index];
-            final name =
-                translation['displayName']?.toString() ??
-                translation['name']?.toString() ??
-                'Неизвестная озвучка';
-            final count = (translation['episodes'] as List?)?.length ?? 0;
-            final isKodik = translation['isKodik'] == true;
-            return AniMixSurface(
-              onTap: () => _openTranslation(translation),
-              padding: const EdgeInsets.all(16),
-              child: Row(
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+              child: Text(
+                '${studios.length} озвучек',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+              ),
+            ),
+            AniMixSurface(
+              child: Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(AniMixRadius.md - 2),
+                  for (var index = 0; index < studios.length; index++) ...[
+                    if (index > 0) const Divider(height: 1, indent: 16),
+                    _DubRow(
+                      translation: studios[index],
+                      onTap: () => _openTranslation(studios[index]),
                     ),
-                    child: Icon(
-                      CupertinoIcons.mic_fill,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (count > 0) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '$count эпизодов${isKodik ? ' • прямой поток' : ' • резерв'}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: CupertinoColors.systemGrey,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  ],
                 ],
               ),
-            );
-          },
-        );
-      },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DubRow extends StatelessWidget {
+  const _DubRow({required this.translation, required this.onTap});
+
+  final Map<String, dynamic> translation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final name =
+        translation['displayName']?.toString() ??
+        translation['name']?.toString() ??
+        'Неизвестная озвучка';
+    final count = (translation['episodes'] as List?)?.length ?? 0;
+    final direct = translation['isKodik'] == true;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (count > 0) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      '$count эп. · ${direct ? 'прямой поток' : 'резерв'}',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

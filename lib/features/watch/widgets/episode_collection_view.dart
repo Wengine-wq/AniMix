@@ -35,19 +35,41 @@ class EpisodeCollectionView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final downloads = HlsDownloadManager.instance;
+    final available = episodes.where((episode) => episode.available).toList();
+    final watched = episodes.where((episode) => episode.watched).length;
+    // Resume point: first available episode not yet watched (or the first).
+    final next = available.isEmpty
+        ? null
+        : available.firstWhere(
+            (episode) => !episode.watched,
+            orElse: () => available.first,
+          );
+    final showHeader = next != null;
     return AnimatedBuilder(
       animation: downloads,
       builder: (context, _) => ListView.separated(
         key: const PageStorageKey<String>('episode-list'),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: episodes.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 2),
-        itemBuilder: (context, index) => _EpisodeCard(
-          episode: episodes[index],
-          download: downloads.itemFor(episodes[index].downloadId),
-          onPlay: onPlay,
-          onDownload: onDownload,
-        ),
+        itemCount: episodes.length + (showHeader ? 1 : 0),
+        separatorBuilder: (_, index) =>
+            SizedBox(height: showHeader && index == 0 ? 14 : 2),
+        itemBuilder: (context, index) {
+          if (showHeader && index == 0) {
+            return _ResumeHeader(
+              next: next,
+              watched: watched,
+              total: episodes.length,
+              onPlay: () => onPlay(next),
+            );
+          }
+          final episode = episodes[index - (showHeader ? 1 : 0)];
+          return _EpisodeCard(
+            episode: episode,
+            download: downloads.itemFor(episode.downloadId),
+            onPlay: onPlay,
+            onDownload: onDownload,
+          );
+        },
       ),
     );
   }
@@ -190,5 +212,59 @@ class _EpisodeCard extends StatelessWidget {
       return 'Ошибка загрузки — можно повторить';
     }
     return watched ? 'Просмотрено' : '';
+  }
+}
+
+/// One clear next step above the list: continue from the first unwatched
+/// episode, plus how far along the season is.
+class _ResumeHeader extends StatelessWidget {
+  const _ResumeHeader({
+    required this.next,
+    required this.watched,
+    required this.total,
+    required this.onPlay,
+  });
+
+  final EpisodeViewData next;
+  final int watched;
+  final int total;
+  final VoidCallback onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final started = watched > 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            started ? 'Просмотрено $watched из $total' : '$total серий',
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+          ),
+          if (started) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                value: total == 0 ? 0 : watched / total,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: onPlay,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text(
+              started ? 'Продолжить: ${next.title}' : 'Смотреть ${next.title}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
