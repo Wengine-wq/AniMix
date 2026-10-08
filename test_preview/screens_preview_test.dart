@@ -70,8 +70,8 @@ class _FakeApi extends ShikimoriApiClient {
 }
 
 void main() {
-  final flutterRoot = Platform.environment['FLUTTER_ROOT'] ??
-      'E:/flittersdk/flutter';
+  final flutterRoot =
+      Platform.environment['FLUTTER_ROOT'] ?? 'E:/flittersdk/flutter';
   final fonts = '$flutterRoot/bin/cache/artifacts/material_fonts';
   final pubCache =
       '${Platform.environment['LOCALAPPDATA']}/Pub/Cache/hosted/pub.dev';
@@ -126,6 +126,17 @@ void main() {
             (ref) async => loggedIn ? profile : null,
           ),
           apiClientProvider.overrideWith((ref) => _FakeApi(ref)),
+          bookmarksProvider.overrideWith(
+            (ref) async => [
+              for (var i = 0; i < 8; i++)
+                BookmarkEntry(
+                  anime: _anime(i),
+                  status: 'watching',
+                  score: i.isEven ? 8 : 0,
+                  watchedEpisodes: i * 2,
+                ),
+            ],
+          ),
           homeDataProvider.overrideWith(
             (ref) async => HomeData(
               hero: List.generate(4, _anime),
@@ -174,17 +185,19 @@ void main() {
     );
     testWidgets(
       'home_wide',
-      (t) => shoot(t, 'home_wide', const MainWrapper(), size: const Size(1280, 800)),
+      (t) => shoot(
+        t,
+        'home_wide',
+        const MainWrapper(),
+        size: const Size(1280, 800),
+      ),
     );
   }
   if (want('catalog')) {
     testWidgets('catalog', (t) => shoot(t, 'catalog', const CatalogScreen()));
   }
   if (want('recs')) {
-    testWidgets(
-      'recs',
-      (t) => shoot(t, 'recs', const RecommendationScreen()),
-    );
+    testWidgets('recs', (t) => shoot(t, 'recs', const RecommendationScreen()));
   }
   if (want('downloads')) {
     testWidgets(

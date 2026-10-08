@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
@@ -322,7 +323,7 @@ class CatalogScreen extends ConsumerWidget {
                 entry.anime.russian ?? entry.anime.name ?? 'Аниме',
                 style: const TextStyle(
                   fontSize: 19,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               subtitle: const Text('Переместить в список'),
@@ -388,69 +389,60 @@ class _TabBar extends StatelessWidget {
   final ValueChanged<BookmarkTab> onSelected;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 58,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      itemCount: BookmarkTab.values.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 8),
-      itemBuilder: (context, index) {
-        final tab = BookmarkTab.values[index];
-        final active = selected == tab;
-        return Material(
-          color: active ? tab.color : tab.color.withValues(alpha: .10),
-          borderRadius: BorderRadius.circular(999),
-          child: InkWell(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 56,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        itemCount: BookmarkTab.values.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final tab = BookmarkTab.values[index];
+          final active = selected == tab;
+          final count = counts[tab] ?? 0;
+          // Quiet segmented chips: the active one is simply inverted.
+          return Material(
+            color: active ? scheme.onSurface : scheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(999),
-            onTap: () => onSelected(tab),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    tab.icon,
-                    size: 15,
-                    color: active ? Colors.white : tab.color,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    tab.label,
-                    style: TextStyle(
-                      color: active
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.onSurface,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if ((counts[tab] ?? 0) > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: active
-                            ? Colors.white.withValues(alpha: .20)
-                            : Colors.white10,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${counts[tab]}',
-                        style: const TextStyle(fontSize: 10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => onSelected(tab),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  children: [
+                    Text(
+                      tab.label,
+                      style: TextStyle(
+                        color: active ? scheme.surface : scheme.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (count > 0) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '$count',
+                        style: TextStyle(
+                          color: active
+                              ? scheme.surface.withValues(alpha: .6)
+                              : scheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        );
-      },
-    ),
-  );
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _BookmarksContent extends StatelessWidget {
@@ -478,7 +470,7 @@ class _BookmarksContent extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 6, 20, 40),
             itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 9),
+            separatorBuilder: (_, _) => const SizedBox(height: 4),
             itemBuilder: (context, index) => _BookmarkRow(
               entry: items[index],
               onLongPress: () => onChangeStatus(items[index]),
@@ -506,6 +498,28 @@ class _BookmarksContent extends StatelessWidget {
   );
 }
 
+class _PosterBadge extends StatelessWidget {
+  const _PosterBadge(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+    decoration: BoxDecoration(
+      color: const Color(0x99000000),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 10.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
 class _BookmarkCard extends StatelessWidget {
   const _BookmarkCard({
     required this.entry,
@@ -523,6 +537,13 @@ class _BookmarkCard extends StatelessWidget {
     final progress = total > 0
         ? (entry.watchedEpisodes / total).clamp(0.0, 1.0)
         : 0.0;
+    final meta = [
+      anime.kind?.toUpperCase() ?? 'TV',
+      if (entry.watchedEpisodes > 0)
+        total > 0
+            ? '${entry.watchedEpisodes} из $total'
+            : '${entry.watchedEpisodes} эп.',
+    ].join(' · ');
     return GestureDetector(
       onTap: () => _open(context, anime.id),
       onLongPress: onLongPress,
@@ -534,7 +555,7 @@ class _BookmarkCard extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(AniMixRadius.md),
                     child: SmartAnimePoster(
                       animeId: anime.id,
                       imageUrl: anime.imageUrl,
@@ -545,52 +566,42 @@ class _BookmarkCard extends StatelessWidget {
                 ),
                 if (entry.score > 0)
                   Positioned(
-                    top: 8,
-                    left: 8,
-                    child: AniMixMetadataPill(label: '★ ${entry.score}'),
-                  ),
-                if (entry.watchedEpisodes > 0)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: AniMixMetadataPill(
-                      label: total > 0
-                          ? '${entry.watchedEpisodes}/$total'
-                          : '${entry.watchedEpisodes}',
-                      accent: true,
-                    ),
+                    top: 6,
+                    right: 6,
+                    child: _PosterBadge('★ ${entry.score}'),
                   ),
               ],
             ),
           ),
           if (showProgress) ...[
-            const SizedBox(height: 7),
+            const SizedBox(height: 6),
             ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                minHeight: 3,
-                value: progress,
-                backgroundColor: Colors.white12,
-              ),
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(minHeight: 2, value: progress),
             ),
           ],
           const SizedBox(height: 8),
-          Text(
-            anime.russian ?? anime.name ?? 'Без названия',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.15,
-              fontWeight: FontWeight.w700,
+          SizedBox(
+            height: MediaQuery.textScalerOf(context).scale(13.5) * 1.2 * 2 + 1,
+            child: Text(
+              anime.russian ?? anime.name ?? 'Без названия',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13.5,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           Text(
-            anime.kind?.toUpperCase() ?? 'TV',
+            meta,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 10,
+              fontSize: 11.5,
             ),
           ),
         ],
@@ -605,67 +616,88 @@ class _BookmarkRow extends StatelessWidget {
   final VoidCallback onLongPress;
 
   @override
-  Widget build(BuildContext context) => AniMixSurface(
-    radius: 20,
-    onTap: () => _open(context, entry.anime.id),
-    padding: const EdgeInsets.all(10),
-    child: GestureDetector(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final anime = entry.anime;
+    final total = anime.episodes ?? 0;
+    final meta = [
+      if (entry.score > 0) '★ ${entry.score}',
+      if (entry.watchedEpisodes > 0)
+        total > 0
+            ? '${entry.watchedEpisodes} из $total эп.'
+            : '${entry.watchedEpisodes} эп.',
+      anime.kind?.toUpperCase() ?? 'TV',
+    ].join('  ·  ');
+    return InkWell(
+      borderRadius: BorderRadius.circular(AniMixRadius.md),
+      onTap: () => _open(context, anime.id),
       onLongPress: onLongPress,
-      behavior: HitTestBehavior.opaque,
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              width: 64,
-              height: 94,
-              child: SmartAnimePoster(
-                animeId: entry.anime.id,
-                imageUrl: entry.anime.imageUrl,
-                title: entry.anime.name ?? '',
-                russianTitle: entry.anime.russian,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AniMixRadius.sm + 2),
+              child: SizedBox(
+                width: 60,
+                height: 88,
+                child: SmartAnimePoster(
+                  animeId: anime.id,
+                  imageUrl: anime.imageUrl,
+                  title: anime.name ?? '',
+                  russianTitle: anime.russian,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.anime.russian ?? entry.anime.name ?? 'Без названия',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    if (entry.score > 0)
-                      AniMixMetadataPill(label: '★ ${entry.score}'),
-                    if (entry.watchedEpisodes > 0)
-                      AniMixMetadataPill(
-                        label: entry.anime.episodes != null
-                            ? '${entry.watchedEpisodes}/${entry.anime.episodes}'
-                            : '${entry.watchedEpisodes} эп.',
-                        accent: true,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    anime.russian ?? anime.name ?? 'Без названия',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    meta,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (entry.watchedEpisodes > 0 && total > 0) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        minHeight: 2,
+                        value: (entry.watchedEpisodes / total).clamp(0.0, 1.0),
                       ),
+                    ),
                   ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Icon(
-            CupertinoIcons.chevron_right,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            size: 15,
-          ),
-        ],
+            IconButton(
+              tooltip: 'Переместить в список',
+              onPressed: onLongPress,
+              icon: Icon(
+                CupertinoIcons.ellipsis,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 void _open(BuildContext context, int animeId) => Navigator.push(
