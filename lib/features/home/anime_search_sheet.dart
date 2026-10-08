@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_genre.dart';
 import '../../providers/user_provider.dart';
@@ -145,25 +146,15 @@ class _AnimeSearchSheetState extends ConsumerState<AnimeSearchSheet> {
         child: Row(
           children: [
             const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Поиск и каталог',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Название, жанры, год, рейтинг и формат',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
+              child: Text(
+                'Поиск',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
               ),
             ),
             IconButton(
               tooltip: 'Закрыть',
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(CupertinoIcons.xmark_circle_fill),
+              icon: const Icon(CupertinoIcons.xmark),
             ),
           ],
         ),
@@ -176,7 +167,7 @@ class _AnimeSearchSheetState extends ConsumerState<AnimeSearchSheet> {
               child: CupertinoSearchTextField(
                 controller: _queryController,
                 autofocus: true,
-                placeholder: 'Название на русском или английском',
+                placeholder: 'Название, жанр или год',
                 backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
@@ -189,7 +180,12 @@ class _AnimeSearchSheetState extends ConsumerState<AnimeSearchSheet> {
             Badge(
               isLabelVisible: _filters.activeCount > 0,
               label: Text('${_filters.activeCount}'),
-              child: IconButton.filledTonal(
+              child: IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHigh,
+                ),
                 tooltip: 'Фильтры',
                 onPressed: _openFilters,
                 icon: const Icon(CupertinoIcons.slider_horizontal_3),
@@ -263,7 +259,7 @@ class _AnimeSearchSheetState extends ConsumerState<AnimeSearchSheet> {
         ),
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
         itemCount: _items.length + (_loadingMore ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(height: 9),
+        separatorBuilder: (_, _) => const SizedBox(height: 2),
         itemBuilder: (context, index) {
           if (index == _items.length) {
             return const Padding(
@@ -284,11 +280,17 @@ class _SearchResultRow extends StatelessWidget {
   final ShikimoriAnime anime;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.surfaceContainer.withValues(alpha: .7),
-    borderRadius: BorderRadius.circular(18),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final meta = [
+      if ((anime.score ?? 0) > 0) '★ ${anime.score!.toStringAsFixed(1)}',
+      if (anime.year != null) '${anime.year}',
+      if (anime.kind?.isNotEmpty == true) anime.kind!.toUpperCase(),
+      if (anime.status?.isNotEmpty == true)
+        anime.status == 'ongoing' ? 'выходит' : 'вышло',
+    ].join('  ·  ');
+    return InkWell(
+      borderRadius: BorderRadius.circular(AniMixRadius.md),
       onTap: () => Navigator.push(
         context,
         CupertinoPageRoute<void>(
@@ -296,14 +298,14 @@ class _SearchResultRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AniMixRadius.sm + 2),
               child: SizedBox(
-                width: 62,
-                height: 88,
+                width: 56,
+                height: 80,
                 child: SmartAnimePoster(
                   animeId: anime.id,
                   imageUrl: anime.imageUrl,
@@ -312,7 +314,7 @@ class _SearchResultRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 13),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,65 +324,38 @@ class _SearchResultRow extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   if (anime.name?.isNotEmpty == true) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       anime.name!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: scheme.onSurfaceVariant,
                         fontSize: 12,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 5,
-                    children: [
-                      if ((anime.score ?? 0) > 0)
-                        _ResultPill('★ ${anime.score!.toStringAsFixed(1)}'),
-                      if (anime.year != null) _ResultPill('${anime.year}'),
-                      if (anime.kind?.isNotEmpty == true)
-                        _ResultPill(anime.kind!.toUpperCase()),
-                      if (anime.status?.isNotEmpty == true)
-                        _ResultPill(
-                          anime.status == 'ongoing' ? 'Выходит' : 'Вышло',
-                        ),
-                    ],
+                  const SizedBox(height: 5),
+                  Text(
+                    meta,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(CupertinoIcons.chevron_right, size: 16),
           ],
         ),
       ),
-    ),
-  );
-}
-
-class _ResultPill extends StatelessWidget {
-  const _ResultPill(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.primary.withValues(alpha: .11),
-      borderRadius: BorderRadius.circular(99),
-    ),
-    child: Text(
-      label,
-      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-    ),
-  );
+    );
+  }
 }
 
 class _AnimeFilterPanel extends StatefulWidget {

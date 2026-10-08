@@ -12,6 +12,7 @@ import 'package:animix/features/catalog/catalog_screen.dart';
 import 'package:animix/features/downloads/downloads_screen.dart';
 import 'package:animix/features/downloads/hls_download_manager.dart';
 import 'package:animix/features/home/home_screen.dart';
+import 'package:animix/features/home/anime_search_sheet.dart';
 import 'package:animix/features/profile/profile_screen.dart';
 import 'package:animix/features/profile/settings_screen.dart';
 import 'package:animix/features/recommendation/recommendation_screen.dart';
@@ -255,6 +256,12 @@ void main() {
         const AnimeDetailScreen(animeId: 5),
         brightness: Brightness.light,
       ),
+    );
+  }
+  if (want('search')) {
+    testWidgets(
+      'search',
+      (t) => shoot(t, 'search', const Scaffold(body: AnimeSearchSheet())),
     );
   }
   if (want('catalog')) {
