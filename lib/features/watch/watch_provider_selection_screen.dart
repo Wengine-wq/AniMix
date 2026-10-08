@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/animix_theme.dart';
@@ -5,6 +6,8 @@ import '../../widgets/animix_surface.dart';
 import 'episode_selection_screen.dart';
 import 'yummy_kodik_screen.dart';
 
+/// Picks the catalog to watch from. Two equal rows in one grouped list, so
+/// both sources always line up regardless of text length or window width.
 class WatchProviderSelectionScreen extends StatelessWidget {
   const WatchProviderSelectionScreen({
     required this.animeId,
@@ -21,109 +24,81 @@ class WatchProviderSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AniMixPage(
-      title: 'Источник просмотра',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 760;
-          final providers = [
-            _ProviderCard(
-              icon: Icons.play_circle_fill_rounded,
-              title: 'YummyAnime + Kodik',
-              subtitle: 'Озвучки и серии • прямой HLS без рекламного iframe',
-              badge: 'Рекомендуется',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => YummyAnimeScreen(
-                    animeId: animeId,
-                    animeNameRu: animeNameRu,
-                    animeNameEn: animeNameEn,
-                  ),
+      title: 'Источник',
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
+            children: [
+              Text(
+                _title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  height: 1.15,
+                  letterSpacing: -.5,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-            _ProviderCard(
-              icon: Icons.video_library_rounded,
-              title: 'AniLiberty',
-              subtitle: 'Прямые источники • качества • офлайн-загрузка',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => EpisodeSelectionScreen(
-                    animeId: animeId,
-                    provider: 'anilibria',
-                    translationName: 'AniLiberty',
-                    animeNameRu: animeNameRu,
-                    animeNameEn: animeNameEn,
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                'Выберите каталог. Дальше — озвучка, серия и качество.',
+                style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+              ),
+              const SizedBox(height: 22),
+              AniMixSurface(
+                child: Column(
+                  children: [
+                    _ProviderRow(
+                      icon: CupertinoIcons.play_rectangle_fill,
+                      title: 'YummyAnime',
+                      badge: 'Рекомендуем',
+                      subtitle: 'Больше озвучек · поток Kodik без рекламы',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => YummyAnimeScreen(
+                            animeId: animeId,
+                            animeNameRu: animeNameRu,
+                            animeNameEn: animeNameEn,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 68),
+                    _ProviderRow(
+                      icon: CupertinoIcons.film_fill,
+                      title: 'AniLiberty',
+                      subtitle: 'Своя озвучка · выбор качества · загрузки',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => EpisodeSelectionScreen(
+                            animeId: animeId,
+                            provider: 'anilibria',
+                            translationName: 'AniLiberty',
+                            animeNameRu: animeNameRu,
+                            animeNameEn: animeNameEn,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ];
-          return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              wide ? 30 : 20,
-              28,
-              wide ? 30 : 20,
-              36,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Смотреть «$_title»',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Выберите каталог. После этого AniMix предложит озвучку, серию и качество.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                if (wide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (
-                        var index = 0;
-                        index < providers.length;
-                        index++
-                      ) ...[
-                        if (index > 0) const SizedBox(width: 14),
-                        Expanded(child: providers[index]),
-                      ],
-                    ],
-                  )
-                else
-                  Column(
-                    children: [
-                      for (
-                        var index = 0;
-                        index < providers.length;
-                        index++
-                      ) ...[
-                        if (index > 0) const SizedBox(height: 12),
-                        providers[index],
-                      ],
-                    ],
-                  ),
-              ],
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _ProviderCard extends StatelessWidget {
-  const _ProviderCard({
+class _ProviderRow extends StatelessWidget {
+  const _ProviderRow({
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -139,73 +114,70 @@ class _ProviderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AniMixSurface(
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
       onTap: onTap,
-      padding: const EdgeInsets.all(22),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(AniMixRadius.md),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(AniMixRadius.md - 4),
+              ),
+              child: Icon(icon, size: 20),
             ),
-            child: Icon(icon, size: 26),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (badge != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
+                      if (badge != null)
+                        Text(
+                          badge!,
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 13,
+                      height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 10),
                 ],
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 18),
-            child: Icon(
-              Icons.chevron_right_rounded,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            const SizedBox(width: 8),
+            Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: scheme.onSurfaceVariant,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

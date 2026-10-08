@@ -92,12 +92,14 @@ class EpisodeActionService {
     return showModalBottomSheet<MapEntry<String, String>>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
       constraints: const BoxConstraints(maxWidth: 560),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
           final scheme = Theme.of(sheetContext).colorScheme;
           return SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
