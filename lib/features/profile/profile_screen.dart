@@ -552,53 +552,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                       FutureBuilder<Map<String, DateTime>>(
                                         future: AchievementService.instance
                                             .unlockedSnapshot(),
-                                        builder: (context, snapshot) => AniMixSurface(
-                                          onTap: () => Navigator.push(
-                                            context,
-                                            CupertinoPageRoute<void>(
-                                              builder: (_) =>
-                                                  const AchievementsScreen(),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const AchievementIcon(
-                                                index: 4,
-                                                size: 56,
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    const Text(
-                                                      'Достижения',
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        fontSize: 17,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      '${snapshot.data?.length ?? 0} из ${achievements.length} открыто · только на этом устройстве',
-                                                      style: TextStyle(
-                                                        color: Theme.of(context)
-                                                            .colorScheme
-                                                            .onSurfaceVariant,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  ],
+                                        builder: (context, snapshot) =>
+                                            AchievementStrip(
+                                              unlocked:
+                                                  snapshot.data ?? const {},
+                                              caption: value.isAniMix
+                                                  ? 'Синхронизируются с аккаунтом и видны друзьям'
+                                                  : null,
+                                              onTap: () => Navigator.push(
+                                                context,
+                                                CupertinoPageRoute<void>(
+                                                  builder: (_) =>
+                                                      const AchievementsScreen(),
                                                 ),
                                               ),
-                                              const Icon(
-                                                CupertinoIcons.chevron_right,
-                                                size: 16,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                            ),
                                       ),
                                 ),
                                 const SizedBox(height: AniMixSpacing.lg),
@@ -762,7 +730,6 @@ class _ProfileUsageCard extends StatelessWidget {
     );
 
     return AniMixSurface(
-      elevated: true,
       padding: const EdgeInsets.all(AniMixSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1163,7 +1130,6 @@ class _HistoryCard extends StatelessWidget {
     final anime = item.anime;
     final date = DateTime.tryParse(item.createdAt)?.toLocal();
     return AniMixSurface(
-      elevated: true,
       radius: 22,
       onTap: anime == null
           ? null

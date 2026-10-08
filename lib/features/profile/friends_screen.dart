@@ -567,11 +567,20 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                                 ),
                                 const SizedBox(height: AniMixSpacing.lg),
                                 if (_achievements != null) ...[
-                                  _PublicAchievements(
+                                  AchievementStrip(
                                     unlocked: _achievements!,
-                                    ownerName:
-                                        user['display_name']?.toString() ??
-                                        'Пользователь',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      CupertinoPageRoute<void>(
+                                        builder: (_) => AchievementsScreen(
+                                          unlocked: _achievements,
+                                          ownerName:
+                                              user['display_name']
+                                                  ?.toString() ??
+                                              'Пользователь',
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: AniMixSpacing.lg),
                                 ],
@@ -701,73 +710,6 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                 builder: (_) => AnimeDetailScreen(animeId: id),
               ),
             ),
-    );
-  }
-}
-
-/// Another user's achievements as a compact strip that opens the full list.
-class _PublicAchievements extends StatelessWidget {
-  const _PublicAchievements({required this.unlocked, required this.ownerName});
-
-  final Map<String, DateTime> unlocked;
-  final String ownerName;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final earned = [
-      for (var i = 0; i < achievements.length; i++)
-        if (unlocked.containsKey(achievements[i].id)) i,
-    ];
-    return AniMixSurface(
-      onTap: () => Navigator.push(
-        context,
-        CupertinoPageRoute<void>(
-          builder: (_) =>
-              AchievementsScreen(unlocked: unlocked, ownerName: ownerName),
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Достижения',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-              ),
-              Text(
-                '${earned.length} из ${achievements.length}',
-                style: TextStyle(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                CupertinoIcons.chevron_forward,
-                size: 15,
-                color: scheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (earned.isEmpty)
-            Text(
-              'Пока ничего не открыто.',
-              style: TextStyle(color: scheme.onSurfaceVariant),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final index in earned.take(12))
-                  AchievementIcon(index: index, size: 44),
-              ],
-            ),
-        ],
-      ),
     );
   }
 }

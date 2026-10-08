@@ -130,7 +130,8 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Моя медиатека'), findsOneWidget);
+    expect(find.text('Медиатека'), findsOneWidget);
+    expect(find.text('116'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Ритм просмотра'), findsOneWidget);

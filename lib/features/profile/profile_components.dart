@@ -1,11 +1,12 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../core/achievement_service.dart';
 import '../../core/animix_theme.dart';
 import '../../models/shikimori_user.dart';
 import '../../widgets/animix_surface.dart';
+import 'achievements_screen.dart';
 
 class ProfileHeader extends StatelessWidget {
   const ProfileHeader({
@@ -42,13 +43,11 @@ class ProfileHeader extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            height: MediaQuery.sizeOf(context).width >= 700 ? 250 : 220,
+            height: MediaQuery.sizeOf(context).width >= 700 ? 210 : 168,
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             clipBehavior: Clip.antiAlias,
             decoration: const BoxDecoration(
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(AniMixRadius.xl),
-                bottomRight: Radius.circular(AniMixRadius.xl),
-              ),
+              borderRadius: BorderRadius.all(Radius.circular(AniMixRadius.xl)),
             ),
             child: Stack(
               fit: StackFit.expand,
@@ -110,7 +109,8 @@ class ProfileHeader extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: -50,
+            left: 32,
+            bottom: -42,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -125,14 +125,14 @@ class ProfileHeader extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       onTap: editing && !coverBusy ? onChangeAvatar : null,
                       child: Container(
-                        width: 104,
-                        height: 104,
+                        width: 92,
+                        height: 92,
                         decoration: BoxDecoration(
                           color: Theme.of(context).scaffoldBackgroundColor,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: Theme.of(context).scaffoldBackgroundColor,
-                            width: 5,
+                            width: 4,
                           ),
                           boxShadow: const [
                             BoxShadow(
@@ -194,70 +194,85 @@ class ProfileHeader extends StatelessWidget {
           ),
         ],
       ),
-      const SizedBox(height: 68),
-      if (editing)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: TextField(
-              controller: nameController,
-              autofocus: true,
-              maxLength: 32,
-              textAlign: TextAlign.center,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'Имя в AniMix',
-                hintText: 'Как тебя видят другие',
-                counterText: '',
-                prefixIcon: Icon(CupertinoIcons.person_fill),
+      // Name sits beside the overlapping avatar, left-aligned like a social
+      // profile, instead of a centered stack under the cover.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(32 + 92 + 14, 10, 20, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!editing)
+              Text(
+                user.nickname,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 22,
+                  height: 1.15,
+                  letterSpacing: -.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ),
-        )
-      else
-        Text(
-          user.nickname,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 26,
-            letterSpacing: -.7,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      if (editing && onDeleteAvatar != null) ...[
-        const SizedBox(height: 6),
-        TextButton.icon(
-          onPressed: coverBusy ? null : onDeleteAvatar,
-          icon: const Icon(CupertinoIcons.delete, size: 16),
-          label: const Text('Удалить аватар'),
-        ),
-      ],
-      const SizedBox(height: 7),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (_onlineText(user.lastOnlineAt, isAniMix: user.isAniMix) ==
-              'сейчас онлайн') ...[
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: CupertinoColors.systemGreen,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 7),
+            const SizedBox(height: 4),
+            _onlineRow(context),
           ],
-          Text(
-            _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        ),
+      ),
+      if (editing) ...[
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: TextField(
+            controller: nameController,
+            autofocus: true,
+            maxLength: 32,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(
+              labelText: 'Имя в AniMix',
+              hintText: 'Как тебя видят другие',
+              counterText: '',
+              prefixIcon: Icon(CupertinoIcons.person_fill),
             ),
           ),
-        ],
+        ),
+        if (onDeleteAvatar != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12, top: 4),
+              child: TextButton.icon(
+                onPressed: coverBusy ? null : onDeleteAvatar,
+                icon: const Icon(CupertinoIcons.delete, size: 16),
+                label: const Text('Удалить аватар'),
+              ),
+            ),
+          ),
+      ],
+      const SizedBox(height: 8),
+    ],
+  );
+
+  Widget _onlineRow(BuildContext context) => Row(
+    children: [
+      if (_onlineText(user.lastOnlineAt, isAniMix: user.isAniMix) ==
+          'сейчас онлайн') ...[
+        Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+            color: CupertinoColors.systemGreen,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 7),
+      ],
+      Text(
+        _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ],
   );
@@ -370,6 +385,8 @@ class _ProfileGradient extends StatelessWidget {
 
 typedef _LibraryStat = ({String label, int value, Color color});
 
+/// Library at a glance: three headline numbers, one proportional bar and a
+/// two-column legend. Replaces a tall donut chart that was mostly empty space.
 class ProfileLibraryOverview extends StatelessWidget {
   const ProfileLibraryOverview({
     required this.user,
@@ -381,6 +398,7 @@ class ProfileLibraryOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final stats = <_LibraryStat>[
       (
         label: ownProfile ? 'Смотрю' : 'Смотрит',
@@ -398,51 +416,93 @@ class ProfileLibraryOverview extends StatelessWidget {
       ),
     ];
     final total = stats.fold<int>(0, (sum, item) => sum + item.value);
-    final completion = total == 0 ? 0.0 : user.watched / total;
+    final completion = total == 0 ? 0 : (user.watched / total * 100).round();
     return AniMixSurface(
-      elevated: true,
-      padding: const EdgeInsets.all(AniMixSpacing.lg),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AniMixSectionHeader(
-            title: ownProfile ? 'Моя медиатека' : 'Медиатека',
-            subtitle: !ownProfile
-                ? 'Коллекция пользователя AniMix'
-                : user.isAniMix
-                ? 'Статистика вашей библиотеки AniMix'
-                : 'Живой срез коллекции Shikimori',
-            icon: CupertinoIcons.chart_pie_fill,
+          Text(
+            ownProfile ? 'Медиатека' : 'Медиатека пользователя',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: AniMixSpacing.xl),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _Headline(value: '$total', label: 'в коллекции'),
+              _Headline(value: '$completion%', label: 'завершено'),
+              _Headline(value: '${user.scores}', label: 'оценено'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Semantics(
+            label: 'Всего $total аниме, завершено ${user.watched}',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: SizedBox(
+                height: 8,
+                child: total == 0
+                    ? ColoredBox(color: scheme.surfaceContainerHigh)
+                    : Row(
+                        children: [
+                          for (final stat in stats.where((s) => s.value > 0))
+                            Expanded(
+                              flex: stat.value,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 2),
+                                child: ColoredBox(color: stat.color),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final chart = _LibraryDonut(
-                stats: stats,
-                total: total,
-                completed: user.watched,
-              );
-              final legend = _LibraryLegend(
-                stats: stats,
-                total: total,
-                scoreCount: user.scores,
-                completion: completion,
-              );
-              if (constraints.maxWidth >= 620) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(width: 230, child: chart),
-                    const SizedBox(width: 34),
-                    Expanded(child: legend),
-                  ],
-                );
-              }
-              return Column(
+              final columns = constraints.maxWidth >= 520 ? 3 : 2;
+              final width =
+                  (constraints.maxWidth - (columns - 1) * 12) / columns;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 10,
                 children: [
-                  chart,
-                  const SizedBox(height: AniMixSpacing.xl),
-                  legend,
+                  for (final stat in stats)
+                    SizedBox(
+                      width: width,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: stat.color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              stat.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${stat.value}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               );
             },
@@ -453,266 +513,36 @@ class ProfileLibraryOverview extends StatelessWidget {
   }
 }
 
-class _LibraryDonut extends StatelessWidget {
-  const _LibraryDonut({
-    required this.stats,
-    required this.total,
-    required this.completed,
-  });
-  final List<_LibraryStat> stats;
-  final int total;
-  final int completed;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: 'Всего $total аниме, завершено $completed',
-    child: SizedBox(
-      width: 210,
-      height: 210,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          TweenAnimationBuilder<double>(
-            duration: const Duration(milliseconds: 720),
-            curve: Curves.easeOutCubic,
-            tween: Tween(begin: 0, end: 1),
-            builder: (_, progress, _) => CustomPaint(
-              size: const Size.square(210),
-              painter: _DonutPainter(
-                stats: stats,
-                total: total,
-                progress: progress,
-                trackColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-              ),
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '$total',
-                style: const TextStyle(
-                  fontSize: 38,
-                  height: 1,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -1.5,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'в коллекции',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _DonutPainter extends CustomPainter {
-  const _DonutPainter({
-    required this.stats,
-    required this.total,
-    required this.progress,
-    required this.trackColor,
-  });
-  final List<_LibraryStat> stats;
-  final int total;
-  final double progress;
-  final Color trackColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    const stroke = 16.0;
-    final arcRect = rect.deflate(stroke / 2);
-    final track = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = trackColor;
-    canvas.drawArc(arcRect, 0, math.pi * 2, false, track);
-    if (total <= 0) return;
-    var start = -math.pi / 2;
-    const gap = .035;
-    for (final stat in stats.where((item) => item.value > 0)) {
-      final sweep = math.pi * 2 * stat.value / total * progress;
-      final paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..strokeCap = StrokeCap.round
-        ..color = stat.color;
-      canvas.drawArc(
-        arcRect,
-        start + gap,
-        math.max(0, sweep - gap * 2),
-        false,
-        paint,
-      );
-      start += sweep;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DonutPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.total != total ||
-      oldDelegate.trackColor != trackColor;
-}
-
-class _LibraryLegend extends StatelessWidget {
-  const _LibraryLegend({
-    required this.stats,
-    required this.total,
-    required this.scoreCount,
-    required this.completion,
-  });
-  final List<_LibraryStat> stats;
-  final int total;
-  final int scoreCount;
-  final double completion;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      for (final stat in stats) ...[
-        _LibraryStatRow(stat: stat, total: total),
-        if (stat != stats.last) const SizedBox(height: 12),
-      ],
-      const SizedBox(height: 20),
-      Row(
-        children: [
-          Expanded(
-            child: _InsightPill(
-              value: '${(completion * 100).round()}%',
-              label: 'завершено',
-              icon: CupertinoIcons.check_mark_circled_solid,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _InsightPill(
-              value: '$scoreCount',
-              label: 'оценено',
-              icon: CupertinoIcons.star_fill,
-            ),
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
-class _LibraryStatRow extends StatelessWidget {
-  const _LibraryStatRow({required this.stat, required this.total});
-  final _LibraryStat stat;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final fraction = total == 0 ? 0.0 : stat.value / total;
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 28,
-          decoration: BoxDecoration(
-            color: stat.color,
-            borderRadius: BorderRadius.circular(99),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      stat.label,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Text(
-                    '${stat.value}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: fraction,
-                  minHeight: 4,
-                  color: stat.color,
-                  backgroundColor: stat.color.withValues(alpha: .12),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InsightPill extends StatelessWidget {
-  const _InsightPill({
-    required this.value,
-    required this.label,
-    required this.icon,
-  });
+class _Headline extends StatelessWidget {
+  const _Headline({required this.value, required this.label});
   final String value;
   final String label;
-  final IconData icon;
 
   @override
-  Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: accent, size: 18),
-          const SizedBox(width: 9),
-          Flexible(
-            child: RichText(
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              text: TextSpan(
-                style: DefaultTextStyle.of(context).style,
-                children: [
-                  TextSpan(
-                    text: '$value ',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  TextSpan(
-                    text: label,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+  Widget build(BuildContext context) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 24,
+            height: 1.1,
+            letterSpacing: -.6,
+            fontWeight: FontWeight.w700,
           ),
-        ],
-      ),
-    );
-  }
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class ProfileInfoCard extends StatelessWidget {
@@ -828,5 +658,80 @@ class ProfileInfoCard extends StatelessWidget {
     return date == null
         ? value
         : '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+}
+
+/// Achievements as a compact strip of earned badges that opens the gallery.
+/// Used on the own profile and on other users' public profiles.
+class AchievementStrip extends StatelessWidget {
+  const AchievementStrip({
+    required this.unlocked,
+    required this.onTap,
+    this.caption,
+    super.key,
+  });
+
+  final Map<String, DateTime> unlocked;
+  final VoidCallback onTap;
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final earned = [
+      for (var i = 0; i < achievements.length; i++)
+        if (unlocked.containsKey(achievements[i].id)) i,
+    ];
+    return AniMixSurface(
+      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Достижения',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                '${earned.length} из ${achievements.length}',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                size: 15,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+          if (caption != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              caption!,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (earned.isEmpty)
+            Text(
+              'Пока ничего не открыто.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final index in earned.take(12))
+                  AchievementIcon(index: index, size: 44),
+              ],
+            ),
+        ],
+      ),
+    );
   }
 }
