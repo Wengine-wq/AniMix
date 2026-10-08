@@ -223,8 +223,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: _AnimeSection(
           title: 'Сейчас на экранах',
           subtitle: 'Онгоинги',
-          icon: CupertinoIcons.tv_fill,
-          tint: CupertinoColors.systemOrange,
           items: data.ongoing,
         ),
       ),
@@ -233,8 +231,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: _AnimeSection(
           title: 'Новинки сезона',
           subtitle: 'Свежее',
-          icon: CupertinoIcons.sparkles,
-          tint: CupertinoColors.systemGreen,
           items: data.announced,
         ),
       ),
@@ -243,8 +239,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: _AnimeSection(
           title: 'Популярное',
           subtitle: 'Топ на Shikimori',
-          icon: CupertinoIcons.flame_fill,
-          tint: CupertinoColors.systemPink,
           items: data.popular,
         ),
       ),
@@ -253,8 +247,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: _AnimeSection(
           title: 'Топ по рейтингу',
           subtitle: 'Лучшие оценки',
-          icon: CupertinoIcons.star_fill,
-          tint: const Color(0xFFFFC638),
           items: data.topRated,
         ),
       ),
@@ -308,10 +300,10 @@ class _DashboardHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 31,
+                      fontSize: 28,
                       height: 1.05,
-                      letterSpacing: -.9,
-                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.8,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -359,50 +351,56 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final desktop = constraints.maxWidth >= 760;
-      return SizedBox(
-        height: desktop ? 350 : 228,
-        child: Stack(
-          children: [
-            PageView.builder(
-              controller: _controller,
-              physics: const BouncingScrollPhysics(),
-              itemCount: widget.items.length,
-              itemBuilder: (context, index) => AnimatedBuilder(
-                animation: _controller,
-                child: _HeroCard(anime: widget.items[index]),
-                builder: (context, child) {
-                  final page = _controller.hasClients
-                      ? (_controller.page ?? _controller.initialPage.toDouble())
-                      : _controller.initialPage.toDouble();
-                  final distance = (page - index).clamp(-1.0, 1.0);
-                  return Transform.scale(
-                    scale: 1 - distance.abs() * .025,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: _HeroMotionScope(
-                            pageOffset: distance,
-                            child: child!,
+      return Column(
+        children: [
+          SizedBox(
+            height: desktop ? 380 : 300,
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _controller,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: widget.items.length,
+                  itemBuilder: (context, index) => AnimatedBuilder(
+                    animation: _controller,
+                    child: _HeroCard(anime: widget.items[index]),
+                    builder: (context, child) {
+                      final page = _controller.hasClients
+                          ? (_controller.page ??
+                                _controller.initialPage.toDouble())
+                          : _controller.initialPage.toDouble();
+                      final distance = (page - index).clamp(-1.0, 1.0);
+                      return Transform.scale(
+                        scale: 1 - distance.abs() * .025,
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 760),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              child: _HeroMotionScope(
+                                pageOffset: distance,
+                                child: child!,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-            Positioned(
-              top: 14,
-              right: 28,
-              child: _CarouselSignal(
-                controller: _controller,
-                itemCount: widget.items.length,
-              ),
+          ),
+          if (widget.items.length > 1) ...[
+            const SizedBox(height: AniMixSpacing.sm),
+            _CarouselSignal(
+              controller: _controller,
+              itemCount: widget.items.length,
             ),
           ],
-        ),
+        ],
       );
     },
   );
@@ -434,30 +432,31 @@ class _CarouselSignal extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     label: 'Позиция в подборке',
     child: IgnorePointer(
-      child: Container(
-        width: 72,
-        height: 4,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: .34),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        alignment: Alignment.centerLeft,
-        child: AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) {
-            final page = controller.hasClients
-                ? (controller.page ?? controller.initialPage.toDouble())
-                : controller.initialPage.toDouble();
-            final progress = itemCount <= 1
-                ? 1.0
-                : ((page + 1) / itemCount).clamp(0.0, 1.0);
-            return FractionallySizedBox(
-              widthFactor: progress,
-              child: ColoredBox(color: Theme.of(context).colorScheme.primary),
-            );
-          },
-        ),
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final page = controller.hasClients
+              ? (controller.page ?? controller.initialPage.toDouble())
+              : controller.initialPage.toDouble();
+          final color = Theme.of(context).colorScheme.onSurface;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < itemCount; i++)
+                Container(
+                  width: 6 + 10 * (1 - (page - i).abs()).clamp(0.0, 1.0),
+                  height: 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: color.withValues(
+                      alpha: .22 + .58 * (1 - (page - i).abs()).clamp(0.0, 1.0),
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     ),
   );
@@ -470,106 +469,125 @@ class _HeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pageOffset = _HeroMotionScope.of(context);
-    return GestureDetector(
-      onTap: () => _openAnime(context, anime.id),
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x47000000),
-              blurRadius: 22,
-              offset: Offset(0, 9),
-            ),
-          ],
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final imageHeight = constraints.maxHeight * .64;
-            return Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: imageHeight,
-                  child: Transform.translate(
-                    offset: Offset(-pageOffset * 14, 0),
-                    child: Transform.scale(
-                      scale: 1.035,
-                      child: SmartAnimePoster(
-                        animeId: anime.id,
-                        imageUrl: anime.imageUrl,
-                        title: anime.name ?? '',
-                        russianTitle: anime.russian,
-                        alignment: Alignment.topCenter,
-                      ),
-                    ),
+    final score = anime.score ?? 0;
+    final meta = [
+      if (anime.status == 'ongoing') 'Выходит',
+      if (anime.year != null) '${anime.year}',
+      if (anime.genres.isNotEmpty) anime.genres.take(2).join(', '),
+    ].join(' · ');
+    return Semantics(
+      button: true,
+      label: anime.russian ?? anime.name,
+      child: GestureDetector(
+        onTap: () => _openAnime(context, anime.id),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AniMixRadius.xl),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Transform.translate(
+                offset: Offset(-pageOffset * 14, 0),
+                child: Transform.scale(
+                  scale: 1.035,
+                  child: SmartAnimePoster(
+                    animeId: anime.id,
+                    imageUrl: anime.imageUrl,
+                    title: anime.name ?? '',
+                    russianTitle: anime.russian,
+                    alignment: const Alignment(0, -.35),
                   ),
                 ),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xF5000000),
-                          Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: .52),
+              ),
+              // A single soft scrim keeps the title legible over any poster.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x00000000), Color(0xD9000000)],
+                    stops: [.35, 1],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 18,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            anime.russian ?? anime.name ?? 'Без названия',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              height: 1.1,
+                              letterSpacing: -.4,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (meta.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              meta,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xCCFFFFFF),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '◉  СЕЙЧАС ВЫХОДИТ',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                anime.russian ?? anime.name ?? 'Без названия',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  height: 1.05,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if ((anime.score ?? 0) > 0)
-                          AniMixMetadataPill(
-                            label: '★ ${anime.score!.toStringAsFixed(1)}',
-                          ),
-                        const SizedBox(width: 8),
-                        const Icon(
-                          CupertinoIcons.chevron_right,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
+                    if (score > 0) ...[
+                      const SizedBox(width: 12),
+                      _ScoreBadge(score: score, large: true),
+                    ],
+                  ],
                 ),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Compact rating mark used on posters: no fill colour beyond a dark veil.
+class _ScoreBadge extends StatelessWidget {
+  const _ScoreBadge({required this.score, this.large = false});
+  final double score;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: EdgeInsets.symmetric(
+      horizontal: large ? 9 : 6,
+      vertical: large ? 5 : 3,
+    ),
+    decoration: BoxDecoration(
+      color: const Color(0x99000000),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      '★ ${score.toStringAsFixed(1)}',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: large ? 13 : 10.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 }
 
 class _DiscoveryStrip extends StatelessWidget {
@@ -582,9 +600,8 @@ class _DiscoveryStrip extends StatelessWidget {
     final items = [
       _Shortcut(
         title: 'Каталог',
-        subtitle: 'Фильтры и поиск',
+        tooltip: 'Фильтры и поиск',
         icon: CupertinoIcons.slider_horizontal_3,
-        colors: const [Color(0x3D3B82F6), Color(0x1F06B6D4)],
         onTap: () => showModalBottomSheet<void>(
           context: context,
           useSafeArea: true,
@@ -598,9 +615,8 @@ class _DiscoveryStrip extends StatelessWidget {
       ),
       _Shortcut(
         title: 'Для вас',
-        subtitle: 'Умная подборка',
+        tooltip: 'Умная подборка',
         icon: CupertinoIcons.sparkles,
-        colors: const [Color(0x3DF43F5E), Color(0x1F8B5CF6)],
         onTap: () => Navigator.push(
           context,
           CupertinoPageRoute<void>(
@@ -611,17 +627,15 @@ class _DiscoveryStrip extends StatelessWidget {
       if (best != null)
         _Shortcut(
           title: 'Лучшее',
-          subtitle: 'Высокий рейтинг',
+          tooltip: 'Высокий рейтинг',
           icon: CupertinoIcons.rosette,
-          colors: const [Color(0x40FBBF24), Color(0x1FF97316)],
           onTap: () => _openAnime(context, best!.id),
         ),
       if (random != null)
         _Shortcut(
           title: 'Мне повезёт',
-          subtitle: 'Случайный тайтл',
+          tooltip: 'Случайный тайтл',
           icon: CupertinoIcons.shuffle,
-          colors: const [Color(0x380ABF78), Color(0x1F06B6D4)],
           onTap: () => _openAnime(context, random!.id),
         ),
     ];
@@ -630,27 +644,22 @@ class _DiscoveryStrip extends StatelessWidget {
         constraints: const BoxConstraints(
           maxWidth: AniMixLayout.contentMaxWidth,
         ),
-        child: Padding(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(
             AniMixLayout.pageInset,
-            AniMixSpacing.xl,
+            AniMixSpacing.lg,
             AniMixLayout.pageInset,
-            AniMixSpacing.xs,
+            0,
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 760 ? 4 : 2;
-              final width =
-                  (constraints.maxWidth - (columns - 1) * AniMixSpacing.md) /
-                  columns;
-              return Wrap(
-                spacing: AniMixSpacing.md,
-                runSpacing: AniMixSpacing.md,
-                children: items
-                    .map((item) => SizedBox(width: width, child: item))
-                    .toList(),
-              );
-            },
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(width: AniMixSpacing.xs),
+                items[i],
+              ],
+            ],
           ),
         ),
       ),
@@ -661,90 +670,62 @@ class _DiscoveryStrip extends StatelessWidget {
 class _Shortcut extends StatelessWidget {
   const _Shortcut({
     required this.title,
-    required this.subtitle,
+    required this.tooltip,
     required this.icon,
-    required this.colors,
     required this.onTap,
   });
   final String title;
-  final String subtitle;
+  final String tooltip;
   final IconData icon;
-  final List<Color> colors;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(AniMixSpacing.md),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: colors),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AniMixTheme.divider),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                color: Color(0x24FFFFFF),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 18),
-            ),
-            const SizedBox(width: AniMixSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: scheme.surfaceContainerHigh,
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 16, 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: AniMixSpacing.xxs),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _AnimeSection extends StatelessWidget {
   const _AnimeSection({
     required this.title,
     required this.subtitle,
-    required this.icon,
-    required this.tint,
     required this.items,
   });
   final String title;
   final String subtitle;
-  final IconData icon;
-  final Color tint;
   final List<ShikimoriAnime> items;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 36),
+    padding: const EdgeInsets.only(top: AniMixSpacing.xl),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -757,26 +738,22 @@ class _AnimeSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(
                 horizontal: AniMixLayout.pageInset,
               ),
-              child: AniMixSectionHeader(
-                title: title,
-                subtitle: subtitle,
-                icon: icon,
-              ),
+              child: AniMixSectionHeader(title: title, subtitle: subtitle),
             ),
           ),
         ),
-        const SizedBox(height: AniMixSpacing.md),
+        const SizedBox(height: AniMixSpacing.sm),
         SizedBox(
-          height: 282,
+          height: 268,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(
               horizontal: AniMixLayout.pageInset,
-              vertical: 6,
+              vertical: 4,
             ),
             itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: AniMixSpacing.md),
+            separatorBuilder: (_, _) => const SizedBox(width: AniMixSpacing.sm),
             itemBuilder: (context, index) => _PosterCard(anime: items[index]),
           ),
         ),
@@ -791,76 +768,74 @@ class _PosterCard extends StatelessWidget {
   final bool flexible;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () => _openAnime(context, anime.id),
-    child: SizedBox(
-      width: flexible ? null : 150,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: SmartAnimePoster(
-                      animeId: anime.id,
-                      imageUrl: anime.imageUrl,
-                      title: anime.name ?? '',
-                      russianTitle: anime.russian,
+  Widget build(BuildContext context) {
+    final meta = [
+      if (anime.year != null) '${anime.year}',
+      anime.status == 'ongoing'
+          ? 'выходит'
+          : (anime.kind ?? 'tv').toUpperCase(),
+    ].join(' · ');
+    return GestureDetector(
+      onTap: () => _openAnime(context, anime.id),
+      child: SizedBox(
+        width: flexible ? null : 144,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AniMixRadius.md),
+                      child: SmartAnimePoster(
+                        animeId: anime.id,
+                        imageUrl: anime.imageUrl,
+                        title: anime.name ?? '',
+                        russianTitle: anime.russian,
+                      ),
                     ),
                   ),
+                  if ((anime.score ?? 0) > 0)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: _ScoreBadge(score: anime.score!),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              // Reserve two title lines so posters in a row stay aligned.
+              height:
+                  MediaQuery.textScalerOf(context).scale(13.5) * 1.2 * 2 + 1,
+              child: Text(
+                anime.russian ?? anime.name ?? 'Без названия',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
                 ),
-                if ((anime.score ?? 0) > 0)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xB8000000),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '★ ${anime.score!.toStringAsFixed(1)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            anime.russian ?? anime.name ?? 'Без названия',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.15,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 2),
+            Text(
+              meta,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            anime.status == 'ongoing' ? 'TV · выходит' : 'TV',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 10,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _AllAnimeGrid extends StatelessWidget {
@@ -899,7 +874,6 @@ class _AllAnimeGrid extends StatelessWidget {
                         child: AniMixSectionHeader(
                           title: 'Все аниме',
                           subtitle: '${items.length} загружено',
-                          icon: CupertinoIcons.rectangle_stack_fill,
                         ),
                       ),
                       _LayoutSwitch(
@@ -913,7 +887,7 @@ class _AllAnimeGrid extends StatelessWidget {
                 if (list)
                   SliverList.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 9),
+                    separatorBuilder: (_, _) => const SizedBox(height: 4),
                     itemBuilder: (context, index) =>
                         _AnimeListRow(items[index]),
                   )
@@ -974,15 +948,10 @@ class _LayoutSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(4),
+    padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(
-        color: Theme.of(
-          context,
-        ).colorScheme.outlineVariant.withValues(alpha: .55),
-      ),
+      borderRadius: BorderRadius.circular(12),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -1028,15 +997,15 @@ class _LayoutButton extends StatelessWidget {
         height: 34,
         decoration: BoxDecoration(
           color: selected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: .22)
+              ? Theme.of(context).colorScheme.surface
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(9),
         ),
         child: Icon(
           icon,
-          size: 17,
+          size: 16,
           color: selected
-              ? Theme.of(context).colorScheme.primary
+              ? Theme.of(context).colorScheme.onSurface
               : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
@@ -1049,72 +1018,75 @@ class _AnimeListRow extends StatelessWidget {
   final ShikimoriAnime anime;
 
   @override
-  Widget build(BuildContext context) => AniMixSurface(
-    radius: 20,
-    onTap: () => _openAnime(context, anime.id),
-    padding: const EdgeInsets.all(10),
-    child: Row(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: SizedBox(
-            width: 64,
-            height: 94,
-            child: SmartAnimePoster(
-              animeId: anime.id,
-              imageUrl: anime.imageUrl,
-              title: anime.name ?? '',
-              russianTitle: anime.russian,
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                anime.russian ?? anime.name ?? 'Без названия',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              if (anime.name?.isNotEmpty == true) ...[
-                const SizedBox(height: 5),
-                Text(
-                  anime.name!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final meta = [
+      if ((anime.score ?? 0) > 0) '★ ${anime.score!.toStringAsFixed(1)}',
+      anime.status == 'ongoing' ? 'Выходит' : 'Вышло',
+      if (anime.year != null) '${anime.year}',
+    ].join('  ·  ');
+    return InkWell(
+      borderRadius: BorderRadius.circular(AniMixRadius.md),
+      onTap: () => _openAnime(context, anime.id),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AniMixRadius.sm + 2),
+              child: SizedBox(
+                width: 60,
+                height: 88,
+                child: SmartAnimePoster(
+                  animeId: anime.id,
+                  imageUrl: anime.imageUrl,
+                  title: anime.name ?? '',
+                  russianTitle: anime.russian,
                 ),
-              ],
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 7,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if ((anime.score ?? 0) > 0)
-                    AniMixMetadataPill(
-                      label: '★ ${anime.score!.toStringAsFixed(1)}',
+                  Text(
+                    anime.russian ?? anime.name ?? 'Без названия',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                  AniMixMetadataPill(
-                    label: anime.status == 'ongoing' ? 'Выходит' : 'Вышло',
+                  ),
+                  if (anime.name?.isNotEmpty == true) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      anime.name!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    meta,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        Icon(
-          CupertinoIcons.chevron_right,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          size: 15,
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 void _openAnime(BuildContext context, int id) => Navigator.push(
