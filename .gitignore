@@ -54,3 +54,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 test_preview/out/
+tool/promo/frames/
+tool/promo/stills/
+tool/promo/out/
