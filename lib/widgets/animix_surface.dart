@@ -241,6 +241,7 @@ class AniMixSectionHeader extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  /// Kept for API compatibility; quiet headers are text-only.
   final IconData? icon;
   final Widget? trailing;
 
@@ -248,14 +249,6 @@ class AniMixSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      if (icon != null) ...[
-        Icon(
-          icon,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          size: 20,
-        ),
-        const SizedBox(width: AniMixSpacing.sm),
-      ],
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

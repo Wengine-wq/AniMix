@@ -46,8 +46,8 @@ class ProfileHeader extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: const BoxDecoration(
               borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(32),
-                bottomRight: Radius.circular(32),
+                bottomLeft: Radius.circular(AniMixRadius.xl),
+                bottomRight: Radius.circular(AniMixRadius.xl),
               ),
             ),
             child: Stack(
@@ -70,18 +70,19 @@ class ProfileHeader extends StatelessWidget {
                   )
                 else
                   const _ProfileGradient(),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: .04),
-                        Colors.black.withValues(alpha: .72),
-                      ],
+                if (coverPath != null || user.bannerUrl?.isNotEmpty == true)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: .04),
+                          Colors.black.withValues(alpha: .72),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 if (editing)
                   Positioned(
                     right: 18,
@@ -135,7 +136,7 @@ class ProfileHeader extends StatelessWidget {
                           ),
                           boxShadow: const [
                             BoxShadow(
-                              color: Color(0x42000000),
+                              color: Color(0x26000000),
                               blurRadius: 22,
                               offset: Offset(0, 9),
                             ),
@@ -219,9 +220,9 @@ class ProfileHeader extends StatelessWidget {
           user.nickname,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 29,
+            fontSize: 26,
             letterSpacing: -.7,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
           ),
         ),
       if (editing && onDeleteAvatar != null) ...[
@@ -236,15 +237,18 @@ class ProfileHeader extends StatelessWidget {
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: CupertinoColors.systemGreen,
-              shape: BoxShape.circle,
+          if (_onlineText(user.lastOnlineAt, isAniMix: user.isAniMix) ==
+              'сейчас онлайн') ...[
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                color: CupertinoColors.systemGreen,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
-          const SizedBox(width: 7),
+            const SizedBox(width: 7),
+          ],
           Text(
             _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
             style: TextStyle(
@@ -338,65 +342,30 @@ class _ProfileMediaButton extends StatelessWidget {
   );
 }
 
+/// Default cover when the user has none: a quiet tonal wash rather than a
+/// loud gradient, so the avatar and name carry the header.
 class _ProfileGradient extends StatelessWidget {
   const _ProfileGradient();
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.lerp(accent, const Color(0xFF0A1020), .38)!,
-            const Color(0xFF3B2C76),
-            Color.lerp(accent, const Color(0xFF09090C), .78)!,
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: .18),
+              scheme.surfaceContainerHigh,
+            ),
+            scheme.surfaceContainer,
           ],
         ),
       ),
-      child: CustomPaint(painter: _BackdropOrbitsPainter(accent)),
     );
   }
-}
-
-class _BackdropOrbitsPainter extends CustomPainter {
-  const _BackdropOrbitsPainter(this.accent);
-  final Color accent;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final line = Paint()
-      ..color = Colors.white.withValues(alpha: .10)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    final glow = Paint()
-      ..shader =
-          RadialGradient(
-            colors: [accent.withValues(alpha: .30), Colors.transparent],
-          ).createShader(
-            Rect.fromCircle(
-              center: Offset(size.width * .18, size.height * .16),
-              radius: size.width * .34,
-            ),
-          );
-    canvas.drawRect(Offset.zero & size, glow);
-    for (final factor in [.34, .52, .74]) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(size.width * .76, size.height * .28),
-          width: size.width * factor,
-          height: size.height * factor,
-        ),
-        line,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_BackdropOrbitsPainter oldDelegate) =>
-      oldDelegate.accent != accent;
 }
 
 typedef _LibraryStat = ({String label, int value, Color color});
@@ -525,7 +494,7 @@ class _LibraryDonut extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 38,
                   height: 1,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: -1.5,
                 ),
               ),
@@ -673,7 +642,7 @@ class _LibraryStatRow extends StatelessWidget {
                   ),
                   Text(
                     '${stat.value}',
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -727,7 +696,7 @@ class _InsightPill extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: '$value ',
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   TextSpan(
                     text: label,
