@@ -1,3 +1,4 @@
+// ignore_for_file: invalid_use_of_visible_for_testing_member
 // Visual previews of key screens for design review. Not part of the regular
 // suite (lives outside test/). Run:
 //   flutter test test_preview --update-goldens
