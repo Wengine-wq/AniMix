@@ -43,6 +43,47 @@ enum AniMixThemeStyle {
   final String description;
 }
 
+/// One download quality for the whole app, so episodes are not asked about
+/// one by one. [height] is the target picture height; `null` means "ask".
+enum AniMixDownloadQuality {
+  ask('Спрашивать каждый раз', 'Выбор перед каждой загрузкой', null),
+  best('Лучшее доступное', 'Максимальное качество источника', 100000),
+  p1080('1080p', 'Если нет — ближайшее ниже', 1080),
+  p720('720p', 'Баланс качества и размера', 720),
+  p480('480p', 'Экономит место на устройстве', 480),
+  smallest('Минимальное', 'Самые маленькие файлы', 0);
+
+  const AniMixDownloadQuality(this.label, this.description, this.height);
+  final String label;
+  final String description;
+  final int? height;
+
+  /// Picks a source label from [labels] for this preference. Labels carry
+  /// their height (`720p`), `Авто` is adaptive. Returns null for [ask].
+  String? pick(Iterable<String> labels) {
+    final target = height;
+    if (target == null) return null;
+    int rank(String label) =>
+        int.tryParse(RegExp(r'\d+').firstMatch(label)?.group(0) ?? '') ?? 0;
+    final sorted = labels.toList()..sort((a, b) => rank(b).compareTo(rank(a)));
+    if (sorted.isEmpty) return null;
+    final numeric = sorted.where((label) => rank(label) > 0).toList();
+    if (numeric.isEmpty) return sorted.first;
+    if (this == smallest) return numeric.last;
+    for (final label in numeric) {
+      if (rank(label) <= target) return label;
+    }
+    return numeric.last;
+  }
+
+  static AniMixDownloadQuality forHeight(int height) {
+    if (height >= 1080) return p1080;
+    if (height >= 720) return p720;
+    if (height > 0) return p480;
+    return best;
+  }
+}
+
 class AppSettingsController extends ChangeNotifier {
   AppSettingsController._();
 
@@ -56,6 +97,7 @@ class AppSettingsController extends ChangeNotifier {
   static const _autoSkipOpeningsKey = 'watch_auto_skip_openings_v1';
   static const _autoPlayNextEpisodeKey = 'watch_auto_play_next_episode_v1';
   static const _preferredQualityKey = 'watch_preferred_quality_v1';
+  static const _downloadQualityKey = 'download_quality_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
@@ -66,6 +108,7 @@ class AppSettingsController extends ChangeNotifier {
   bool _autoSkipOpenings = true;
   bool _autoPlayNextEpisode = true;
   String? _preferredQuality;
+  AniMixDownloadQuality _downloadQuality = AniMixDownloadQuality.ask;
   bool _initialized = false;
 
   AniMixAccent get accent => _accent;
@@ -83,6 +126,7 @@ class AppSettingsController extends ChangeNotifier {
   /// Starting the next episode at that quality avoids a second, slow
   /// re-initialisation of the native player right after it opened.
   String? get preferredQuality => _preferredQuality;
+  AniMixDownloadQuality get downloadQuality => _downloadQuality;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -109,6 +153,10 @@ class AppSettingsController extends ChangeNotifier {
     _autoSkipOpenings = prefs.getBool(_autoSkipOpeningsKey) ?? true;
     _autoPlayNextEpisode = prefs.getBool(_autoPlayNextEpisodeKey) ?? true;
     _preferredQuality = prefs.getString(_preferredQualityKey);
+    _downloadQuality = AniMixDownloadQuality.values.firstWhere(
+      (value) => value.name == prefs.getString(_downloadQualityKey),
+      orElse: () => AniMixDownloadQuality.ask,
+    );
     _initialized = true;
     notifyListeners();
   }
@@ -176,6 +224,14 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoPlayNextEpisodeKey, value);
+  }
+
+  Future<void> setDownloadQuality(AniMixDownloadQuality value) async {
+    if (_downloadQuality == value) return;
+    _downloadQuality = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_downloadQualityKey, value.name);
   }
 
   Future<void> setPreferredQuality(String? value) async {

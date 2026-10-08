@@ -43,8 +43,6 @@ class SettingsScreen extends ConsumerWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
             children: [
-              _SettingsHero(accent: settings.accentColor),
-              const SizedBox(height: 30),
               const _SettingsSectionLabel('AniMix'),
               _SettingsGroup(
                 children: [
@@ -211,55 +209,6 @@ class SettingsScreen extends ConsumerWidget {
     // Keep it last: the signal can dispose this settings route immediately.
     await authService.logout();
   }
-}
-
-class _SettingsHero extends StatelessWidget {
-  const _SettingsHero({required this.accent});
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) => AniMixSurface(
-    elevated: true,
-    padding: const EdgeInsets.all(22),
-    child: Row(
-      children: [
-        Container(
-          width: 62,
-          height: 62,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [accent, Color.lerp(accent, Colors.black, .32)!],
-            ),
-            borderRadius: BorderRadius.circular(19),
-          ),
-          alignment: Alignment.center,
-          child: const Text(
-            'A',
-            style: TextStyle(fontSize: 31, fontWeight: FontWeight.w700),
-          ),
-        ),
-        const SizedBox(width: 17),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'AniMix',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Воспроизведение, данные и внешний вид',
-                style: TextStyle(color: AniMixTheme.subtleText, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _AppearanceScreen extends StatelessWidget {
@@ -1276,6 +1225,21 @@ class _DataScreenState extends State<_DataScreen> {
                 ),
               ).then((_) => _reload()),
             ),
+            ListenableBuilder(
+              listenable: AppSettingsController.instance,
+              builder: (context, _) => _SettingsRow(
+                icon: CupertinoIcons.slider_horizontal_3,
+                color: const Color(0xFF35D07F),
+                title: 'Качество загрузок',
+                subtitle: AppSettingsController.instance.downloadQuality.label,
+                onTap: () => Navigator.push(
+                  context,
+                  CupertinoPageRoute<void>(
+                    builder: (_) => const _DownloadQualityScreen(),
+                  ),
+                ),
+              ),
+            ),
             _SettingsRow(
               icon: CupertinoIcons.link_circle_fill,
               color: const Color(0xFF43C6FF),
@@ -1845,7 +1809,11 @@ class _ChoiceRow extends StatelessWidget {
       selected
           ? CupertinoIcons.check_mark_circled_solid
           : CupertinoIcons.circle,
-      color: selected ? Theme.of(context).colorScheme.primary : Colors.white24,
+      color: selected
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant.withValues(alpha: .4),
     ),
   );
 }
@@ -1983,5 +1951,53 @@ class _SettingsIcon extends StatelessWidget {
           : Theme.of(context).colorScheme.onSurfaceVariant,
       size: 21,
     ),
+  );
+}
+
+class _DownloadQualityScreen extends StatelessWidget {
+  const _DownloadQualityScreen();
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: AppSettingsController.instance,
+    builder: (context, _) {
+      final current = AppSettingsController.instance.downloadQuality;
+      return AniMixPage(
+        title: 'Качество загрузок',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          children: [
+            _SettingsGroup(
+              children: [
+                for (final option in AniMixDownloadQuality.values)
+                  _ChoiceRow(
+                    icon: option == AniMixDownloadQuality.ask
+                        ? CupertinoIcons.question_circle
+                        : CupertinoIcons.arrow_down_circle,
+                    title: option.label,
+                    subtitle: option.description,
+                    selected: option == current,
+                    onTap: () => AppSettingsController.instance
+                        .setDownloadQuality(option),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
+              child: Text(
+                'Действует для всех загрузок: из списка серий и из плеера. '
+                'Если нужного качества нет, берётся ближайшее ниже.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
   );
 }

@@ -14,6 +14,7 @@ import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
 import '../../core/config.dart';
 import 'services/anime_skip_service.dart';
+import 'services/episode_action_service.dart';
 import 'watch_storage.dart';
 import 'widgets/player_gesture_layer.dart';
 
@@ -600,24 +601,30 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   }
 
   Future<void> _downloadCurrentQuality() async {
-    final source = _sources[_selectedQuality];
-    if (source == null) return;
+    if (_sources.isEmpty) return;
     final manager = HlsDownloadManager.instance;
     final existing = manager.itemFor(_episodeId);
     if (existing?.state == DownloadState.completed) {
       _showMessage('Эпизод уже скачан');
       return;
     }
-    manager.startDownload(
-      url: source,
+    // Same rule as the episode lists: the quality from Settings, or a
+    // picker when the setting is "ask" (current quality suggested).
+    await EpisodeActionService.chooseAndDownload(
+      context,
+      sources: {
+        for (final entry in _sources.entries)
+          if (!entry.value.startsWith('file:') &&
+              !entry.value.contains('127.0.0.1'))
+            entry.key: entry.value,
+      },
       episodeId: _episodeId,
       animeId: widget.animeId,
       animeTitle: widget.animeTitle ?? widget.episodeTitle,
       episodeName: widget.episodeTitle,
       posterUrl: widget.posterUrl,
-      quality: _selectedQuality,
+      suggestedQuality: _selectedQuality,
     );
-    _showMessage('Загрузка $_selectedQuality началась');
   }
 
   void _showMessage(String message) {

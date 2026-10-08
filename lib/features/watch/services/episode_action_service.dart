@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app_settings.dart';
 import '../../downloads/hls_download_manager.dart';
 import '../kodik_webview_screen.dart';
 
@@ -31,6 +32,9 @@ class EpisodeActionService {
     );
   }
 
+  /// Starts a download using the app-wide quality from Settings → Data. Only
+  /// when that setting is "ask" does a picker appear, and the picker can save
+  /// the choice so the next episodes download without asking.
   static Future<void> chooseAndDownload(
     BuildContext context, {
     required Map<String, String> sources,
@@ -39,61 +43,24 @@ class EpisodeActionService {
     required String episodeName,
     int? animeId,
     String? posterUrl,
+    String? suggestedQuality,
   }) async {
     final entries =
         sources.entries.where((entry) => entry.value.isNotEmpty).toList()
           ..sort((a, b) => _qualityRank(b.key).compareTo(_qualityRank(a.key)));
     if (entries.isEmpty || !context.mounted) return;
 
-    final selected = await showModalBottomSheet<MapEntry<String, String>>(
-      context: context,
-      backgroundColor: const Color(0xFF141419),
-      showDragHandle: true,
-      constraints: const BoxConstraints(maxWidth: 560),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Качество загрузки',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Будет сохранён прямой поток без рекламного плеера.',
-                style: TextStyle(
-                  color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 16),
-              for (final entry in entries)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(
-                      sheetContext,
-                    ).colorScheme.primary.withValues(alpha: 0.16),
-                    child: Icon(
-                      Icons.high_quality_rounded,
-                      color: Theme.of(sheetContext).colorScheme.primary,
-                    ),
-                  ),
-                  title: Text(
-                    entry.key,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(_qualityDescription(entry.key)),
-                  trailing: const Icon(Icons.download_rounded),
-                  onTap: () => Navigator.pop(sheetContext, entry),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final settings = AppSettingsController.instance;
+    final preference = settings.downloadQuality;
+    final preferred = preference.pick(entries.map((entry) => entry.key));
+    MapEntry<String, String>? selected;
+    if (preferred != null) {
+      selected = entries.firstWhere((entry) => entry.key == preferred);
+    } else if (entries.length == 1) {
+      selected = entries.first;
+    } else {
+      selected = await _askQuality(context, entries, suggestedQuality);
+    }
     if (selected == null || !context.mounted) return;
 
     final manager = HlsDownloadManager.instance;
@@ -110,8 +77,81 @@ class EpisodeActionService {
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$episodeName • ${selected.key}: загрузка началась'),
+        content: Text('$episodeName · ${selected.key}: загрузка началась'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  static Future<MapEntry<String, String>?> _askQuality(
+    BuildContext context,
+    List<MapEntry<String, String>> entries,
+    String? suggestedQuality,
+  ) {
+    var remember = false;
+    return showModalBottomSheet<MapEntry<String, String>>(
+      context: context,
+      showDragHandle: true,
+      constraints: const BoxConstraints(maxWidth: 560),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final scheme = Theme.of(sheetContext).colorScheme;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Качество загрузки',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Можно задать один раз в Настройки → Данные и кеш.',
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final entry in entries)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        entry.key,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(_qualityDescription(entry.key)),
+                      trailing: Icon(
+                        entry.key == suggestedQuality
+                            ? Icons.download_for_offline_rounded
+                            : Icons.file_download_outlined,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      onTap: () {
+                        if (remember) {
+                          unawaited(
+                            AppSettingsController.instance.setDownloadQuality(
+                              AniMixDownloadQuality.forHeight(
+                                _qualityRank(entry.key),
+                              ),
+                            ),
+                          );
+                        }
+                        Navigator.pop(sheetContext, entry);
+                      },
+                    ),
+                  const Divider(height: 20),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: remember,
+                    onChanged: (value) => setSheetState(() => remember = value),
+                    title: const Text('Запомнить и больше не спрашивать'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
