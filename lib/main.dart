@@ -21,6 +21,7 @@ import 'core/animix_theme.dart';
 import 'core/animix_motion.dart';
 import 'core/app_settings.dart';
 import 'core/app_logging.dart';
+import 'core/achievement_service.dart';
 
 void main() {
   runZonedGuarded(
@@ -67,6 +68,12 @@ class MyApp extends ConsumerWidget {
     // Используем .maybeWhen, так как он поддерживается во всех версиях Riverpod (и 1.x, и 2.x)
     final authState = ref.watch(isLoggedInProvider);
     final authSignal = ref.watch(authSessionSignalProvider);
+    // Idempotent: keeps achievement sync bound to the signed-in account.
+    final signedIn = authSignal ?? authState.value ?? false;
+    final authService = ref.read(animixAuthServiceProvider);
+    AchievementService.instance.attachRemote(
+      signedIn ? authService.syncAchievements : null,
+    );
 
     final settings = AppSettingsController.instance;
     return AnimatedBuilder(

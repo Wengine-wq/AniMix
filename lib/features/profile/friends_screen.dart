@@ -10,6 +10,7 @@ import '../../core/achievement_service.dart';
 import '../../core/animix_theme.dart';
 import '../../models/shikimori_anime.dart';
 import '../../models/shikimori_user.dart';
+import 'achievements_screen.dart';
 import 'profile_components.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
@@ -300,6 +301,7 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>>? _library;
   Map<int, ShikimoriAnime> _anime = {};
+  Map<String, DateTime>? _achievements;
   String _friendStatus = 'none';
   bool _private = false;
   String? _libraryError;
@@ -344,6 +346,16 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
         _friendStatus = status;
         _busy = false;
       });
+      unawaited(
+        service
+            .getUserAchievements(widget.userId)
+            .then((value) {
+              if (mounted && generation == _loadGeneration) {
+                setState(() => _achievements = value);
+              }
+            })
+            .catchError((Object _) {}),
+      );
       List<Map<String, dynamic>>? library;
       var private = false;
       String? libraryError;
@@ -554,6 +566,15 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                                   user: ShikimoriUser.localFromAniMixJson(user),
                                 ),
                                 const SizedBox(height: AniMixSpacing.lg),
+                                if (_achievements != null) ...[
+                                  _PublicAchievements(
+                                    unlocked: _achievements!,
+                                    ownerName:
+                                        user['display_name']?.toString() ??
+                                        'Пользователь',
+                                  ),
+                                  const SizedBox(height: AniMixSpacing.lg),
+                                ],
                                 const AniMixSectionHeader(
                                   title: 'Библиотека',
                                   subtitle:
@@ -680,6 +701,73 @@ class _PublicProfileScreenState extends ConsumerState<PublicProfileScreen> {
                 builder: (_) => AnimeDetailScreen(animeId: id),
               ),
             ),
+    );
+  }
+}
+
+/// Another user's achievements as a compact strip that opens the full list.
+class _PublicAchievements extends StatelessWidget {
+  const _PublicAchievements({required this.unlocked, required this.ownerName});
+
+  final Map<String, DateTime> unlocked;
+  final String ownerName;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final earned = [
+      for (var i = 0; i < achievements.length; i++)
+        if (unlocked.containsKey(achievements[i].id)) i,
+    ];
+    return AniMixSurface(
+      onTap: () => Navigator.push(
+        context,
+        CupertinoPageRoute<void>(
+          builder: (_) =>
+              AchievementsScreen(unlocked: unlocked, ownerName: ownerName),
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Достижения',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                '${earned.length} из ${achievements.length}',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                size: 15,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (earned.isEmpty)
+            Text(
+              'Пока ничего не открыто.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final index in earned.take(12))
+                  AchievementIcon(index: index, size: 44),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }

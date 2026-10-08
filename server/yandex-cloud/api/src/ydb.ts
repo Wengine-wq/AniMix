@@ -191,6 +191,28 @@ export class YdbStore {
     );
   }
 
+  async achievements(userId: string): Promise<Array<{ achievement_id: string; unlocked_at: number }>> {
+    return this.rows<{ achievement_id: string; unlocked_at: number }>(
+      'SELECT achievement_id,unlocked_at FROM user_achievements WHERE user_id = $userId;',
+      { userId },
+    );
+  }
+
+  /** Stores unlocks, keeping the earliest timestamp per achievement. */
+  async mergeAchievements(userId: string, unlocks: Map<string, number>): Promise<void> {
+    const existing = new Map(
+      (await this.achievements(userId)).map((row) => [row.achievement_id, Number(row.unlocked_at)]),
+    );
+    for (const [achievementId, unlockedAt] of unlocks) {
+      const current = existing.get(achievementId);
+      if (current !== undefined && current <= unlockedAt) continue;
+      await this.execute(
+        'UPSERT INTO user_achievements (user_id,achievement_id,unlocked_at) VALUES ($userId,$achievementId,$unlockedAt);',
+        { userId, achievementId, unlockedAt },
+      );
+    }
+  }
+
   async deleteFriendPair(userId: string, peerId: string): Promise<void> {
     await this.execute(
       `DELETE FROM user_friend_edges WHERE user_id = $userId AND peer_id = $peerId;

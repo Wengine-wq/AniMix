@@ -577,6 +577,43 @@ class AniMixAuthService {
         .toList();
   }
 
+  static Map<String, int> _achievementMap(Map<String, dynamic> payload) {
+    final raw = payload['achievements'];
+    if (raw is! Map) return const {};
+    final result = <String, int>{};
+    for (final entry in raw.entries) {
+      final value = int.tryParse('${entry.value}');
+      if (value != null) result[entry.key.toString()] = value;
+    }
+    return result;
+  }
+
+  /// Uploads local unlocks (id → unlocked-at ms) and returns the merged set
+  /// stored for the account, or null when the server cannot be reached.
+  Future<Map<String, int>?> syncAchievements(Map<String, int> local) async {
+    try {
+      return _achievementMap(
+        await _socialRequest(
+          'PUT',
+          '/v1/me/achievements',
+          data: {'achievements': local},
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, DateTime>> getUserAchievements(String userId) async {
+    final payload = await _socialRequest(
+      'GET',
+      '/v1/users/$userId/achievements',
+    );
+    return _achievementMap(payload).map(
+      (id, at) => MapEntry(id, DateTime.fromMillisecondsSinceEpoch(at)),
+    );
+  }
+
   Future<String> getFriendStatus(String userId) async =>
       (await _socialRequest(
         'GET',

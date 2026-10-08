@@ -503,6 +503,48 @@ async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: 
   return json(event, config, { entry: saved, user: user ? await profile(user, store, media) : null });
 }
 
+function achievementMap(rows: Array<{ achievement_id: string; unlocked_at: number }>): Record<string, number> {
+  return Object.fromEntries(rows.map((row) => [row.achievement_id, Number(row.unlocked_at)]));
+}
+
+/**
+ * GET returns the signed-in user's unlocks; PUT merges client unlocks
+ * (`{ achievements: { id: unlockedAtMs } }`, earliest wins) and returns the
+ * merged set, so every device converges on the same list.
+ */
+async function myAchievements(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (event.httpMethod === 'PUT') {
+    const raw = jsonBody(event).achievements;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return json(event, config, { error: 'invalid_achievements' }, 400);
+    }
+    const entries = Object.entries(raw as Record<string, unknown>);
+    if (entries.length > 200) return json(event, config, { error: 'too_many_achievements' }, 400);
+    const now = Date.now();
+    const unlocks = new Map<string, number>();
+    for (const [id, value] of entries) {
+      const at = Number(value);
+      if (!/^[a-z0-9_]{1,40}$/.test(id)) continue;
+      if (!Number.isSafeInteger(at) || at < Date.UTC(2020, 0, 1) || at > now + 5 * 60 * 1000) continue;
+      unlocks.set(id, at);
+    }
+    await store.mergeAchievements(session.user.id, unlocks);
+  }
+  return json(event, config, { achievements: achievementMap(await store.achievements(session.user.id)) });
+}
+
+/** Achievements are part of the public profile for signed-in users. */
+async function publicAchievements(
+  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, userId: string,
+): Promise<CloudFunctionResponse> {
+  const session = await currentSession(event, store);
+  if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (!await store.userById(userId)) return json(event, config, { error: 'not_found' }, 404);
+  return json(event, config, { achievements: achievementMap(await store.achievements(userId)) });
+}
+
 async function usage(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
@@ -697,6 +739,9 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
     if (publicProfileMatch && method === 'GET') return publicProfile(event, config, store, media, publicProfileMatch[1]);
     const publicLibraryMatch = /^\/v1\/users\/([0-9a-f-]{36})\/library$/i.exec(path);
     if (publicLibraryMatch && method === 'GET') return publicLibrary(event, config, store, publicLibraryMatch[1]);
+    const publicAchievementsMatch = /^\/v1\/users\/([0-9a-f-]{36})\/achievements$/i.exec(path);
+    if (publicAchievementsMatch && method === 'GET') return publicAchievements(event, config, store, publicAchievementsMatch[1]);
+    if (path === '/v1/me/achievements' && (method === 'GET' || method === 'PUT')) return myAchievements(event, config, store);
     if (path === '/v1/users/search' && method === 'GET') return searchUsers(event, config, store, media);
     if (path === '/v1/friends' && method === 'GET') return friends(event, config, store, media);
     const friendMatch = /^\/v1\/friends\/([0-9a-f-]{36})$/i.exec(path);

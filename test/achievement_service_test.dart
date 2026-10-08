@@ -10,6 +10,31 @@ import 'package:image/image.dart' as image;
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test(
+    'server sync keeps the earliest unlock and ignores unknown ids',
+    () async {
+      final service = AchievementService.instance;
+      await service.episodeWatched(DateTime(2026, 9, 24, 12));
+      final localFirst = (await service.unlocked())['first']!;
+      Map<String, int>? sent;
+      service.attachRemote((local) async {
+        sent = local;
+        return {
+          'first': localFirst.millisecondsSinceEpoch - 1000,
+          'owl': 1700000000000,
+          'bogus': 1,
+        };
+      });
+      await service.syncNow();
+      service.attachRemote(null);
+      expect(sent, contains('first'));
+      final earned = await service.unlocked();
+      expect(earned['first'], localFirst.subtract(const Duration(seconds: 1)));
+      expect(earned['owl'], DateTime.fromMillisecondsSinceEpoch(1700000000000));
+      expect(earned, isNot(contains('bogus')));
+    },
+  );
+
   test('five episodes on one day unlock marathon only once', () async {
     final service = AchievementService.instance;
     final day = DateTime(2026, 9, 24, 12);

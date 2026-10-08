@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -164,6 +166,10 @@ const achievements = <Achievement>[
   ),
 ];
 
+/// Sends local unlocks (id → unlocked-at ms) and returns the merged server set.
+typedef AchievementSync =
+    Future<Map<String, int>?> Function(Map<String, int> local);
+
 class AchievementService {
   AchievementService._();
   static final instance = AchievementService._();
@@ -291,6 +297,58 @@ class AchievementService {
     return result;
   }
 
+  AchievementSync? _remote;
+  Timer? _syncTimer;
+  Future<void>? _syncing;
+
+  /// Connects the signed-in account. Unlocks are then merged with the server
+  /// (earliest date wins), so they follow the user across devices and are
+  /// visible on their public profile. Pass null on sign-out.
+  void attachRemote(AchievementSync? remote) {
+    if (remote == _remote) return;
+    _remote = remote;
+    _syncTimer?.cancel();
+    if (remote != null) scheduleSync(delay: const Duration(seconds: 2));
+  }
+
+  void scheduleSync({Duration delay = const Duration(seconds: 4)}) {
+    if (_remote == null) return;
+    _syncTimer?.cancel();
+    _syncTimer = Timer(delay, () => unawaited(syncNow()));
+  }
+
+  Future<void> syncNow() => _syncing ??= _sync().whenComplete(() {
+    _syncing = null;
+  });
+
+  Future<void> _sync() async {
+    final remote = _remote;
+    if (remote == null) return;
+    try {
+      final local = await unlocked();
+      final merged = await remote({
+        for (final entry in local.entries)
+          entry.key: entry.value.millisecondsSinceEpoch,
+      });
+      if (merged == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final known = {for (final item in achievements) item.id};
+      var changed = false;
+      for (final entry in merged.entries) {
+        if (!known.contains(entry.key)) continue;
+        final key = '$_prefix${entry.key}';
+        final current = prefs.getInt(key);
+        if (current == null || entry.value < current) {
+          await prefs.setInt(key, entry.value);
+          changed = true;
+        }
+      }
+      if (changed) revision.value++;
+    } catch (_) {
+      // Offline or an older server: local unlocks stay and sync later.
+    }
+  }
+
   Future<void> openingSkipped() => _unlockNow('skip');
   Future<void> episodeDownloaded() => _unlockNow('download');
   Future<void> friendAccepted() => _unlockNow('friend');
@@ -308,6 +366,7 @@ class AchievementService {
     if (prefs.containsKey(key)) return;
     if (await prefs.setInt(key, when.millisecondsSinceEpoch)) {
       revision.value++;
+      scheduleSync();
       if (announce) {
         latestUnlock.value = achievements.firstWhere((item) => item.id == id);
       }

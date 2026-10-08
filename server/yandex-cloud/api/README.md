@@ -71,6 +71,7 @@ node .\scripts\apply-friends-privacy.cjs `
 Скрипт использует установленный `ydb-sdk` и текущую авторизацию `yc`; отдельный `ydb` CLI не нужен. Повторный запуск безопасен: существующие таблицы он проверит и оставит на месте.
 
 `GET/PUT /v1/me/privacy` управляет видимостью библиотеки. `GET /v1/users/:id/library` требует авторизацию и открытые библиотеки **обоих** пользователей. `GET /v1/users/search`, `GET /v1/friends`, `GET/POST/DELETE /v1/friends/:id` обеспечивают поиск и заявки; POST принимает входящую заявку или отправляет новую.
+Достижения (миграция `003_achievements.yql`, применяется так же):```powershellnode .scriptspply-achievements.cjs `  'grpcs://ydb.serverless.yandexcloud.net:2135' `  '/ru-central1/<CLOUD_ID>/<DATABASE_ID>'````GET/PUT /v1/me/achievements` хранит открытые награды аккаунта: PUT принимает `{ achievements: { id: unlocked_at_ms } }`, сохраняет самое раннее время и возвращает объединённый список. `GET /v1/users/:id/achievements` показывает награды другого пользователя любому вошедшему участнику.
 
 ## Деплой: два коротких прохода
 

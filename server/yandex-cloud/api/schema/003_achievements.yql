@@ -1,0 +1,8 @@
+-- Apply once after 002_friends_privacy.yql. One row per unlocked achievement;
+-- unlocked_at is milliseconds since epoch and only ever moves earlier.
+CREATE TABLE user_achievements (
+  user_id Utf8 NOT NULL,
+  achievement_id Utf8 NOT NULL,
+  unlocked_at Uint64 NOT NULL,
+  PRIMARY KEY (user_id, achievement_id)
+);

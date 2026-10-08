@@ -76,94 +76,115 @@ class _AtlasCellPainter extends CustomPainter {
 }
 
 class AchievementsScreen extends StatelessWidget {
-  const AchievementsScreen({super.key});
+  const AchievementsScreen({super.key, this.unlocked, this.ownerName});
+
+  /// Unlocks of another user. When null the screen shows the signed-in
+  /// user's own achievements with live progress.
+  final Map<String, DateTime>? unlocked;
+  final String? ownerName;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final other = unlocked;
     return Scaffold(
-      appBar: AppBar(title: const Text('Достижения')),
-      body: ValueListenableBuilder<int>(
-        valueListenable: AchievementService.instance.revision,
-        builder: (context, _, _) => FutureBuilder<Map<String, DateTime>>(
-          future: AchievementService.instance.unlockedSnapshot(),
-          builder: (context, snapshot) {
-            final earned = snapshot.data ?? const <String, DateTime>{};
-            return FutureBuilder<Map<String, String>>(
-              future: AchievementService.instance.titleProgressSnapshot(),
-              builder: (context, progressSnapshot) => LayoutBuilder(
-                builder: (context, limits) {
-                  final columns = limits.maxWidth >= 900
-                      ? 3
-                      : limits.maxWidth >= 620
-                      ? 2
-                      : 1;
-                  final width =
-                      (limits.maxWidth - 32 - (columns - 1) * 12) / columns;
-                  Widget badgeGrid(int start, int end) => Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (var i = start; i < end; i++)
-                        SizedBox(
-                          width: width,
-                          child: _AchievementCard(
-                            achievement: achievements[i],
-                            index: i,
-                            unlockedAt: earned[achievements[i].id],
-                            progress:
-                                progressSnapshot.data?[achievements[i].id],
-                          ),
-                        ),
-                    ],
-                  );
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      Text(
-                        '${earned.length} из ${achievements.length} открыто',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Награды живут только на этом устройстве и не синхронизируются с сервером.',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Основные',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      badgeGrid(0, 10),
-                      const SizedBox(height: 28),
-                      Text(
-                        'Испытания по тайтлам',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Нужны отмеченные просмотром серии в AniMix. Одного статуса «Просмотрено» недостаточно.',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      badgeGrid(10, achievements.length),
-                    ],
-                  );
-                },
-              ),
-            );
-          },
+      appBar: AppBar(
+        title: Text(
+          ownerName == null ? 'Достижения' : 'Достижения · $ownerName',
         ),
       ),
+      body: other != null
+          ? _content(context, other, null)
+          : ValueListenableBuilder<int>(
+              valueListenable: AchievementService.instance.revision,
+              builder: (context, _, _) => FutureBuilder<Map<String, DateTime>>(
+                future: AchievementService.instance.unlockedSnapshot(),
+                builder: (context, snapshot) =>
+                    FutureBuilder<Map<String, String>>(
+                      future: AchievementService.instance
+                          .titleProgressSnapshot(),
+                      builder: (context, progressSnapshot) => _content(
+                        context,
+                        snapshot.data ?? const <String, DateTime>{},
+                        progressSnapshot.data,
+                      ),
+                    ),
+              ),
+            ),
+    );
+  }
+
+  Widget _content(
+    BuildContext context,
+    Map<String, DateTime> earned,
+    Map<String, String>? progress,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, limits) {
+        final columns = limits.maxWidth >= 900
+            ? 3
+            : limits.maxWidth >= 620
+            ? 2
+            : 1;
+        final width = (limits.maxWidth - 32 - (columns - 1) * 12) / columns;
+        Widget badgeGrid(int start, int end) => Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (var i = start; i < end; i++)
+              SizedBox(
+                width: width,
+                child: _AchievementCard(
+                  achievement: achievements[i],
+                  index: i,
+                  unlockedAt: earned[achievements[i].id],
+                  progress: progress?[achievements[i].id],
+                ),
+              ),
+          ],
+        );
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              '${earned.length} из ${achievements.length} открыто',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              unlocked == null
+                  ? 'Синхронизируются с аккаунтом AniMix и видны друзьям.'
+                  : 'Награды, открытые этим пользователем.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Основные',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            badgeGrid(0, 10),
+            const SizedBox(height: 28),
+            Text(
+              'Испытания по тайтлам',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Нужны отмеченные просмотром серии в AniMix. Одного статуса «Просмотрено» недостаточно.',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            badgeGrid(10, achievements.length),
+          ],
+        );
+      },
     );
   }
 }
