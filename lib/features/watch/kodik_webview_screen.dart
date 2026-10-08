@@ -233,13 +233,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
         : null;
     if (!mounted) return;
     if (cached != null && cached.isNotEmpty) {
-      var reachable = false;
-      for (final source in cached.values) {
-        if (await _hlsService.isReachable(source)) {
-          reachable = true;
-          break;
-        }
-      }
+      final reachable = await _hlsService.anyReachable(cached.values);
       if (!mounted) return;
       if (reachable) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -440,7 +434,15 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
     }
     _captureDebounce?.cancel();
     _captureDebounce = Timer(
-      Duration(milliseconds: rank >= 400 ? 150 : 850),
+      // A master playlist rarely gets outranked; plain media playlists wait a
+      // little for a better candidate (PlayerJS list or master) to show up.
+      Duration(
+        milliseconds: rank >= 400
+            ? 150
+            : rank >= 350
+            ? 250
+            : 500,
+      ),
       _resolveBestCapture,
     );
   }

@@ -55,6 +55,7 @@ class AppSettingsController extends ChangeNotifier {
   static const _smartConnectionKey = 'watch_smart_connection_v1';
   static const _autoSkipOpeningsKey = 'watch_auto_skip_openings_v1';
   static const _autoPlayNextEpisodeKey = 'watch_auto_play_next_episode_v1';
+  static const _preferredQualityKey = 'watch_preferred_quality_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
@@ -64,6 +65,7 @@ class AppSettingsController extends ChangeNotifier {
   bool _smartConnectionEnabled = true;
   bool _autoSkipOpenings = true;
   bool _autoPlayNextEpisode = true;
+  String? _preferredQuality;
   bool _initialized = false;
 
   AniMixAccent get accent => _accent;
@@ -76,6 +78,11 @@ class AppSettingsController extends ChangeNotifier {
   bool get smartConnectionEnabled => _smartConnectionEnabled;
   bool get autoSkipOpenings => _autoSkipOpenings;
   bool get autoPlayNextEpisode => _autoPlayNextEpisode;
+
+  /// Quality label the viewer last picked in the player (for example `720p`).
+  /// Starting the next episode at that quality avoids a second, slow
+  /// re-initialisation of the native player right after it opened.
+  String? get preferredQuality => _preferredQuality;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -101,6 +108,7 @@ class AppSettingsController extends ChangeNotifier {
     _smartConnectionEnabled = prefs.getBool(_smartConnectionKey) ?? true;
     _autoSkipOpenings = prefs.getBool(_autoSkipOpeningsKey) ?? true;
     _autoPlayNextEpisode = prefs.getBool(_autoPlayNextEpisodeKey) ?? true;
+    _preferredQuality = prefs.getString(_preferredQualityKey);
     _initialized = true;
     notifyListeners();
   }
@@ -168,5 +176,17 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoPlayNextEpisodeKey, value);
+  }
+
+  Future<void> setPreferredQuality(String? value) async {
+    if (_preferredQuality == value) return;
+    _preferredQuality = value;
+    // Not a visual setting, so listeners (the whole MaterialApp) stay quiet.
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null) {
+      await prefs.remove(_preferredQualityKey);
+    } else {
+      await prefs.setString(_preferredQualityKey, value);
+    }
   }
 }

@@ -51,6 +51,10 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   late final Map<String, String> _sources;
   late String _selectedQuality;
   bool _isChangingQuality = false;
+  String? _pendingQuality;
+  Duration? _seekTarget;
+  bool _controlsMounted = true;
+  final ValueNotifier<double?> _dragPositionSeconds = ValueNotifier(null);
   bool _isWatched = false;
   int _lastSaveTime = 0;
   Duration? _lastObservedPosition;
@@ -72,7 +76,6 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   Timer? _hideControlsTimer;
   Timer? _seekFeedbackTimer;
   int? _seekFeedbackSeconds;
-  double? _dragPositionSeconds;
   double _playbackSpeed = 1;
   int? _manualOpeningStart;
   bool _wakeLockEnabled = false;
@@ -92,7 +95,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     if (_sources.isEmpty && widget.videoUrl != null) {
       _sources['Авто'] = widget.videoUrl!;
     }
-    _selectedQuality = _bestQuality(_sources.keys);
+    _selectedQuality = _initialQuality(_sources.keys);
     HlsDownloadManager.instance.initialize();
     _showControls();
     WatchStorage.openingTimingRevision.addListener(_reloadOpeningTiming);
@@ -127,32 +130,20 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     }
 
     VideoPlayerController? controller;
+    // Read the resume point while the native player opens the stream instead
+    // of after it, so it does not add to the time before the first frame.
+    final savedPositionFuture = position != null
+        ? Future<Duration?>.value(position)
+        : WatchStorage.getProgress(widget.animeId, widget.episodeNumber);
     try {
-      final uri = Uri.parse(source);
-      controller = uri.scheme == 'file'
-          ? VideoPlayerController.file(File.fromUri(uri))
-          : VideoPlayerController.networkUrl(
-              uri,
-              httpHeaders: Config.providerMediaHeaders,
-            );
-      await controller.initialize().timeout(
-        Duration(seconds: Platform.isWindows ? 14 : 28),
-        onTimeout: () => throw TimeoutException(
-          'Источник не ответил за ${Platform.isWindows ? 14 : 28} секунд',
-        ),
-      );
+      controller = _createController(source);
+      await _initializeController(controller);
       if (!mounted || generation != _initializationGeneration) {
         await controller.dispose();
         return;
       }
-      if (!controller.value.isInitialized ||
-          controller.value.duration <= Duration.zero) {
-        throw const FormatException('Плеер не получил метаданные потока');
-      }
 
-      final savedPosition =
-          position ??
-          await WatchStorage.getProgress(widget.animeId, widget.episodeNumber);
+      final savedPosition = await savedPositionFuture;
       if (savedPosition != null &&
           savedPosition > Duration.zero &&
           savedPosition < controller.value.duration) {
@@ -243,28 +234,124 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     }
   }
 
-  Future<void> _changeQuality(String quality) async {
-    if (quality == _selectedQuality || _isChangingQuality) return;
-    final oldVideo = _videoController;
-    final position = oldVideo?.value.position;
-    final wasPlaying = oldVideo?.value.isPlaying ?? true;
-    final selectedSource = _sources[quality];
-    _failedSources.clear();
-    if (selectedSource != null) _failedSources.remove(selectedSource);
+  static Duration get _openTimeout =>
+      Duration(seconds: Platform.isWindows ? 14 : 20);
 
-    setState(() {
-      _selectedQuality = quality;
-      _isChangingQuality = true;
-      _actualVideoHeight = null;
-      _videoController = null;
-    });
-    oldVideo?.removeListener(_onVideoProgress);
-    await oldVideo?.dispose();
-    await _initPlayer(
-      _sources[quality],
-      position: position,
-      autoPlay: wasPlaying,
+  VideoPlayerController _createController(String source) {
+    final uri = Uri.parse(source);
+    return uri.scheme == 'file'
+        ? VideoPlayerController.file(File.fromUri(uri))
+        : VideoPlayerController.networkUrl(
+            uri,
+            httpHeaders: Config.providerMediaHeaders,
+          );
+  }
+
+  Future<void> _initializeController(VideoPlayerController controller) async {
+    await controller.initialize().timeout(
+      _openTimeout,
+      onTimeout: () => throw TimeoutException(
+        'Источник не ответил за ${_openTimeout.inSeconds} секунд',
+      ),
     );
+    if (!controller.value.isInitialized ||
+        controller.value.duration <= Duration.zero) {
+      throw const FormatException('Плеер не получил метаданные потока');
+    }
+  }
+
+  Future<void> _changeQuality(String quality) async {
+    if (quality == _selectedQuality ||
+        _isChangingQuality ||
+        _pendingQuality != null) {
+      return;
+    }
+    final source = _sources[quality];
+    if (source == null) return;
+    unawaited(AppSettingsController.instance.setPreferredQuality(quality));
+    _failedSources.clear();
+
+    final oldVideo = _videoController;
+    if (oldVideo == null || !oldVideo.value.isInitialized) {
+      setState(() {
+        _selectedQuality = quality;
+        _isChangingQuality = true;
+        _initError = null;
+        _actualVideoHeight = null;
+      });
+      await _initPlayer(source);
+      return;
+    }
+
+    // Seamless switch: the current stream keeps playing while the new one
+    // opens in the background. Previously the old player was disposed first,
+    // leaving a black screen for the whole time the new stream initialised.
+    final generation = ++_initializationGeneration;
+    setState(() => _pendingQuality = quality);
+    VideoPlayerController? next;
+    try {
+      next = _createController(source);
+      await _initializeController(next);
+      if (!mounted ||
+          generation != _initializationGeneration ||
+          !identical(_videoController, oldVideo)) {
+        await next.dispose();
+        return;
+      }
+      final wasPlaying = oldVideo.value.isPlaying;
+      final position = oldVideo.value.position;
+      if (position > Duration.zero && position < next.value.duration) {
+        await next.seekTo(position);
+      }
+      if (_playbackSpeed != 1) {
+        try {
+          await next.setPlaybackSpeed(_playbackSpeed);
+        } catch (_) {
+          _playbackSpeed = 1;
+        }
+      }
+      if (!mounted ||
+          generation != _initializationGeneration ||
+          !identical(_videoController, oldVideo)) {
+        await next.dispose();
+        return;
+      }
+      oldVideo.removeListener(_onVideoProgress);
+      await oldVideo.pause();
+      if (!mounted) {
+        await next.dispose();
+        return;
+      }
+      next.addListener(_onVideoProgress);
+      _playerErrorHandled = false;
+      _lastObservedPosition = null;
+      final ready = next;
+      setState(() {
+        _videoController = ready;
+        _selectedQuality = quality;
+        _pendingQuality = null;
+        _actualVideoHeight = _decodedHeight(ready);
+      });
+      await WidgetsBinding.instance.endOfFrame;
+      if (wasPlaying && mounted && identical(_videoController, ready)) {
+        await ready.play();
+      }
+      unawaited(oldVideo.dispose());
+      if (mounted) _syncWakeLock(ready.value.isPlaying);
+    } catch (error, stackTrace) {
+      await next?.dispose();
+      AppLogBuffer.instance.recordError(
+        error,
+        stackTrace,
+        source: 'Player quality switch',
+        context: 'Не удалось переключить на $quality',
+      );
+      if (!mounted || generation != _initializationGeneration) return;
+      setState(() => _pendingQuality = null);
+      _showMessage(
+        'Не удалось открыть $quality. Продолжаем в $_selectedQuality.',
+      );
+    }
   }
 
   void _onVideoProgress() {
@@ -555,6 +642,12 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     return qualities;
   }
 
+  static String _initialQuality(Iterable<String> qualities) {
+    final preferred = AppSettingsController.instance.preferredQuality;
+    if (preferred != null && qualities.contains(preferred)) return preferred;
+    return _bestQuality(qualities);
+  }
+
   static String _bestQuality(Iterable<String> qualities) {
     if (qualities.isEmpty) return 'Авто';
     final sorted = qualities.toList()
@@ -576,6 +669,8 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   }
 
   String get _qualityBadge {
+    final pending = _pendingQuality;
+    if (pending != null) return '$_selectedQuality → $pending…';
     final actual = _actualVideoHeight;
     if (actual == null) return _selectedQuality;
     final requested = RegExp(r'(\d+)p').firstMatch(_selectedQuality)?.group(1);
@@ -604,7 +699,12 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
 
   void _showControls() {
     _hideControlsTimer?.cancel();
-    if (mounted) setState(() => _controlsVisible = true);
+    if (mounted && (!_controlsVisible || !_controlsMounted)) {
+      setState(() {
+        _controlsVisible = true;
+        _controlsMounted = true;
+      });
+    }
     _hideControlsTimer = Timer(const Duration(seconds: 4), () {
       if (mounted && _videoController?.value.isPlaying == true) {
         setState(() => _controlsVisible = false);
@@ -645,27 +745,38 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     _showControls();
   }
 
-  Future<void> _seekRelative(int seconds) async {
+  Future<void> _seekRelative(int seconds, {bool revealControls = true}) async {
     final video = _videoController;
     if (video == null || !video.value.isInitialized) return;
-    final next = video.value.position + Duration(seconds: seconds);
-    await video.seekTo(
-      next < Duration.zero
-          ? Duration.zero
-          : next > video.value.duration
-          ? video.value.duration
-          : next,
-    );
-    _showControls();
+    // Repeated taps arrive faster than the native seek completes, and the
+    // reported position lags behind. Accumulate from the pending target so
+    // three quick taps really move 30 seconds instead of 10.
+    final base = _seekTarget ?? video.value.position;
+    var next = base + Duration(seconds: seconds);
+    if (next < Duration.zero) next = Duration.zero;
+    if (next > video.value.duration) next = video.value.duration;
+    _seekTarget = next;
+    try {
+      await video.seekTo(next);
+    } finally {
+      if (_seekTarget == next) _seekTarget = null;
+    }
+    if (revealControls || _controlsVisible) _showControls();
   }
 
   void _handleGestureSeek(int seconds) {
     _seekFeedbackTimer?.cancel();
-    setState(() => _seekFeedbackSeconds = seconds);
+    final previous = _seekFeedbackSeconds;
+    setState(
+      () => _seekFeedbackSeconds =
+          previous != null && previous.sign == seconds.sign
+          ? previous + seconds
+          : seconds,
+    );
     _seekFeedbackTimer = Timer(const Duration(milliseconds: 650), () {
       if (mounted) setState(() => _seekFeedbackSeconds = null);
     });
-    unawaited(_seekRelative(seconds));
+    unawaited(_seekRelative(seconds, revealControls: false));
   }
 
   Future<void> _setFullScreen(bool value) async {
@@ -791,6 +902,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     WatchStorage.openingTimingRevision.removeListener(_reloadOpeningTiming);
     _videoController?.removeListener(_onVideoProgress);
     _videoController?.dispose();
+    _dragPositionSeconds.dispose();
     _syncWakeLock(false);
     super.dispose();
   }
@@ -895,12 +1007,30 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         aspectRatio: video.value.aspectRatio > 0
                             ? video.value.aspectRatio
                             : 16 / 9,
-                        child: VideoPlayer(video),
+                        child: RepaintBoundary(child: VideoPlayer(video)),
                       ),
                     )
                   : _buildLoading(),
             ),
           ),
+          // Controls are unmounted once hidden, so keep a buffering hint on
+          // screen: a frozen frame without feedback reads as a hung player.
+          if (video != null && _initError == null && !_controlsVisible)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: video,
+                  builder: (context, value, _) => value.isBuffering
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppSettingsController.instance.accentColor,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ),
           if (video != null && _initError == null && !_isChangingQuality)
             Positioned.fill(
               child: PlayerGestureLayer(
@@ -919,7 +1049,15 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                   opacity: _controlsVisible ? 1 : 0,
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOut,
-                  child: _buildControls(video),
+                  // Hidden controls used to rebuild on every position tick.
+                  onEnd: () {
+                    if (mounted && !_controlsVisible && _controlsMounted) {
+                      setState(() => _controlsMounted = false);
+                    }
+                  },
+                  child: _controlsMounted
+                      ? RepaintBoundary(child: _buildControls(video))
+                      : const SizedBox.expand(),
                 ),
               ),
             ),
@@ -942,16 +1080,20 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            _seekFeedbackSeconds! < 0
+                            _seekFeedbackSeconds!.abs() > 10
+                                ? (_seekFeedbackSeconds! < 0
+                                      ? Icons.fast_rewind_rounded
+                                      : Icons.fast_forward_rounded)
+                                : _seekFeedbackSeconds! < 0
                                 ? Icons.replay_10_rounded
                                 : Icons.forward_10_rounded,
                             color: Colors.white,
                             size: 30,
                           ),
                           const SizedBox(height: 2),
-                          const Text(
-                            '10 секунд',
-                            style: TextStyle(
+                          Text(
+                            '${_seekFeedbackSeconds!.abs()} секунд',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -1041,11 +1183,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     );
   }
 
-  Widget _buildControls(
-    VideoPlayerController video,
-  ) => ValueListenableBuilder<VideoPlayerValue>(
-    valueListenable: video,
-    builder: (context, value, _) {
+  Widget _buildControls(VideoPlayerController video) => ListenableBuilder(
+    listenable: Listenable.merge([video, _dragPositionSeconds]),
+    builder: (context, _) {
+      final value = video.value;
+      final dragPosition = _dragPositionSeconds.value;
       final length = value.duration.inMilliseconds / 1000;
       final current = value.position.inMilliseconds / 1000;
       final accent = AppSettingsController.instance.accentColor;
@@ -1187,20 +1329,28 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                     key: const Key('player_progress_slider'),
                     min: 0,
                     max: length > 0 ? length : 1,
-                    value: (_dragPositionSeconds ?? current).clamp(
+                    value: (dragPosition ?? current).clamp(
                       0,
                       length > 0 ? length : 1,
                     ),
                     onChanged: (seconds) {
                       _hideControlsTimer?.cancel();
-                      setState(() => _dragPositionSeconds = seconds);
+                      _dragPositionSeconds.value = seconds;
                     },
                     onChangeEnd: (seconds) {
-                      setState(() => _dragPositionSeconds = null);
+                      // Hold the thumb where it was released until the native
+                      // seek lands; otherwise it snaps back for a moment.
                       unawaited(
-                        video.seekTo(
-                          Duration(milliseconds: (seconds * 1000).round()),
-                        ),
+                        video
+                            .seekTo(
+                              Duration(milliseconds: (seconds * 1000).round()),
+                            )
+                            .whenComplete(() {
+                              if (mounted &&
+                                  _dragPositionSeconds.value == seconds) {
+                                _dragPositionSeconds.value = null;
+                              }
+                            }),
                       );
                       _showControls();
                     },
@@ -1209,7 +1359,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 Row(
                   children: [
                     Text(
-                      '${_formatTime(Duration(seconds: (_dragPositionSeconds ?? current).round()))} / ${_formatTime(value.duration)}',
+                      '${_formatTime(Duration(seconds: (dragPosition ?? current).round()))} / ${_formatTime(value.duration)}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,

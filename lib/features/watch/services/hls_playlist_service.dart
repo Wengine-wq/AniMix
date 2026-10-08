@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/config.dart';
@@ -22,23 +24,54 @@ class HlsPlaylistService {
   /// A cached signed URL is useful only while the provider still accepts it.
   /// Validate it before skipping the resolver WebView; otherwise an expired
   /// Kodik token leaves the native player spinning forever on stale cache.
-  Future<bool> isReachable(String rawUrl) async {
+  Future<bool> isReachable(String rawUrl, {Duration? timeout}) async {
     final uri = Uri.tryParse(normalizeCapturedUrl(rawUrl));
     if (uri == null || !uri.hasScheme) return false;
+    final options = timeout == null
+        ? null
+        : Options(receiveTimeout: timeout, sendTimeout: timeout);
     try {
       if (_isHls(uri)) {
-        final response = await _dio.getUri<String>(uri);
+        final response = await _dio
+            .getUri<String>(uri, options: options)
+            .timeout(timeout ?? const Duration(seconds: 30));
         return (response.statusCode ?? 500) < 400 &&
             (response.data ?? '').trimLeft().startsWith('#EXTM3U');
       }
       if (uri.path.toLowerCase().endsWith('.mp4')) {
-        final response = await _dio.headUri<void>(uri);
+        final response = await _dio
+            .headUri<void>(uri, options: options)
+            .timeout(timeout ?? const Duration(seconds: 30));
         return (response.statusCode ?? 500) < 400;
       }
     } catch (_) {
       return false;
     }
     return false;
+  }
+
+  /// Completes with `true` as soon as any source answers, instead of probing
+  /// them one after another (each probe could wait up to the full timeout).
+  Future<bool> anyReachable(
+    Iterable<String> sources, {
+    Duration timeout = const Duration(seconds: 5),
+  }) {
+    final list = sources.toList();
+    if (list.isEmpty) return Future.value(false);
+    final completer = Completer<bool>();
+    var remaining = list.length;
+    for (final source in list) {
+      isReachable(source, timeout: timeout).then((ok) {
+        remaining--;
+        if (completer.isCompleted) return;
+        if (ok) {
+          completer.complete(true);
+        } else if (remaining == 0) {
+          completer.complete(false);
+        }
+      });
+    }
+    return completer.future;
   }
 
   Future<Map<String, String>> resolveQualities(String capturedValue) async {
