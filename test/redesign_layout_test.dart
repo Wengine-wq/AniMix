@@ -217,7 +217,7 @@ void main() {
     );
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.text('Главная'), findsOneWidget);
-    expect(find.text('Для вас'), findsWidgets);
-    expect(find.text('Закладки'), findsOneWidget);
+    expect(find.byTooltip('Для вас'), findsOneWidget);
+    expect(find.byTooltip('Закладки'), findsOneWidget);
   });
 }

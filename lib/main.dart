@@ -274,6 +274,9 @@ class _MainWrapperState extends State<MainWrapper> {
   }
 }
 
+/// Floating pill navigation: unselected tabs are icons only, the selected
+/// tab expands into a tonal capsule with its label. Calmer than five
+/// permanently labelled tabs, and the current place is obvious at a glance.
 class _FloatingTabBar extends StatelessWidget {
   const _FloatingTabBar({
     required this.selectedIndex,
@@ -289,120 +292,128 @@ class _FloatingTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final translucent = AniMixTheme.isTranslucent(context);
-    return ColoredBox(
-      color: Colors.transparent,
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(25),
-          child: _MaybeBackdropBlur(
-            enabled: translucent,
-            child: Container(
-              height: 66,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainer.withValues(
-                  alpha: translucent ? .76 : 1,
-                ),
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(
-                      alpha: Theme.of(context).brightness == Brightness.dark
-                          ? .28
-                          : .07,
-                    ),
-                    blurRadius: 28,
-                    offset: const Offset(0, 8),
+    final duration = AniMixMotion.resolve(context, AniMixMotion.selection);
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: _MaybeBackdropBlur(
+              enabled: translucent,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainer.withValues(
+                    alpha: translucent ? .78 : .96,
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  for (var index = 0; index < destinations.length; index++)
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        selected: selectedIndex == index,
-                        label: destinations[index].label,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(19),
-                          onTap: () => onSelected(index),
-                          child: AnimatedContainer(
-                            duration: AniMixMotion.resolve(
-                              context,
-                              AniMixMotion.selection,
-                            ),
-                            curve: AniMixMotion.standardCurve,
-                            decoration: BoxDecoration(
-                              color: selectedIndex == index
-                                  ? scheme.onSurface.withValues(alpha: .08)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(19),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                AnimatedSwitcher(
-                                  duration: AniMixMotion.resolve(
-                                    context,
-                                    AniMixMotion.selection,
-                                  ),
-                                  switchInCurve: AniMixMotion.standardCurve,
-                                  switchOutCurve: AniMixMotion.exitCurve,
-                                  transitionBuilder: (child, animation) =>
-                                      FadeTransition(
-                                        opacity: animation,
-                                        child: ScaleTransition(
-                                          scale: Tween<double>(
-                                            begin: .88,
-                                            end: 1,
-                                          ).animate(animation),
-                                          child: child,
-                                        ),
-                                      ),
-                                  child: IconTheme(
-                                    key: ValueKey((
-                                      index,
-                                      selectedIndex == index,
-                                    )),
-                                    data: IconThemeData(
-                                      size: 20,
-                                      color: selectedIndex == index
-                                          ? scheme.onSurface
-                                          : scheme.onSurfaceVariant,
-                                    ),
-                                    child: selectedIndex == index
-                                        ? (destinations[index].selectedIcon ??
-                                              destinations[index].icon)
-                                        : destinations[index].icon,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    destinations[index].label,
-                                    style: TextStyle(
-                                      color: selectedIndex == index
-                                          ? scheme.onSurface
-                                          : scheme.onSurfaceVariant,
-                                      fontSize: 10,
-                                      fontWeight: selectedIndex == index
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: Theme.of(context).brightness == Brightness.dark
+                            ? .3
+                            : .08,
+                      ),
+                      blurRadius: 26,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Row(
+                    children: [
+                      for (var index = 0; index < destinations.length; index++)
+                        Expanded(
+                          flex: selectedIndex == index ? 2 : 1,
+                          child: _TabItem(
+                            destination: destinations[index],
+                            selected: selectedIndex == index,
+                            duration: duration,
+                            onTap: () => onSelected(index),
                           ),
                         ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatelessWidget {
+  const _TabItem({
+    required this.destination,
+    required this.selected,
+    required this.duration,
+    required this.onTap,
+  });
+
+  final NavigationDestination destination;
+  final bool selected;
+  final Duration duration;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: destination.label,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: destination.label,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: duration,
+            curve: AniMixMotion.standardCurve,
+            height: 48,
+            decoration: BoxDecoration(
+              color: selected
+                  ? scheme.onSurface.withValues(alpha: .09)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconTheme(
+                  data: IconThemeData(
+                    size: 21,
+                    color: selected
+                        ? scheme.onSurface
+                        : scheme.onSurfaceVariant,
+                  ),
+                  child: selected
+                      ? (destination.selectedIcon ?? destination.icon)
+                      : destination.icon,
+                ),
+                if (selected) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      destination.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ),
