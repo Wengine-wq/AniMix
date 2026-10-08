@@ -244,25 +244,13 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  AniMixIconButton(
-                    icon: CupertinoIcons.back,
-                    tooltip: 'Назад',
-                    onPressed: () => Navigator.maybePop(context),
-                  ),
-                  AniMixIconButton(
-                    icon: CupertinoIcons.share,
-                    tooltip: 'Открыть на Shikimori',
-                    onPressed: () => launchUrl(
-                      Uri.parse(
-                        'https://shikimori.io/animes/${widget.animeId}',
-                      ),
-                      mode: LaunchMode.externalApplication,
-                    ),
-                  ),
-                ],
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: AniMixIconButton(
+                  icon: CupertinoIcons.back,
+                  tooltip: 'Назад',
+                  onPressed: () => Navigator.maybePop(context),
+                ),
               ),
             ),
           ),
@@ -271,10 +259,12 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     );
   }
 
+  /// Poster beside the title on every width: the title and facts are read
+  /// together with the cover instead of scrolling past a giant poster first.
   Widget _buildHero(ShikimoriAnimeDetail anime, String poster, bool desktop) {
     final posterWidget = _PosterFrame(
-      width: desktop ? 270 : 256,
-      height: desktop ? 405 : 384,
+      width: desktop ? 240 : 128,
+      height: desktop ? 360 : 192,
       child: SmartAnimePoster(
         animeId: widget.animeId,
         imageUrl: poster,
@@ -282,115 +272,103 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         russianTitle: anime.russian,
       ),
     );
-    final identity = _buildIdentity(anime);
-    if (desktop) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          posterWidget,
-          const SizedBox(width: 34),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: identity,
-            ),
-          ),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Center(child: posterWidget),
-        const SizedBox(height: 28),
-        identity,
+        posterWidget,
+        SizedBox(width: desktop ? 32 : 16),
+        Expanded(child: _buildIdentity(anime, desktop)),
       ],
     );
   }
 
-  Widget _buildIdentity(ShikimoriAnimeDetail anime) {
+  Widget _buildIdentity(ShikimoriAnimeDetail anime, bool desktop) {
     final title = anime.russian?.trim().isNotEmpty == true
         ? anime.russian!
         : anime.name ?? 'Без названия';
     final original = anime.name != title ? anime.name : anime.english;
     final scheme = Theme.of(context).colorScheme;
-    final meta = [
-      _statusLabel(anime.status),
+    final facts = [
       if (anime.kind?.isNotEmpty == true) _kindLabel(anime.kind),
+      if (int.tryParse(anime.airedOn?.split('-').first ?? '') case final year?)
+        '$year',
       if (anime.episodes != null) '${anime.episodes} эп.',
+    ].join(' · ');
+    final details = [
+      _statusLabel(anime.status),
       if (_duration?.isNotEmpty == true) '$_duration мин.',
       if (_rating?.isNotEmpty == true)
         _rating!.toUpperCase().replaceAll('_', '-'),
-    ].join('  ·  ');
+    ].join(' · ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
+          maxLines: desktop ? 4 : 3,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: scheme.onSurface,
-            fontSize: 30,
-            height: 1.1,
-            letterSpacing: -1,
+            fontSize: desktop ? 32 : 21,
+            height: 1.12,
+            letterSpacing: desktop ? -1 : -.5,
             fontWeight: FontWeight.w700,
           ),
         ),
         if (original?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             original!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 15,
+              fontSize: desktop ? 15 : 13,
               height: 1.3,
             ),
           ),
         ],
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if ((anime.score ?? 0) > 0)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    CupertinoIcons.star_fill,
-                    color: scheme.onSurface,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    anime.score!.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            if (_currentScore > 0)
+        const SizedBox(height: 12),
+        if ((anime.score ?? 0) > 0)
+          Row(
+            children: [
+              Icon(CupertinoIcons.star_fill, color: scheme.onSurface, size: 15),
+              const SizedBox(width: 5),
               Text(
-                'Ваша оценка $_currentScore',
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                anime.score!.toStringAsFixed(1),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          meta,
-          style: TextStyle(
-            color: scheme.onSurfaceVariant,
-            fontSize: 13,
-            height: 1.4,
+              if (_currentScore > 0) ...[
+                const SizedBox(width: 10),
+                Text(
+                  'вы: $_currentScore',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ],
           ),
+        const SizedBox(height: 6),
+        if (facts.isNotEmpty)
+          Text(
+            facts,
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+          ),
+        const SizedBox(height: 2),
+        Text(
+          details,
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
         ),
       ],
     );
   }
 
+  /// One primary action, then a row of quiet icon actions underneath.
   Widget _buildActions(ShikimoriAnimeDetail anime, bool desktop) {
     final play = FilledButton.icon(
       onPressed: () => Navigator.push(
@@ -405,48 +383,50 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
       ),
       icon: const Icon(CupertinoIcons.play_fill, size: 18),
       label: const Text('Смотреть'),
-      style: FilledButton.styleFrom(minimumSize: const Size(190, 52)),
+      style: FilledButton.styleFrom(minimumSize: const Size(220, 52)),
     );
-    final status = OutlinedButton.icon(
-      onPressed: _currentUser == null ? null : _showStatusSheet,
-      icon: Icon(
-        _currentStatus == null ? CupertinoIcons.add : CupertinoIcons.check_mark,
-        size: 17,
-      ),
-      label: Text(_statusActionLabel(_currentStatus)),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(150, 52)),
-    );
-    final comments = OutlinedButton.icon(
-      onPressed: anime.topicId == null
-          ? null
-          : () => Navigator.push(
-              context,
-              CupertinoPageRoute<void>(
-                builder: (_) => CommentsScreen(topicId: anime.topicId!),
-              ),
-            ),
-      icon: const Icon(CupertinoIcons.chat_bubble, size: 17),
-      label: const Text('Отзывы'),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(130, 52)),
+    final icons = Row(
+      mainAxisAlignment: desktop
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.spaceEvenly,
+      children: [
+        _IconAction(
+          icon: _currentStatus == null
+              ? CupertinoIcons.plus
+              : CupertinoIcons.checkmark_alt,
+          label: _statusActionLabel(_currentStatus),
+          onTap: _currentUser == null ? null : _showStatusSheet,
+        ),
+        _IconAction(
+          icon: CupertinoIcons.chat_bubble_2,
+          label: 'Отзывы',
+          onTap: anime.topicId == null
+              ? null
+              : () => Navigator.push(
+                  context,
+                  CupertinoPageRoute<void>(
+                    builder: (_) => CommentsScreen(topicId: anime.topicId!),
+                  ),
+                ),
+        ),
+        _IconAction(
+          icon: CupertinoIcons.arrow_up_right_square,
+          label: 'Shikimori',
+          onTap: () => launchUrl(
+            Uri.parse('https://shikimori.io/animes/${widget.animeId}'),
+            mode: LaunchMode.externalApplication,
+          ),
+        ),
+      ],
     );
     if (desktop) {
-      return Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [play, status, comments],
-      );
+      return Row(children: [play, const SizedBox(width: 20), icons]);
     }
     return Column(
       children: [
         SizedBox(width: double.infinity, child: play),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: status),
-            const SizedBox(width: 10),
-            Expanded(child: comments),
-          ],
-        ),
+        const SizedBox(height: 14),
+        icons,
       ],
     );
   }
@@ -507,8 +487,8 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                     '${anime.episodesAired ?? 0} / ${anime.episodes ?? '?'}',
                   ),
                   ('Статус', _statusLabel(anime.status)),
-                  ('Премьера', anime.airedOn ?? '—'),
-                  ('Финал', anime.releasedOn ?? '—'),
+                  ('Премьера', _humanDate(anime.airedOn)),
+                  ('Финал', _humanDate(anime.releasedOn)),
                   (
                     'Студия',
                     anime.studios.isEmpty ? '—' : anime.studios.join(', '),
@@ -877,6 +857,26 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     return Config.proxiedImageUrl(path);
   }
 
+  static String _humanDate(String? raw) {
+    final date = DateTime.tryParse(raw ?? '');
+    if (date == null) return raw?.isNotEmpty == true ? raw! : '—';
+    const months = [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
   String _statusLabel(String? status) => switch (status) {
     'ongoing' => 'Выходит',
     'released' => 'Вышло',
@@ -1118,4 +1118,47 @@ class _AnimeMiniCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _IconAction extends StatelessWidget {
+  const _IconAction({required this.icon, required this.label, this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = onTap == null
+        ? scheme.onSurfaceVariant.withValues(alpha: .45)
+        : scheme.onSurface;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AniMixRadius.md),
+      child: SizedBox(
+        width: 96,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: color),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
