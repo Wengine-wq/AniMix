@@ -310,52 +310,56 @@ class _AmbientHeroBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final background = Theme.of(context).scaffoldBackgroundColor;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    // Clip: the scaled, blurred poster would otherwise bleed below the hero
+    // into the first shelf.
     return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // A tiny decode blown up under a light blur: looks like a heavy blur
-          // but costs a fraction of blurring a full-size poster every frame.
-          RepaintBoundary(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 600),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: ImageFiltered(
-                key: ValueKey(anime.id),
-                imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Opacity(
-                  opacity: dark ? .55 : .45,
-                  child: Transform.scale(
-                    scale: 1.2,
-                    child: SmartAnimePoster(
-                      animeId: anime.id,
-                      imageUrl: anime.imageUrl,
-                      title: anime.name ?? '',
-                      russianTitle: anime.russian,
-                      alignment: Alignment.topCenter,
-                      decodeWidth: 96,
+      child: ClipRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // A tiny decode blown up under a light blur: looks like a heavy blur
+            // but costs a fraction of blurring a full-size poster every frame.
+            RepaintBoundary(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 600),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                child: ImageFiltered(
+                  key: ValueKey(anime.id),
+                  imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Opacity(
+                    opacity: dark ? .55 : .45,
+                    child: Transform.scale(
+                      scale: 1.2,
+                      child: SmartAnimePoster(
+                        animeId: anime.id,
+                        imageUrl: anime.imageUrl,
+                        title: anime.name ?? '',
+                        russianTitle: anime.russian,
+                        alignment: Alignment.topCenter,
+                        decodeWidth: 96,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  background.withValues(alpha: .25),
-                  background.withValues(alpha: .55),
-                  background,
-                ],
-                stops: const [0, .55, 1],
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    background.withValues(alpha: .25),
+                    background.withValues(alpha: .55),
+                    background,
+                  ],
+                  stops: const [0, .5, .9],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
