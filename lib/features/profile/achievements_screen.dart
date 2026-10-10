@@ -225,6 +225,20 @@ class _AchievementCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (achievement.anime != null) ...[
+                    Text(
+                      achievement.anime!.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        letterSpacing: .6,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                  ],
                   Text(
                     achievement.title,
                     style: const TextStyle(

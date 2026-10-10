@@ -13,6 +13,7 @@ class Achievement {
     this.hint, {
     this.requiredEpisodes = const {},
     this.requiresCompletion = false,
+    this.anime,
   });
 
   final String id;
@@ -21,6 +22,10 @@ class Achievement {
   final String hint;
   final Map<int, int> requiredEpisodes;
   final bool requiresCompletion;
+
+  /// Title the challenge is about, shown on the card so it is clear what to
+  /// watch even when the award name is a joke.
+  final String? anime;
 }
 
 /// Local-only awards. Each group of ten selects a cell in its own 5 × 2 atlas.
@@ -81,12 +86,14 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'death_note',
+    anime: 'Тетрадь смерти',
     'Имя записано',
     '«Тетрадь смерти» завершена.',
     'Отметь «Тетрадь смерти» как просмотренную.',
   ),
   Achievement(
     'titan_wall',
+    anime: 'Атака титанов · 1 сезон',
     'Стены больше нет',
     'Первый сезон «Атаки титанов» пройден целиком.',
     'Посмотри серии 1–25 и заверши первый сезон.',
@@ -95,6 +102,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'alchemy',
+    anime: 'Стальной алхимик: Братство',
     'Эквивалентный обмен? Сном',
     'Все 64 серии «Стального алхимика: Братство» позади.',
     'Посмотри серии 1–64 и заверши «Братство».',
@@ -103,6 +111,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'hunter',
+    anime: 'Охотник х Охотник (2011)',
     'Лицензия на безделье',
     'Экзамен длиной в 148 серий сдан.',
     'Посмотри серии 1–148 и заверши «Охотник х Охотник» (2011).',
@@ -111,6 +120,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'steins',
+    anime: 'Врата Штейна',
     'Эль Псай Конгру...',
     'Все мировые линии «Врат Штейна» пережиты.',
     'Посмотри серии 1–24 и заверши «Врата Штейна».',
@@ -119,6 +129,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'kira',
+    anime: 'Тетрадь смерти',
     'Кира, хватит писать',
     'Все 37 серий «Тетради смерти» просмотрены.',
     'Посмотри серии 1–37 и заверши «Тетрадь смерти».',
@@ -127,6 +138,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'demon_blade',
+    anime: 'Клинок, рассекающий демонов · 1 сезон',
     'Дыши, блин',
     'Первый сезон «Клинка, рассекающего демонов» пройден.',
     'Посмотри серии 1–26 и заверши первый сезон.',
@@ -135,6 +147,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'geass',
+    anime: 'Код Гиас · 2 сезона',
     'Приказ: досмотреть всё',
     'Оба сезона «Кода Гиас» завершены.',
     'Посмотри по 25 серий и заверши оба сезона.',
@@ -143,6 +156,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'naruto',
+    anime: 'Наруто',
     'Хокаге по выслуге',
     'Все 220 серий оригинального «Наруто» пройдены.',
     'Посмотри серии 1–220 и заверши «Наруто».',
@@ -151,6 +165,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'monster',
+    anime: 'Монстр',
     'Психотерапевт нужен уже тебе',
     'Все 74 серии «Монстра» выдержаны.',
     'Посмотри серии 1–74 и заверши «Монстр».',
@@ -159,6 +174,7 @@ const achievements = <Achievement>[
   ),
   Achievement(
     'one_piece',
+    anime: 'Ван-Пис · 100 серий',
     'Это только начало',
     'Первые сто серий «Ван-Писа» позади.',
     'Посмотри серии 1–100 «Ван-Писа».',
