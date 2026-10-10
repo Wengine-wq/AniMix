@@ -730,13 +730,13 @@ class _ProfileUsageCard extends StatelessWidget {
     );
 
     return AniMixSurface(
-      padding: const EdgeInsets.all(AniMixSpacing.lg),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const AniMixSectionHeader(
             title: 'Статистика просмотра',
-            subtitle: 'Серии из библиотеки; часы рассчитаны по хронометражу',
+            subtitle: 'Часы рассчитаны по хронометражу серий',
             icon: CupertinoIcons.play_rectangle_fill,
           ),
           const SizedBox(height: AniMixSpacing.lg),
@@ -886,7 +886,7 @@ class _ActivityRhythm extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AniMixLayout.pageInset),
       child: AniMixSurface(
-        padding: const EdgeInsets.all(AniMixSpacing.lg),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

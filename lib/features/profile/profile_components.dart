@@ -44,7 +44,12 @@ class ProfileHeader extends StatelessWidget {
           Container(
             width: double.infinity,
             height: MediaQuery.sizeOf(context).width >= 700 ? 210 : 168,
-            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            margin: const EdgeInsets.fromLTRB(
+              AniMixLayout.pageInset,
+              8,
+              AniMixLayout.pageInset,
+              0,
+            ),
             clipBehavior: Clip.antiAlias,
             decoration: const BoxDecoration(
               borderRadius: BorderRadius.all(Radius.circular(AniMixRadius.xl)),
@@ -109,7 +114,7 @@ class ProfileHeader extends StatelessWidget {
             ),
           ),
           Positioned(
-            left: 32,
+            left: AniMixLayout.pageInset + 16,
             bottom: -42,
             child: Stack(
               clipBehavior: Clip.none,
@@ -197,7 +202,12 @@ class ProfileHeader extends StatelessWidget {
       // Name sits beside the overlapping avatar, left-aligned like a social
       // profile, instead of a centered stack under the cover.
       Padding(
-        padding: const EdgeInsets.fromLTRB(32 + 92 + 14, 10, 20, 0),
+        padding: const EdgeInsets.fromLTRB(
+          AniMixLayout.pageInset + 16 + 92 + 14,
+          10,
+          AniMixLayout.pageInset,
+          0,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -428,36 +438,15 @@ class ProfileLibraryOverview extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _Headline(value: '$total', label: 'в коллекции'),
+              _MiniRing(stats: stats, total: total),
+              const SizedBox(width: 18),
               _Headline(value: '$completion%', label: 'завершено'),
               _Headline(value: '${user.scores}', label: 'оценено'),
             ],
           ),
           const SizedBox(height: 16),
-          Semantics(
-            label: 'Всего $total аниме, завершено ${user.watched}',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: SizedBox(
-                height: 8,
-                child: total == 0
-                    ? ColoredBox(color: scheme.surfaceContainerHigh)
-                    : Row(
-                        children: [
-                          for (final stat in stats.where((s) => s.value > 0))
-                            Expanded(
-                              flex: stat.value,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 2),
-                                child: ColoredBox(color: stat.color),
-                              ),
-                            ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -734,4 +723,85 @@ class AchievementStrip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compact donut of the library split, shown beside the headline numbers.
+class _MiniRing extends StatelessWidget {
+  const _MiniRing({required this.stats, required this.total});
+  final List<_LibraryStat> stats;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 84,
+    child: CustomPaint(
+      painter: _MiniRingPainter(
+        stats: stats,
+        total: total,
+        track: Theme.of(context).colorScheme.surfaceContainerHigh,
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$total',
+              style: const TextStyle(
+                fontSize: 20,
+                height: 1,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'тайтлов',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _MiniRingPainter extends CustomPainter {
+  const _MiniRingPainter({
+    required this.stats,
+    required this.total,
+    required this.track,
+  });
+  final List<_LibraryStat> stats;
+  final int total;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 9.0;
+    final rect = (Offset.zero & size).deflate(stroke / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    canvas.drawArc(rect, 0, 6.2832, false, paint..color = track);
+    if (total <= 0) return;
+    var start = -1.5708;
+    for (final stat in stats.where((s) => s.value > 0)) {
+      final sweep = 6.2832 * stat.value / total;
+      canvas.drawArc(
+        rect,
+        start + .03,
+        (sweep - .06).clamp(0.02, 6.2832),
+        false,
+        paint..color = stat.color,
+      );
+      start += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MiniRingPainter oldDelegate) =>
+      oldDelegate.total != total || oldDelegate.track != track;
 }

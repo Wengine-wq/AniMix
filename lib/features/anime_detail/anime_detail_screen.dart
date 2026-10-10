@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
@@ -20,6 +22,7 @@ import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../data/comments_screen.dart';
 import '../watch/watch_provider_selection_screen.dart';
+import '../watch/watch_storage.dart';
 
 class AnimeDetailScreen extends StatefulHookConsumerWidget {
   const AnimeDetailScreen({required this.animeId, super.key});
@@ -37,6 +40,8 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   String? _currentStatus;
   int _currentScore = 0;
   int _watchedEpisodes = 0;
+  // Episodes the player marked as watched on this device (auto-tracked).
+  int _localWatched = 0;
   bool _descriptionExpanded = false;
   bool _loading = true;
 
@@ -58,6 +63,11 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   Future<void> _load() async {
     final api = ref.read(apiClientProvider);
     try {
+      unawaited(
+        WatchStorage.getWatchedEpisodes(widget.animeId).then((episodes) {
+          if (mounted) setState(() => _localWatched = episodes.length);
+        }),
+      );
       final detail = await api.getAnimeDetail(widget.animeId);
       if (!mounted) return;
       setState(() {
@@ -195,10 +205,11 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                             _buildHero(anime, poster, desktop),
                             const SizedBox(height: 28),
                             _buildActions(anime, desktop),
-                            if (_currentUser != null &&
-                                (_currentStatus == 'watching' ||
-                                    _currentStatus == 'rewatching') &&
-                                (anime.episodes ?? 0) > 0) ...[
+                            if ((anime.episodes ?? 0) > 0 &&
+                                (_localWatched > 0 ||
+                                    _watchedEpisodes > 0 ||
+                                    _currentStatus == 'watching' ||
+                                    _currentStatus == 'rewatching')) ...[
                               const SizedBox(height: 18),
                               _buildProgress(anime),
                             ],
@@ -523,7 +534,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
 
   Widget _buildProgress(ShikimoriAnimeDetail anime) {
     final total = anime.episodes ?? 0;
-    final watched = _watchedEpisodes.clamp(0, total);
+    final watched = math.max(_watchedEpisodes, _localWatched).clamp(0, total);
     final progress = total == 0 ? 0.0 : watched / total;
     return AniMixSurface(
       padding: const EdgeInsets.all(18),
@@ -536,7 +547,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 Row(
                   children: [
                     const Text(
-                      'Прогресс',
+                      'Прогресс просмотра',
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
@@ -562,20 +573,6 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 14),
-          IconButton.filledTonal(
-            tooltip: 'Уменьшить',
-            onPressed: watched <= 0 ? null : () => _updateProgress(watched - 1),
-            icon: const Icon(CupertinoIcons.minus),
-          ),
-          const SizedBox(width: 7),
-          IconButton.filled(
-            tooltip: 'Следующая серия просмотрена',
-            onPressed: watched >= total
-                ? null
-                : () => _updateProgress(watched + 1),
-            icon: const Icon(CupertinoIcons.plus),
           ),
         ],
       ),
@@ -690,6 +687,11 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                 for (final option in const [
                   ('planned', 'В планах', CupertinoIcons.bookmark),
                   ('watching', 'Смотрю', CupertinoIcons.play_circle),
+                  (
+                    'rewatching',
+                    'Пересматриваю',
+                    CupertinoIcons.arrow_2_circlepath_circle,
+                  ),
                   (
                     'completed',
                     'Просмотрено',
@@ -807,45 +809,6 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     }
   }
 
-  Future<void> _updateProgress(int episodes) async {
-    final user = _currentUser;
-    final status = _currentStatus;
-    if (user == null || status == null) return;
-    final previous = _watchedEpisodes;
-    setState(() => _watchedEpisodes = episodes);
-    try {
-      if (user.isAniMix) {
-        final saved = await ref
-            .read(animixAuthServiceProvider)
-            .saveLibraryEntry(
-              animeId: widget.animeId,
-              status: status,
-              score: _currentScore,
-              episodesWatched: episodes,
-            );
-        if (!saved) throw StateError('AniMix progress save failed');
-        ref.read(userDataRevisionProvider.notifier).bump();
-        ref.invalidate(currentUserProvider);
-        return;
-      }
-      await ref
-          .read(apiClientProvider)
-          .setUserRate(
-            widget.animeId,
-            status,
-            score: _currentScore,
-            episodes: episodes,
-            userId: user.id,
-          );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _watchedEpisodes = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось обновить прогресс')),
-      );
-    }
-  }
-
   static int _entryInt(Map<String, dynamic>? entry, String key) {
     final value = entry?[key];
     if (value is num) return value.toInt();
@@ -895,6 +858,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
 
   String _statusActionLabel(String? status) => switch (status) {
     'watching' => 'Смотрю',
+    'rewatching' => 'Пересматриваю',
     'completed' => 'Просмотрено',
     'on_hold' => 'Отложено',
     'dropped' => 'Брошено',

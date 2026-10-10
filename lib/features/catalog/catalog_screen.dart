@@ -22,6 +22,11 @@ enum BookmarkTab {
     CupertinoColors.systemBlue,
   ),
   planned('В планах', CupertinoIcons.clock_fill, CupertinoColors.systemGrey),
+  rewatching(
+    'Пересматриваю',
+    CupertinoIcons.arrow_2_circlepath_circle_fill,
+    CupertinoColors.systemPurple,
+  ),
   completed(
     'Просмотрено',
     CupertinoIcons.check_mark_circled_solid,
@@ -45,6 +50,7 @@ enum BookmarkTab {
 
   String get apiValue => switch (this) {
     BookmarkTab.watching => 'watching',
+    BookmarkTab.rewatching => 'rewatching',
     BookmarkTab.planned => 'planned',
     BookmarkTab.completed => 'completed',
     BookmarkTab.onHold => 'on_hold',
@@ -277,7 +283,9 @@ class CatalogScreen extends ConsumerWidget {
                 }
                 return _BookmarksContent(
                   items: filtered,
-                  watching: selected == BookmarkTab.watching,
+                  watching:
+                      selected == BookmarkTab.watching ||
+                      selected == BookmarkTab.rewatching,
                   onChangeStatus: (entry) =>
                       _showStatusMenu(context, ref, entry),
                 );
@@ -293,13 +301,6 @@ class CatalogScreen extends ConsumerWidget {
     List<BookmarkEntry> items,
     BookmarkTab tab,
   ) {
-    if (tab == BookmarkTab.watching) {
-      return items
-          .where(
-            (item) => item.status == 'watching' || item.status == 'rewatching',
-          )
-          .toList();
-    }
     return items.where((item) => item.status == tab.apiValue).toList();
   }
 
