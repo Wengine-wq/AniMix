@@ -785,7 +785,11 @@ class _SelectMark extends StatelessWidget {
         ),
       ),
       child: selected
-          ? Icon(Icons.check_rounded, size: 16, color: scheme.onPrimary)
+          ? Icon(
+              CupertinoIcons.checkmark_alt,
+              size: 16,
+              color: scheme.onPrimary,
+            )
           : null,
     );
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_settings.dart';
@@ -125,8 +126,8 @@ class EpisodeActionService {
                       subtitle: Text(_qualityDescription(entry.key)),
                       trailing: Icon(
                         entry.key == suggestedQuality
-                            ? Icons.download_for_offline_rounded
-                            : Icons.file_download_outlined,
+                            ? CupertinoIcons.arrow_down_circle_fill
+                            : CupertinoIcons.arrow_down_circle,
                         color: scheme.onSurfaceVariant,
                       ),
                       onTap: () {

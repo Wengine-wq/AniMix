@@ -1087,11 +1087,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                           Icon(
                             _seekFeedbackSeconds!.abs() > 10
                                 ? (_seekFeedbackSeconds! < 0
-                                      ? Icons.fast_rewind_rounded
-                                      : Icons.fast_forward_rounded)
+                                      ? CupertinoIcons.backward_fill
+                                      : CupertinoIcons.forward_fill)
                                 : _seekFeedbackSeconds! < 0
-                                ? Icons.replay_10_rounded
-                                : Icons.forward_10_rounded,
+                                ? CupertinoIcons.gobackward_10
+                                : CupertinoIcons.goforward_10,
                             color: Colors.white,
                             size: 30,
                           ),
@@ -1129,7 +1129,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                   ),
                   shape: const StadiumBorder(),
                 ),
-                icon: const Icon(Icons.skip_next_rounded, size: 20),
+                icon: const Icon(CupertinoIcons.forward_end_fill, size: 20),
                 label: Text(
                   _activeSkipSegment!.buttonLabel,
                   style: const TextStyle(fontWeight: FontWeight.w600),
@@ -1223,7 +1223,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 if (_isFullScreen)
                   _playerIconButton(
                     tooltip: 'Выйти из полноэкранного режима',
-                    icon: Icons.arrow_back_ios_new_rounded,
+                    icon: CupertinoIcons.back,
                     onPressed: () => unawaited(_setFullScreen(false)),
                   ),
                 const SizedBox(width: 8),
@@ -1259,14 +1259,14 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 ),
                 _playerIconButton(
                   tooltip: 'Скачать',
-                  icon: Icons.file_download_outlined,
+                  icon: CupertinoIcons.arrow_down_circle,
                   onPressed: _downloadCurrentQuality,
                 ),
                 const SizedBox(width: 6),
                 _playerIconButton(
                   key: const Key('player_settings_button'),
                   tooltip: 'Настройки воспроизведения',
-                  icon: Icons.more_horiz_rounded,
+                  icon: CupertinoIcons.ellipsis,
                   onPressed: _showPlaybackOptions,
                 ),
               ],
@@ -1281,7 +1281,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                       _playerIconButton(
                         key: const Key('rewind_10_button'),
                         tooltip: 'Назад на 10 секунд',
-                        icon: Icons.replay_10_rounded,
+                        icon: CupertinoIcons.gobackward_10,
                         iconSize: 31,
                         size: 52,
                         onPressed: () => unawaited(_seekRelative(-10)),
@@ -1291,8 +1291,8 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                         key: const Key('pause_play_button'),
                         tooltip: value.isPlaying ? 'Пауза' : 'Воспроизвести',
                         icon: value.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                            ? CupertinoIcons.pause_fill
+                            : CupertinoIcons.play_fill,
                         iconSize: 54,
                         size: 76,
                         background: const Color(0x33000000),
@@ -1303,7 +1303,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                       _playerIconButton(
                         key: const Key('forward_10_button'),
                         tooltip: 'Вперёд на 10 секунд',
-                        icon: Icons.forward_10_rounded,
+                        icon: CupertinoIcons.goforward_10,
                         iconSize: 31,
                         size: 52,
                         onPressed: () => unawaited(_seekRelative(10)),
@@ -1401,8 +1401,8 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                       key: const Key('fullscreen_button'),
                       tooltip: _isFullScreen ? 'Свернуть' : 'На весь экран',
                       icon: _isFullScreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
+                          ? CupertinoIcons.fullscreen_exit
+                          : CupertinoIcons.fullscreen,
                       size: 38,
                       iconSize: 25,
                       onPressed: () =>

@@ -287,12 +287,12 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
           onPressed: isLoading
               ? null
               : () => _loadWithResolver(forceRefresh: true),
-          icon: const Icon(Icons.refresh_rounded),
+          icon: const Icon(CupertinoIcons.arrow_clockwise),
         ),
         IconButton(
           tooltip: 'Сбросить найденное соответствие',
           onPressed: _resetMapping,
-          icon: const Icon(Icons.link_off_rounded),
+          icon: const Icon(CupertinoIcons.link),
         ),
       ],
       child: isLoading
@@ -339,7 +339,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
           child: SearchBar(
             controller: _searchController,
             hintText: 'Уточнить название релиза',
-            leading: const Icon(Icons.search_rounded),
+            leading: const Icon(CupertinoIcons.search),
             onSubmitted: (_) => _manualSearch(),
           ),
         ),
@@ -411,7 +411,7 @@ class _YummyAnimeScreenState extends State<YummyAnimeScreen> {
                       ),
                     ),
                     Icon(
-                      Icons.chevron_right_rounded,
+                      CupertinoIcons.chevron_forward,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       size: 20,
                     ),

@@ -112,7 +112,7 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsGroup(
                 children: [
                   _SettingsRow(
-                    icon: Icons.science_rounded,
+                    icon: CupertinoIcons.lab_flask_solid,
                     color: const Color(0xFFAD7CFF),
                     title: 'Экспериментальные функции',
                     subtitle: 'Новые возможности просмотра',

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -563,7 +564,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
                                 strokeWidth: 2.5,
                               )
                             : Icon(
-                                Icons.link_off_rounded,
+                                CupertinoIcons.link,
                                 size: 32,
                                 color: Theme.of(
                                   context,
@@ -595,7 +596,7 @@ class _KodikWebViewScreenState extends State<KodikWebViewScreen> {
                         const SizedBox(height: 22),
                         FilledButton.icon(
                           onPressed: _retry,
-                          icon: const Icon(Icons.refresh_rounded),
+                          icon: const Icon(CupertinoIcons.arrow_clockwise),
                           label: const Text('Повторить'),
                         ),
                       ],

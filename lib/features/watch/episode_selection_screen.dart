@@ -164,7 +164,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
         IconButton(
           tooltip: 'Сбросить найденное соответствие',
           onPressed: _resetMapping,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: const Icon(CupertinoIcons.arrow_clockwise),
         ),
       ],
       child: isLoading
@@ -323,7 +323,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
                 IconButton(
                   tooltip: 'Найти',
                   onPressed: _manualSearch,
-                  icon: const Icon(Icons.arrow_forward_rounded),
+                  icon: const Icon(CupertinoIcons.arrow_right),
                 ),
               ],
               onSubmitted: (_) => _manualSearch(),
@@ -332,7 +332,7 @@ class _EpisodeSelectionScreenState extends State<EpisodeSelectionScreen> {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _loadWithResolver,
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(CupertinoIcons.arrow_clockwise),
               label: const Text('Повторить автопоиск'),
             ),
           ],

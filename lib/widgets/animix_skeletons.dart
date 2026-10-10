@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
-
 /// Shared geometry for initial-content placeholders.
 ///
 /// Keeping these values here prevents every screen from inventing its own

@@ -609,9 +609,9 @@ class AniMixAuthService {
       'GET',
       '/v1/users/$userId/achievements',
     );
-    return _achievementMap(payload).map(
-      (id, at) => MapEntry(id, DateTime.fromMillisecondsSinceEpoch(at)),
-    );
+    return _achievementMap(
+      payload,
+    ).map((id, at) => MapEntry(id, DateTime.fromMillisecondsSinceEpoch(at)));
   }
 
   Future<String> getFriendStatus(String userId) async =>

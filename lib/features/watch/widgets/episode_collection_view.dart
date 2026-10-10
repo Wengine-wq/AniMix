@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/animix_theme.dart';
@@ -111,7 +112,7 @@ class _EpisodeCard extends StatelessWidget {
               ),
               child: episode.watched
                   ? Icon(
-                      Icons.check_rounded,
+                      CupertinoIcons.checkmark_alt,
                       size: 20,
                       color: scheme.onSurfaceVariant,
                     )
@@ -159,7 +160,7 @@ class _EpisodeCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Icon(
-                  Icons.error_outline_rounded,
+                  CupertinoIcons.exclamationmark_circle,
                   size: 20,
                   color: scheme.error,
                 ),
@@ -185,8 +186,8 @@ class _EpisodeCard extends StatelessWidget {
                       )
                     : Icon(
                         state == DownloadState.completed
-                            ? Icons.download_done_rounded
-                            : Icons.file_download_outlined,
+                            ? CupertinoIcons.checkmark_circle_fill
+                            : CupertinoIcons.arrow_down_circle,
                         size: 21,
                         color: state == DownloadState.completed
                             ? scheme.onSurface
@@ -256,7 +257,7 @@ class _ResumeHeader extends StatelessWidget {
           const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: onPlay,
-            icon: const Icon(Icons.play_arrow_rounded),
+            icon: const Icon(CupertinoIcons.play_fill),
             label: Text(
               started ? 'Продолжить: ${next.title}' : 'Смотреть ${next.title}',
               maxLines: 1,

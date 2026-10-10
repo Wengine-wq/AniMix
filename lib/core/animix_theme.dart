@@ -360,6 +360,13 @@ abstract final class AniMixTheme {
         linearTrackColor: palette.surfaceHigh,
       ),
       iconTheme: IconThemeData(color: foreground),
+      // App bars use iOS-style glyphs on every platform.
+      actionIconTheme: ActionIconThemeData(
+        backButtonIconBuilder: (_) => const Icon(CupertinoIcons.back),
+        closeButtonIconBuilder: (_) => const Icon(CupertinoIcons.xmark),
+        drawerButtonIconBuilder: (_) => const Icon(CupertinoIcons.bars),
+        endDrawerButtonIconBuilder: (_) => const Icon(CupertinoIcons.bars),
+      ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
