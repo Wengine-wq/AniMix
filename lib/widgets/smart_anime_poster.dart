@@ -1,14 +1,20 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../core/media_cache.dart';
 import '../core/config.dart';
 import '../core/poster_fallback_service.dart';
+import '../core/poster_loader.dart';
 import 'image_decode_size.dart';
 
+/// Anime poster with a stable, self-healing loading pipeline.
+///
+/// Candidate URLs are tried in a fixed order — the URL that worked last time,
+/// the catalog image, its mirror domain, then the fallback resolver — and the
+/// poster is only shown once a file is actually on disk. So it never flashes
+/// to a different picture mid-load, and a failed poster retries by itself.
 class SmartAnimePoster extends StatefulWidget {
   final int animeId;
   final String? imageUrl;
@@ -38,13 +44,11 @@ class SmartAnimePoster extends StatefulWidget {
 }
 
 class _SmartAnimePosterState extends State<SmartAnimePoster> {
-  String? _providerUrl;
-  String? _failedUrl;
-  bool _resolvingFallback = false;
-  bool _fallbackExhausted = false;
-  bool _alternateDomainAttempted = false;
-  Timer? _networkDeadline;
-  String? _reportedUrl;
+  File? _file;
+  bool _failed = false;
+  int _generation = 0;
+  int _autoRetries = 0;
+  Timer? _retryTimer;
 
   bool get _isKnownPlaceholder {
     final url = widget.imageUrl?.toLowerCase() ?? '';
@@ -54,24 +58,10 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
         url.contains('missing_preview');
   }
 
-  String? get _displayUrl {
-    final cached = PosterFallbackService.instance.cached(widget.animeId);
-    if (_providerUrl != null && _providerUrl != _failedUrl) return _providerUrl;
-    if (cached != null && cached != _failedUrl) return cached;
-    if (_isKnownPlaceholder) return null;
-    final original = widget.imageUrl;
-    if (original == null || original.isEmpty) return null;
-    final absolute = Config.proxiedImageUrl(original);
-    return absolute == _failedUrl ? null : absolute;
-  }
-
   @override
   void initState() {
     super.initState();
-    PosterFallbackService.instance.initialize().then((_) {
-      if (mounted) setState(() {});
-    });
-    if (_isKnownPlaceholder) unawaited(_requestFallback());
+    unawaited(_load());
   }
 
   @override
@@ -79,82 +69,78 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.animeId != widget.animeId ||
         oldWidget.imageUrl != widget.imageUrl) {
-      _providerUrl = null;
-      _failedUrl = null;
-      _fallbackExhausted = false;
-      _alternateDomainAttempted = false;
-      _reportedUrl = null;
-      _networkDeadline?.cancel();
-      if (_isKnownPlaceholder) unawaited(_requestFallback());
+      _autoRetries = 0;
+      // Keep showing the previous file until the new one is ready.
+      unawaited(_load());
     }
   }
 
   @override
   void dispose() {
-    _networkDeadline?.cancel();
+    _generation++;
+    _retryTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _requestFallback({bool retry = false}) async {
-    if (_resolvingFallback || (_fallbackExhausted && !retry)) return;
-    if (retry) {
-      await PosterFallbackService.instance.invalidate(widget.animeId);
-      _failedUrl = null;
+  Future<void> _load({bool manual = false}) async {
+    final generation = ++_generation;
+    _retryTimer?.cancel();
+    if (_failed && mounted) setState(() => _failed = false);
+    final loader = PosterLoader.instance;
+    final fallbacks = PosterFallbackService.instance;
+    await fallbacks.initialize();
+
+    final candidates = <String>[];
+    void add(String? url) {
+      if (url != null && url.isNotEmpty && !candidates.contains(url)) {
+        candidates.add(url);
+      }
     }
-    if (!mounted) return;
-    setState(() {
-      _resolvingFallback = true;
-      _fallbackExhausted = false;
-    });
-    final url = await PosterFallbackService.instance
+
+    if (!manual) add(await loader.rememberedUrl(widget.animeId));
+    if (!_isKnownPlaceholder && widget.imageUrl != null) {
+      final original = Config.proxiedImageUrl(widget.imageUrl!);
+      add(original);
+      add(Config.fallbackImageUrl(original));
+    }
+    add(fallbacks.cached(widget.animeId));
+
+    for (final url in candidates) {
+      if (!mounted || generation != _generation) return;
+      final file = await loader.load(url);
+      if (file != null) return _show(file, url, generation);
+    }
+    if (!mounted || generation != _generation) return;
+    final resolved = await fallbacks
         .resolve(
           shikimoriId: widget.animeId,
           title: widget.title,
           russianTitle: widget.russianTitle,
         )
-        .timeout(const Duration(seconds: 12), onTimeout: () => null);
-    if (!mounted) return;
-    setState(() {
-      _resolvingFallback = false;
-      if (url != null && url != _failedUrl) {
-        _providerUrl = url;
-      } else {
-        _fallbackExhausted = true;
-      }
-    });
-  }
-
-  void _armNetworkDeadline(String url) {
-    if (_networkDeadline?.isActive == true) return;
-    _networkDeadline = Timer(const Duration(seconds: 10), () {
-      if (mounted) _handleImageFailure(url);
-    });
-  }
-
-  void _handleImageFailure(String url) {
-    if (!mounted || _failedUrl == url) return;
-    _networkDeadline?.cancel();
-    final alternateUrl = Config.fallbackImageUrl(url);
-    if (!_alternateDomainAttempted && alternateUrl != url) {
-      setState(() {
-        _failedUrl = url;
-        _alternateDomainAttempted = true;
-        _providerUrl = alternateUrl;
-      });
-      return;
+        .timeout(const Duration(seconds: 15), onTimeout: () => null);
+    if (resolved != null && !candidates.contains(resolved)) {
+      final file = await loader.load(resolved);
+      if (file != null) return _show(file, resolved, generation);
     }
-    PosterFallbackService.instance.markFailed(widget.animeId, url);
-    setState(() {
-      _failedUrl = url;
-      if (_providerUrl == url) _providerUrl = null;
-    });
-    unawaited(_requestFallback());
+    if (!mounted || generation != _generation) return;
+    setState(() => _failed = _file == null);
+    // Networks recover; try again on our own a couple of times.
+    if (_autoRetries < 2) {
+      _autoRetries++;
+      _retryTimer = Timer(
+        Duration(seconds: 12 * _autoRetries),
+        () => unawaited(_load()),
+      );
+    }
   }
 
-  void _handleImageLoaded(String url) {
-    _networkDeadline?.cancel();
-    if (_reportedUrl == url) return;
-    _reportedUrl = url;
+  void _show(File file, String url, int generation) {
+    if (!mounted || generation != _generation) return;
+    PosterLoader.instance.remember(widget.animeId, url);
+    setState(() {
+      _file = file;
+      _failed = false;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.onResolved?.call(url);
     });
@@ -162,54 +148,42 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
 
   @override
   Widget build(BuildContext context) {
-    final url = _displayUrl;
-    if (url == null) {
-      if (!_resolvingFallback && !_fallbackExhausted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_requestFallback());
-        });
-      }
+    final file = _file;
+    if (file == null) {
       return _placeholder(
-        showProgress: _resolvingFallback,
-        onRetry: _fallbackExhausted
-            ? () => unawaited(_requestFallback(retry: true))
+        showProgress: !_failed,
+        onRetry: _failed
+            ? () {
+                _autoRetries = 0;
+                unawaited(PosterLoader.instance.forget(widget.animeId));
+                unawaited(_load(manual: true));
+              }
             : null,
       );
     }
     return LayoutBuilder(
-      builder: (context, constraints) => _networkImage(
-        url,
-        widget.decodeWidth ??
-            decodeWidthFor(context, constraints, fit: widget.fit),
-      ),
-    );
-  }
-
-  Widget _networkImage(String url, int? decodeWidth) {
-    return CachedNetworkImage(
-      imageUrl: url,
-      cacheManager: AniMixMediaCache.posters,
-      fit: widget.fit,
-      alignment: widget.alignment,
-      memCacheWidth: decodeWidth,
-      fadeInDuration: const Duration(milliseconds: 180),
-      imageBuilder: (_, provider) {
-        _handleImageLoaded(url);
+      builder: (context, constraints) {
+        final width =
+            widget.decodeWidth ??
+            decodeWidthFor(context, constraints, fit: widget.fit);
+        final ImageProvider provider = width == null
+            ? FileImage(file)
+            : ResizeImage(FileImage(file), width: width);
         return Image(
           image: provider,
           fit: widget.fit,
           alignment: widget.alignment,
+          gaplessPlayback: true,
+          frameBuilder: (context, child, frame, wasSynchronous) =>
+              wasSynchronous
+              ? child
+              : AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 180),
+                  child: child,
+                ),
+          errorBuilder: (_, _, _) => _placeholder(showProgress: false),
         );
-      },
-      placeholder: (_, _) {
-        _armNetworkDeadline(url);
-        return _placeholder(showProgress: true);
-      },
-      errorWidget: (_, _, _) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _handleImageFailure(url);
-        });
-        return _placeholder(showProgress: _resolvingFallback);
       },
     );
   }
@@ -225,7 +199,8 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
         ),
         child: Center(
           child: showProgress
-              ? const CupertinoActivityIndicator(radius: 10)
+              // Static while loading: no spinner per tile in a scrolling grid.
+              ? const SizedBox.shrink()
               : IconButton(
                   tooltip: onRetry == null ? 'Обложка недоступна' : 'Повторить',
                   onPressed: onRetry,

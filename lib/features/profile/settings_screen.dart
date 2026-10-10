@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/media_cache.dart';
 import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
@@ -1149,6 +1150,7 @@ class _DataScreenState extends State<_DataScreen> {
       ProviderResponseCache.instance.clear(),
       PosterFallbackService.instance.clear(),
       ResolvedStreamCache.clear(),
+      AniMixMediaCache.posters.emptyCache(),
     ]);
     if (!mounted) return;
     setState(() => _busy = false);
@@ -1236,6 +1238,21 @@ class _DataScreenState extends State<_DataScreen> {
                   context,
                   CupertinoPageRoute<void>(
                     builder: (_) => const _DownloadQualityScreen(),
+                  ),
+                ),
+              ),
+            ),
+            ListenableBuilder(
+              listenable: AppSettingsController.instance,
+              builder: (context, _) => _SettingsRow(
+                icon: CupertinoIcons.photo_on_rectangle,
+                color: const Color(0xFF35D07F),
+                title: 'Обложки аниме',
+                subtitle: AppSettingsController.instance.posterStorage.label,
+                onTap: () => Navigator.push(
+                  context,
+                  CupertinoPageRoute<void>(
+                    builder: (_) => const _PosterStorageScreen(),
                   ),
                 ),
               ),
@@ -1996,6 +2013,55 @@ class _DownloadQualityScreen extends StatelessWidget {
               child: Text(
                 'Действует для всех загрузок: из списка серий и из плеера. '
                 'Если нужного качества нет, берётся ближайшее ниже.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _PosterStorageScreen extends StatelessWidget {
+  const _PosterStorageScreen();
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: AppSettingsController.instance,
+    builder: (context, _) {
+      final current = AppSettingsController.instance.posterStorage;
+      return AniMixPage(
+        title: 'Обложки аниме',
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 72),
+          children: [
+            _SettingsGroup(
+              children: [
+                for (final option in AniMixPosterStorage.values)
+                  _ChoiceRow(
+                    icon: option == AniMixPosterStorage.device
+                        ? CupertinoIcons.device_phone_portrait
+                        : CupertinoIcons.cloud,
+                    title: option.label,
+                    subtitle: option.description,
+                    selected: option == current,
+                    onTap: () =>
+                        AppSettingsController.instance.setPosterStorage(option),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
+              child: Text(
+                'Обложки загружаются очередью с повторами, а ссылка, которая '
+                'сработала, запоминается для каждого тайтла — картинки больше '
+                'не пропадают и не сменяются на другие.',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,

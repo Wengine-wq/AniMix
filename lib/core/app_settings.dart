@@ -45,6 +45,22 @@ enum AniMixThemeStyle {
 
 /// One download quality for the whole app, so episodes are not asked about
 /// one by one. [height] is the target picture height; `null` means "ask".
+/// Where poster images live once downloaded.
+enum AniMixPosterStorage {
+  device(
+    'Хранить на устройстве',
+    'Обложки сохраняются навсегда, открываются мгновенно и без сети',
+  ),
+  cache(
+    'Временный кэш',
+    'Обложки обновляются из сети и занимают меньше места',
+  );
+
+  const AniMixPosterStorage(this.label, this.description);
+  final String label;
+  final String description;
+}
+
 enum AniMixDownloadQuality {
   ask('Спрашивать каждый раз', 'Выбор перед каждой загрузкой', null),
   best('Лучшее доступное', 'Максимальное качество источника', 100000),
@@ -98,6 +114,7 @@ class AppSettingsController extends ChangeNotifier {
   static const _autoPlayNextEpisodeKey = 'watch_auto_play_next_episode_v1';
   static const _preferredQualityKey = 'watch_preferred_quality_v1';
   static const _downloadQualityKey = 'download_quality_v1';
+  static const _posterStorageKey = 'poster_storage_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
@@ -109,6 +126,7 @@ class AppSettingsController extends ChangeNotifier {
   bool _autoPlayNextEpisode = true;
   String? _preferredQuality;
   AniMixDownloadQuality _downloadQuality = AniMixDownloadQuality.ask;
+  AniMixPosterStorage _posterStorage = AniMixPosterStorage.device;
   bool _initialized = false;
 
   AniMixAccent get accent => _accent;
@@ -127,6 +145,7 @@ class AppSettingsController extends ChangeNotifier {
   /// re-initialisation of the native player right after it opened.
   String? get preferredQuality => _preferredQuality;
   AniMixDownloadQuality get downloadQuality => _downloadQuality;
+  AniMixPosterStorage get posterStorage => _posterStorage;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -156,6 +175,10 @@ class AppSettingsController extends ChangeNotifier {
     _downloadQuality = AniMixDownloadQuality.values.firstWhere(
       (value) => value.name == prefs.getString(_downloadQualityKey),
       orElse: () => AniMixDownloadQuality.ask,
+    );
+    _posterStorage = AniMixPosterStorage.values.firstWhere(
+      (value) => value.name == prefs.getString(_posterStorageKey),
+      orElse: () => AniMixPosterStorage.device,
     );
     _initialized = true;
     notifyListeners();
@@ -232,6 +255,14 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_downloadQualityKey, value.name);
+  }
+
+  Future<void> setPosterStorage(AniMixPosterStorage value) async {
+    if (_posterStorage == value) return;
+    _posterStorage = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_posterStorageKey, value.name);
   }
 
   Future<void> setPreferredQuality(String? value) async {
