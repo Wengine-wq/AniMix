@@ -8,6 +8,7 @@ import '../../core/media_cache.dart';
 import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
+import '../../core/episode_notifier.dart';
 import '../../core/poster_fallback_service.dart';
 import '../../core/secure_storage.dart';
 import '../../providers/auth_provider.dart';
@@ -98,6 +99,7 @@ class SettingsScreen extends ConsumerWidget {
                         : 'Ручной выбор включён',
                     onTap: () => _push(context, const _ConnectionScreen()),
                   ),
+                  const _EpisodeNotificationsRow(),
                   _SettingsRow(
                     icon: CupertinoIcons.archivebox_fill,
                     color: const Color(0xFF35D07F),
@@ -2114,4 +2116,44 @@ class _PosterStorageScreen extends StatelessWidget {
       );
     },
   );
+}
+
+class _EpisodeNotificationsRow extends StatefulWidget {
+  const _EpisodeNotificationsRow();
+
+  @override
+  State<_EpisodeNotificationsRow> createState() =>
+      _EpisodeNotificationsRowState();
+}
+
+class _EpisodeNotificationsRowState extends State<_EpisodeNotificationsRow> {
+  bool? _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    EpisodeNotifier.instance.isEnabled().then((value) {
+      if (mounted) setState(() => _enabled = value);
+    });
+  }
+
+  Future<void> _set(bool value) async {
+    setState(() => _enabled = value);
+    await EpisodeNotifier.instance.setEnabled(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = _enabled ?? true;
+    return _SettingsRow(
+      icon: CupertinoIcons.bell_fill,
+      color: const Color(0xFFFF9F43),
+      title: 'Новые серии',
+      subtitle: enabled
+          ? 'Уведомим о сериях онгоингов из «Смотрю»'
+          : 'Уведомления выключены',
+      onTap: () => _set(!enabled),
+      trailing: Switch.adaptive(value: enabled, onChanged: _set),
+    );
+  }
 }

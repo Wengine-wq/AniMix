@@ -22,6 +22,8 @@ import 'core/animix_motion.dart';
 import 'core/app_settings.dart';
 import 'core/app_logging.dart';
 import 'core/achievement_service.dart';
+import 'core/episode_notifier.dart';
+import 'features/anime_detail/anime_detail_screen.dart';
 
 void main() {
   runZonedGuarded(
@@ -179,16 +181,49 @@ class _StartupError extends StatelessWidget {
 // =====================================================================
 // Адаптивная корневая навигация: tab bar на телефоне и rail на desktop.
 // =====================================================================
-class MainWrapper extends StatefulWidget {
+class MainWrapper extends ConsumerStatefulWidget {
   const MainWrapper({super.key});
 
   @override
-  State<MainWrapper> createState() => _MainWrapperState();
+  ConsumerState<MainWrapper> createState() => _MainWrapperState();
 }
 
-class _MainWrapperState extends State<MainWrapper> {
+class _MainWrapperState extends ConsumerState<MainWrapper> {
   int _currentIndex = 0;
   final Set<int> _visited = {0};
+  Timer? _followTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      EpisodeNotifier.instance.start(
+        onOpen: (animeId) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            CupertinoPageRoute<void>(
+              builder: (_) => AnimeDetailScreen(animeId: animeId),
+            ),
+          );
+        },
+      ),
+    );
+    // Refresh the followed ongoings once the first screen has settled.
+    _followTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted) return;
+      final subscription = ref.listenManual(bookmarksProvider, (_, _) {});
+      ref
+          .read(bookmarksProvider.future)
+          .whenComplete(subscription.close)
+          .ignore();
+    });
+  }
+
+  @override
+  void dispose() {
+    _followTimer?.cancel();
+    super.dispose();
+  }
 
   final List<Widget> _screens = [
     const HomeScreen(),

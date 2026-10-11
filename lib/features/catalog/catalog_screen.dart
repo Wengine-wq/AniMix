@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -6,6 +8,7 @@ import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
+import '../../core/episode_notifier.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
@@ -85,6 +88,19 @@ final bookmarkTabProvider = NotifierProvider<BookmarkTabNotifier, BookmarkTab>(
 final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((
   ref,
 ) async {
+  final entries = await _loadBookmarks(ref);
+  // Ongoings in «Смотрю» feed the new-episode notifications.
+  unawaited(
+    EpisodeNotifier.instance.follow(
+      entries
+          .where((e) => e.status == 'watching' || e.status == 'rewatching')
+          .map((e) => e.anime),
+    ),
+  );
+  return entries;
+});
+
+Future<List<BookmarkEntry>> _loadBookmarks(Ref ref) async {
   if (!await ref.watch(isLoggedInProvider.future)) {
     throw const _BookmarksAuthRequired();
   }
@@ -173,7 +189,7 @@ final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((
         ),
       )
       .toList();
-});
+}
 
 class _AniMixBookmarkRecord {
   const _AniMixBookmarkRecord({
