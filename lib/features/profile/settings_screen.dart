@@ -1577,7 +1577,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.2',
+                'ВЕРСИЯ 2.5.3',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -2148,6 +2148,32 @@ typedef _Release = ({
 
 /// Newest first. Keep in step with the GitHub release notes.
 const List<_Release> _changelog = [
+  (
+    version: '2.5.3',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.person_crop_circle_badge_checkmark,
+        'Вход без аккаунта',
+        'Каталог, просмотр и загрузки работают без входа, прогресс хранится на устройстве',
+      ),
+      (
+        CupertinoIcons.wrench_fill,
+        'Статус сервера',
+        'Если сервер AniMix недоступен, приложение не зависает и честно показывает, что идёт ремонт',
+      ),
+      (
+        CupertinoIcons.chat_bubble_2_fill,
+        'Shikimori для комментариев',
+        'Можно войти в Shikimori без аккаунта AniMix, только чтобы писать в обсуждениях',
+      ),
+      (
+        CupertinoIcons.sparkles,
+        'Новый экран входа',
+        'В стиле приложения, с понятными вариантами входа',
+      ),
+    ],
+  ),
   (
     version: '2.5.2',
     date: 'Октябрь 2026',
