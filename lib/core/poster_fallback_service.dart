@@ -82,22 +82,86 @@ class PosterFallbackService {
         if (russianTitle?.trim().isNotEmpty == true) russianTitle!.trim(),
         if (title.trim().isNotEmpty) title.trim(),
       };
-      for (final query in queries) {
-        final yummy = await _fromYummy(shikimoriId, query, queries);
-        if (yummy != null && !_isRejected(shikimoriId, yummy)) {
-          return await _remember(shikimoriId, yummy);
-        }
+      // Shikimori moved posters to /uploads/…; the REST API still answers
+      // "missing" for many titles, the GraphQL API has the real file.
+      final shikimori = await _fromShikimoriGraphql(shikimoriId);
+      if (shikimori != null && !_isRejected(shikimoriId, shikimori)) {
+        return await _remember(shikimoriId, shikimori);
       }
-      for (final query in queries) {
-        final liberty = await _fromAniLiberty(query, queries);
-        if (liberty != null && !_isRejected(shikimoriId, liberty)) {
-          return await _remember(shikimoriId, liberty);
+      // All sources and titles at once: YummyAnime alone can take several
+      // seconds per search, and doing them one by one blew the poster's
+      // time budget, leaving titles without a cover.
+      Future<String?> safe(Future<String?> lookup) =>
+          lookup.catchError((_) => null);
+      final yummy = [
+        for (final query in queries)
+          safe(_fromYummy(shikimoriId, query, queries)),
+      ];
+      final liberty = [
+        for (final query in queries) safe(_fromAniLiberty(query, queries)),
+      ];
+      final results = await Future.wait([...yummy, ...liberty]);
+      // YummyAnime matches by Shikimori id, so it wins when it has a cover.
+      for (final url in results) {
+        if (url != null && !_isRejected(shikimoriId, url)) {
+          return await _remember(shikimoriId, url);
         }
       }
       return null;
     } finally {
       _inFlight.remove(shikimoriId);
     }
+  }
+
+  // Lookups that arrive together (a shelf of cards) share one request.
+  final Map<int, Completer<String?>> _graphqlPending = {};
+  Timer? _graphqlTimer;
+
+  Future<String?> _fromShikimoriGraphql(int shikimoriId) {
+    final existing = _graphqlPending[shikimoriId];
+    if (existing != null) return existing.future;
+    final completer = Completer<String?>();
+    _graphqlPending[shikimoriId] = completer;
+    _graphqlTimer ??= Timer(const Duration(milliseconds: 60), _flushGraphql);
+    return completer.future;
+  }
+
+  Future<void> _flushGraphql() async {
+    _graphqlTimer = null;
+    final batch = Map<int, Completer<String?>>.of(_graphqlPending);
+    _graphqlPending.clear();
+    final ids = batch.keys.toList();
+    final found = <int, String>{};
+    for (var start = 0; start < ids.length; start += 50) {
+      final chunk = ids.skip(start).take(50).join(',');
+      try {
+        final response = await _dio.post<dynamic>(
+          '${Config.shikimoriBaseUrl}/api/graphql',
+          data: {
+            'query':
+                '{ animes(ids: "$chunk", limit: 50, censored: false) '
+                '{ id poster { originalUrl } } }',
+          },
+          options: Options(contentType: Headers.jsonContentType),
+        );
+        final data = response.data is String
+            ? jsonDecode(response.data as String)
+            : response.data;
+        final payload = data is Map ? data['data'] : null;
+        final animes = payload is Map ? payload['animes'] : null;
+        if (animes is! List) continue;
+        for (final item in animes.whereType<Map>()) {
+          final id = int.tryParse('${item['id']}') ?? 0;
+          final url = item['poster']?['originalUrl']?.toString() ?? '';
+          if (id > 0 && url.startsWith('http') && !url.contains('missing_')) {
+            found[id] = url;
+          }
+        }
+      } catch (_) {
+        // Other sources still get a chance.
+      }
+    }
+    batch.forEach((id, completer) => completer.complete(found[id]));
   }
 
   Future<String?> _fromYummy(

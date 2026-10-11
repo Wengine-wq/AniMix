@@ -117,7 +117,7 @@ class _SmartAnimePosterState extends State<SmartAnimePoster> {
           title: widget.title,
           russianTitle: widget.russianTitle,
         )
-        .timeout(const Duration(seconds: 15), onTimeout: () => null);
+        .timeout(const Duration(seconds: 25), onTimeout: () => null);
     if (resolved != null && !candidates.contains(resolved)) {
       final file = await loader.load(resolved);
       if (file != null) return _show(file, resolved, generation);
