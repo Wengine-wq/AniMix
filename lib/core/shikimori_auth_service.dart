@@ -17,7 +17,8 @@ class ShikimoriAuthService {
     Dio? dio,
     RefreshTokenReader? readRefreshToken,
     TokenWriter? saveTokens,
-  }) : _dio = dio ?? Dio(),
+  }) : _dio =
+           dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 8))),
        _readRefreshToken = readRefreshToken ?? SecureStorage.getRefreshToken,
        _saveTokens = saveTokens ?? SecureStorage.saveTokens;
 
@@ -63,15 +64,45 @@ class ShikimoriAuthService {
     }
 
     try {
-      final response = await _dio.post<dynamic>(
-        proxyUrl,
-        data: {...grant, 'client_id': clientId},
-        options: Options(
-          contentType: Headers.jsonContentType,
-          responseType: ResponseType.json,
-          validateStatus: (status) => status != null && status < 500,
-        ),
-      );
+      Response<dynamic> response;
+      try {
+        response = await _dio.post<dynamic>(
+          proxyUrl,
+          data: {...grant, 'client_id': clientId},
+          options: Options(
+            contentType: Headers.jsonContentType,
+            responseType: ResponseType.json,
+            sendTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 15),
+            validateStatus: (status) => status != null && status < 500,
+          ),
+        );
+      } on DioException catch (error) {
+        // The proxy lives in our cloud; during an outage talk to Shikimori
+        // directly if this build carries the emergency client secret.
+        final secret = Config.shikimoriClientSecret.trim();
+        if (secret.isEmpty || error.response?.statusCode == 400) rethrow;
+        AppLogBuffer.instance.warning(
+          'OAuth proxy unreachable (${error.type.name}); using direct exchange.',
+          source: 'Authentication',
+        );
+        response = await _dio.post<dynamic>(
+          '${Config.shikimoriBaseUrl}/oauth/token',
+          data: {
+            ...grant,
+            'client_id': clientId,
+            'client_secret': secret,
+            if (grant['grant_type'] == 'authorization_code')
+              'redirect_uri': Config.shikimoriRedirectUri,
+          },
+          options: Options(
+            contentType: Headers.formUrlEncodedContentType,
+            responseType: ResponseType.json,
+            headers: const {'User-Agent': 'AniMix'},
+            validateStatus: (status) => status != null && status < 500,
+          ),
+        );
+      }
       if (response.statusCode != 200 || response.data is! Map) {
         final data = response.data;
         final upstreamError = data is Map ? data['error']?.toString() : null;

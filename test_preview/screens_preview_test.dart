@@ -23,6 +23,7 @@ import 'package:animix/features/recommendation/recommendation_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/features/auth/login_screen.dart';
 import 'package:animix/core/server_health.dart';
+import 'package:animix/core/server_status.dart';
 import 'package:animix/models/shikimori_anime.dart';
 import 'package:animix/models/shikimori_anime_detail.dart';
 import 'package:animix/features/anime_detail/anime_detail_screen.dart';
@@ -384,7 +385,24 @@ void main() {
   if (want('guest')) {
     testWidgets(
       'guest_login',
-      (t) => shoot(t, 'guest_login', const LoginScreen(), loggedIn: false),
+      (t) => shoot(t, 'guest_login', const LoginScreen(), loggedIn: false, before: (tester) async {
+        ServerStatusService.instance.status.value = ServerStatusInfo(
+          state: ServerState.outage,
+          title: ServerStatusInfo.defaultOutageTitle,
+          message: ServerStatusInfo.defaultOutageMessage,
+          checkedAt: DateTime(2026, 10, 11, 19, 12),
+        );
+      }),
+    );
+    testWidgets(
+      'guest_login_wide',
+      (t) => shoot(
+        t,
+        'guest_login_wide',
+        const LoginScreen(),
+        loggedIn: false,
+        size: const Size(1280, 800),
+      ),
     );
     for (final (name, screen) in [
       ('guest_home', const MainWrapper() as Widget),

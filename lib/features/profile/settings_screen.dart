@@ -59,6 +59,16 @@ class SettingsScreen extends ConsumerWidget {
                         ? () => Navigator.maybePop(context)
                         : () => _push(context, const LoginScreen()),
                   ),
+                  if (!authenticated)
+                    _SettingsRow(
+                      icon: CupertinoIcons.chat_bubble_2_fill,
+                      color: const Color(0xFF43C6FF),
+                      title: 'Shikimori',
+                      subtitle:
+                          'Вход для комментариев, без синхронизации списков',
+                      onTap: () =>
+                          _push(context, const ShikimoriIntegrationScreen()),
+                    ),
                   if (authenticated && profile?.isAniMix == true)
                     _SettingsRow(
                       icon: profile!.shikimoriLinked

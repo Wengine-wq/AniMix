@@ -42,6 +42,9 @@ class Config {
       'ANILIBERTY_API_BASE' => const String.fromEnvironment(
         'ANILIBERTY_API_BASE',
       ),
+      'SHIKIMORI_CLIENT_SECRET' => const String.fromEnvironment(
+        'SHIKIMORI_CLIENT_SECRET',
+      ),
       'ANIMIX_API_BASE_URL' => const String.fromEnvironment(
         'ANIMIX_API_BASE_URL',
       ),
@@ -59,6 +62,11 @@ class Config {
   /// Optional HTTPS endpoint that exchanges the Shikimori authorization code
   /// on a trusted server. The server owns the OAuth client secret; the mobile
   /// and desktop binaries only receive the resulting tokens.
+  /// Emergency fallback only: lets the app exchange Shikimori codes directly
+  /// when the OAuth proxy (our cloud) is down. Empty in normal builds; set
+  /// through the SHIKIMORI_CLIENT_SECRET build secret when needed.
+  static String get shikimoriClientSecret => _value('SHIKIMORI_CLIENT_SECRET');
+
   static String get shikimoriOAuthProxyUrl => _value(
     'SHIKIMORI_OAUTH_PROXY_URL',
     fallback: _productionShikimoriOAuthProxyUrl,

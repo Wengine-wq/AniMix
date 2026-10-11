@@ -16,6 +16,7 @@ jobs:
       SHIKIMORI_CLIENT_ID: NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
       SHIKIMORI_OAUTH_PROXY_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
       ANIMIX_API_BASE_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+      SHIKIMORI_CLIENT_SECRET: ${{ secrets.SHIKIMORI_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v5
@@ -36,7 +37,8 @@ jobs:
           flutter build windows --release `
             --dart-define=SHIKIMORI_CLIENT_ID=$env:SHIKIMORI_CLIENT_ID `
             --dart-define=SHIKIMORI_OAUTH_PROXY_URL=$env:SHIKIMORI_OAUTH_PROXY_URL `
-            --dart-define=ANIMIX_API_BASE_URL=$env:ANIMIX_API_BASE_URL
+            --dart-define=ANIMIX_API_BASE_URL=$env:ANIMIX_API_BASE_URL `
+            --dart-define=SHIKIMORI_CLIENT_SECRET=$env:SHIKIMORI_CLIENT_SECRET
 
       - name: Package app with its DLLs and data
         run: |

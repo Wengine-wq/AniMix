@@ -1,40 +1,104 @@
 import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart';
 
-import '../../core/config.dart';
 import '../../core/app_logging.dart';
+import '../../core/config.dart';
 import '../../core/shikimori_oauth_flow.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
-import '../../widgets/animix_surface.dart';
+import '../../widgets/server_status_card.dart';
+import '../profile/shikimori_integration_screen.dart';
 
-class _LoginBackdrop extends StatelessWidget {
+/// Slow drifting accent glows behind the sign-in screen.
+class _LoginBackdrop extends StatefulWidget {
   const _LoginBackdrop();
+
+  @override
+  State<_LoginBackdrop> createState() => _LoginBackdropState();
+}
+
+class _LoginBackdropState extends State<_LoginBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _drift = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _drift.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.alphaBlend(
-              theme.colorScheme.primary.withValues(alpha: .10),
-              theme.scaffoldBackgroundColor,
+    final accent = theme.colorScheme.primary;
+    final hsl = HSLColor.fromColor(accent);
+    final second = hsl.withHue((hsl.hue + 50) % 360).toColor();
+    final dark = theme.brightness == Brightness.dark;
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _drift,
+        builder: (context, _) {
+          final t = _drift.value * 2 * math.pi;
+          return DecoratedBox(
+            decoration: BoxDecoration(color: theme.scaffoldBackgroundColor),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _Glow(
+                  alignment: Alignment(
+                    -0.8 + 0.25 * math.sin(t),
+                    -0.9 + 0.15 * math.cos(t),
+                  ),
+                  color: accent.withValues(alpha: dark ? .34 : .22),
+                ),
+                _Glow(
+                  alignment: Alignment(
+                    0.9 + 0.2 * math.cos(t),
+                    -0.2 + 0.25 * math.sin(t),
+                  ),
+                  color: second.withValues(alpha: dark ? .22 : .14),
+                ),
+                _Glow(
+                  alignment: Alignment(
+                    -0.4 + 0.2 * math.cos(t + 1),
+                    1.0 + 0.1 * math.sin(t),
+                  ),
+                  color: accent.withValues(alpha: dark ? .16 : .10),
+                ),
+              ],
             ),
-            theme.scaffoldBackgroundColor,
-          ],
-          stops: const [0, .6],
-        ),
+          );
+        },
       ),
     );
   }
+}
+
+class _Glow extends StatelessWidget {
+  const _Glow({required this.alignment, required this.color});
+
+  final Alignment alignment;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: RadialGradient(
+        center: alignment,
+        radius: 0.9,
+        colors: [color, color.withValues(alpha: 0)],
+      ),
+    ),
+  );
 }
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -48,89 +112,65 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _busy = false;
   String? _error;
 
+  static const _features = [
+    (CupertinoIcons.play_rectangle_fill, 'Плеер без рекламы'),
+    (CupertinoIcons.arrow_down_circle_fill, 'Офлайн-загрузки'),
+    (CupertinoIcons.bell_fill, 'Новые серии'),
+    (CupertinoIcons.sparkles, 'Итоги года'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final sessionNotice = ref.watch(sessionNoticeProvider);
-
+    final notice = _error ?? sessionNotice;
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           const Positioned.fill(child: _LoginBackdrop()),
           SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: AniMixSurface(
-                    radius: 24,
-                    elevated: false,
-                    blurred: true,
-                    padding: const EdgeInsets.all(30),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(23),
-                          child: Image.asset(
-                            'assets/icon/app_icon.png',
-                            width: 104,
-                            height: 104,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Icon(
-                              CupertinoIcons.play_circle_fill,
-                              size: 86,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 860;
+                final hero = _Hero(features: _features, wide: wide);
+                final panel = _buildPanel(notice, isError: _error != null);
+                if (wide) {
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1040),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 48),
+                        child: Row(
+                          children: [
+                            Expanded(child: hero),
+                            const SizedBox(width: 56),
+                            SizedBox(
+                              width: 400,
+                              child: SingleChildScrollView(child: panel),
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'AniMix',
-                          style: TextStyle(
-                            fontSize: 48,
-                            height: 1.05,
-                            letterSpacing: -1.4,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      ),
+                    ),
+                  );
+                }
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 52,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [hero, const SizedBox(height: 36), panel],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Списки, оценки и прогресс — в одном аккаунте',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                            fontSize: 16,
-                          ),
-                        ),
-                        if (sessionNotice != null || _error != null) ...[
-                          const SizedBox(height: 20),
-                          _LoginNotice(
-                            message: _error ?? sessionNotice!,
-                            isError: _error != null,
-                          ),
-                        ],
-                        const SizedBox(height: 30),
-                        _buildAniMixAuthPanel(),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Shikimori подключается отдельно в настройках после входа в AniMix.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
@@ -138,10 +178,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildAniMixAuthPanel() {
+  Widget _buildPanel(String? notice, {required bool isError}) {
+    final scheme = Theme.of(context).colorScheme;
+    final guest = ref.watch(guestModeProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const ServerStatusCard(compact: true),
+        if (notice != null) ...[
+          const SizedBox(height: 12),
+          _LoginNotice(message: notice, isError: isError),
+        ],
+        const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: _busy ? null : _handleAniMixGoogleLogin,
           icon: _busy
@@ -149,33 +197,76 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   dimension: 18,
                   child: CupertinoActivityIndicator(),
                 )
-              : const Icon(CupertinoIcons.person_crop_circle_fill),
+              : const Icon(CupertinoIcons.person_crop_circle_fill, size: 20),
           label: Text(_busy ? 'Открываем Google…' : 'Войти через Google'),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(54),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
-        if (!ref.watch(guestModeProvider)) ...[
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _busy
-                ? null
-                : () => ref.read(guestModeProvider.notifier).set(true),
-            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+        if (!guest) ...[
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: _busy ? null : _continueAsGuest,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(54),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              side: BorderSide(color: scheme.outlineVariant),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             child: const Text('Продолжить без входа'),
           ),
         ],
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
+        TextButton.icon(
+          onPressed: _busy ? null : _openShikimori,
+          icon: const Icon(CupertinoIcons.chat_bubble_2_fill, size: 17),
+          label: const Text('Войти в Shikimori для комментариев'),
+          style: TextButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+        ),
+        const SizedBox(height: 14),
         Text(
-          'Без входа работают каталог, просмотр и загрузки; прогресс хранится на устройстве. '
-          'Google подтверждает email, а AniMix хранит только собственный профиль и сессию.',
+          'Без входа работают каталог, просмотр и загрузки, прогресс хранится '
+          'на устройстве. Аккаунт AniMix синхронизирует списки, профиль и '
+          'достижения между устройствами.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            color: scheme.onSurfaceVariant,
             fontSize: 12,
-            height: 1.35,
+            height: 1.4,
           ),
         ),
       ],
     );
+  }
+
+  void _continueAsGuest() {
+    ref.read(guestModeProvider.notifier).set(true);
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  }
+
+  /// Shikimori is only for comments here; it does not touch AniMix data.
+  void _openShikimori() {
+    final navigator = Navigator.of(context);
+    navigator.push(
+      CupertinoPageRoute<void>(
+        builder: (_) => const ShikimoriIntegrationScreen(),
+      ),
+    );
+    if (!ref.read(guestModeProvider)) {
+      ref.read(guestModeProvider.notifier).set(true);
+    }
   }
 
   Future<void> _handleAniMixGoogleLogin() async {
@@ -205,6 +296,106 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
+class _Hero extends StatelessWidget {
+  const _Hero({required this.features, required this.wide});
+
+  final List<(IconData, String)> features;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final align = wide ? CrossAxisAlignment.start : CrossAxisAlignment.center;
+    final textAlign = wide ? TextAlign.start : TextAlign.center;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: align,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.primary.withValues(alpha: .45),
+                blurRadius: 44,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: Image.asset(
+              'assets/icon/app_icon.png',
+              width: wide ? 104 : 92,
+              height: wide ? 104 : 92,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  const Icon(CupertinoIcons.play_circle_fill, size: 86),
+            ),
+          ),
+        ),
+        SizedBox(height: wide ? 28 : 22),
+        Text(
+          'AniMix',
+          textAlign: textAlign,
+          style: TextStyle(
+            fontSize: wide ? 64 : 48,
+            height: 1,
+            letterSpacing: -2,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Смотри аниме, веди списки\nи подводи итоги года. Бесплатно.',
+          textAlign: textAlign,
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontSize: wide ? 20 : 17,
+            height: 1.35,
+          ),
+        ),
+        SizedBox(height: wide ? 28 : 22),
+        Wrap(
+          alignment: wide ? WrapAlignment.start : WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (icon, label) in features)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: scheme.outlineVariant.withValues(alpha: .5),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 15, color: scheme.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _LoginNotice extends StatelessWidget {
   const _LoginNotice({required this.message, required this.isError});
 
@@ -212,36 +403,37 @@ class _LoginNotice extends StatelessWidget {
   final bool isError;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color:
-          (isError ? CupertinoColors.systemRed : CupertinoColors.systemOrange)
-              .withValues(alpha: .12),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: [
-        Icon(
-          isError
-              ? CupertinoIcons.exclamationmark_circle_fill
-              : CupertinoIcons.info_circle_fill,
-          size: 19,
-          color: isError
-              ? CupertinoColors.systemRed
-              : CupertinoColors.systemOrange,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(fontSize: 13, height: 1.3),
+  Widget build(BuildContext context) {
+    final color = isError
+        ? CupertinoColors.systemRed
+        : CupertinoColors.systemOrange;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isError
+                ? CupertinoIcons.exclamationmark_circle_fill
+                : CupertinoIcons.info_circle_fill,
+            size: 19,
+            color: color,
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ===================== ВСТРОЕННЫЙ БРАУЗЕР ДЛЯ МОБИЛОК =====================

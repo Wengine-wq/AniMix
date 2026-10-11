@@ -19,6 +19,8 @@ jobs:
       SHIKIMORI_CLIENT_ID: NuL115GhQetODbWxWIKOKEt9E2IMtUqGkY9zdQacpBM
       SHIKIMORI_OAUTH_PROXY_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
       ANIMIX_API_BASE_URL: https://d5davburno8pol18q3hm.fovt0b64.apigw.yandexcloud.net
+      # Optional emergency fallback for Shikimori sign-in while the OAuth proxy is down.
+      SHIKIMORI_CLIENT_SECRET: ${{ secrets.SHIKIMORI_CLIENT_SECRET }}
     
     steps:
       - name: 📥 Скачивание кода проекта
@@ -49,7 +51,8 @@ jobs:
           flutter build ios --config-only --no-codesign \
             --dart-define=SHIKIMORI_CLIENT_ID="$SHIKIMORI_CLIENT_ID" \
             --dart-define=SHIKIMORI_OAUTH_PROXY_URL="$SHIKIMORI_OAUTH_PROXY_URL" \
-            --dart-define=ANIMIX_API_BASE_URL="$ANIMIX_API_BASE_URL"
+            --dart-define=ANIMIX_API_BASE_URL="$ANIMIX_API_BASE_URL" \
+            --dart-define=SHIKIMORI_CLIENT_SECRET="$SHIKIMORI_CLIENT_SECRET"
 
       - name: 🍏 Установка CocoaPods
         run: |

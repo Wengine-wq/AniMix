@@ -254,6 +254,128 @@ class _ShikimoriIntegrationScreenState
     };
   }
 
+  /// Without an AniMix account Shikimori is only for discussions: lists and
+  /// progress stay on this device and nothing is merged.
+  Widget _guestView() {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 72),
+      children: [
+        AniMixSurface(
+          elevated: true,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Shikimori для обсуждений',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              const _ServiceBenefit(
+                icon: CupertinoIcons.chat_bubble_2_fill,
+                text:
+                    'Писать комментарии и отвечать в обсуждениях аниме от своего имени.',
+              ),
+              const SizedBox(height: 8),
+              const _ServiceBenefit(
+                icon: CupertinoIcons.smiley_fill,
+                text: 'Использовать смайлы и разметку Shikimori в сообщениях.',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Без аккаунта AniMix Shikimori нужен только для комментариев: '
+                'списки и прогресс остаются на устройстве и ни с чем не '
+                'смешиваются.',
+                style: TextStyle(color: muted, fontSize: 12, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        _sessionCard(),
+      ],
+    );
+  }
+
+  Widget _sessionCard() {
+    return AniMixSurface(
+      padding: const EdgeInsets.all(18),
+      child: _checkingSession
+          ? const Row(
+              children: [
+                CupertinoActivityIndicator(),
+                SizedBox(width: 12),
+                Text('Проверяем сессию Shikimori…'),
+              ],
+            )
+          : Row(
+              children: [
+                Icon(
+                  _shikimoriUser == null
+                      ? CupertinoIcons.person_crop_circle_badge_plus
+                      : CupertinoIcons.check_mark_circled_solid,
+                  color: _shikimoriUser == null
+                      ? Theme.of(context).colorScheme.primary
+                      : CupertinoColors.systemGreen,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _shikimoriUser?.nickname ?? 'Shikimori не подключён',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        _shikimoriUser == null
+                            ? 'Подключите аккаунт, чтобы писать комментарии'
+                            : 'Связь подтверждена · комментарии доступны',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_shikimoriUser == null)
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _loginShikimori(force: false),
+                    child: const Text('Войти'),
+                  )
+                else
+                  PopupMenuButton<String>(
+                    enabled: !_busy,
+                    onSelected: (value) {
+                      if (value == 'relogin') {
+                        _loginShikimori(force: true);
+                      } else if (value == 'disconnect') {
+                        _disconnectShikimori();
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'relogin',
+                        child: Text('Войти заново'),
+                      ),
+                      PopupMenuItem(
+                        value: 'disconnect',
+                        child: Text('Отключить'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(currentUserProvider);
@@ -269,13 +391,7 @@ class _ShikimoriIntegrationScreenState
           onAction: () => ref.invalidate(currentUserProvider),
         ),
         data: (user) {
-          if (user == null || !user.isAniMix) {
-            return const AniMixEmptyState(
-              icon: CupertinoIcons.person_crop_circle_badge_exclam,
-              title: 'Сначала войдите в AniMix',
-              message: 'Shikimori подключается к основному аккаунту AniMix.',
-            );
-          }
+          if (user == null || !user.isAniMix) return _guestView();
           final linked = user.shikimoriLinked;
           final total =
               user.watched +
@@ -331,83 +447,7 @@ class _ShikimoriIntegrationScreenState
                 ),
               ),
               const SizedBox(height: 18),
-              AniMixSurface(
-                padding: const EdgeInsets.all(18),
-                child: _checkingSession
-                    ? const Row(
-                        children: [
-                          CupertinoActivityIndicator(),
-                          SizedBox(width: 12),
-                          Text('Проверяем сессию Shikimori…'),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Icon(
-                            _shikimoriUser == null
-                                ? CupertinoIcons.person_crop_circle_badge_plus
-                                : CupertinoIcons.check_mark_circled_solid,
-                            color: _shikimoriUser == null
-                                ? Theme.of(context).colorScheme.primary
-                                : CupertinoColors.systemGreen,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _shikimoriUser?.nickname ??
-                                      'Shikimori не подключён',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  _shikimoriUser == null
-                                      ? 'Подключите аккаунт для комментариев и переноса библиотеки'
-                                      : 'Связь подтверждена · комментарии доступны',
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_shikimoriUser == null)
-                            TextButton(
-                              onPressed: _busy
-                                  ? null
-                                  : () => _loginShikimori(force: false),
-                              child: const Text('Войти'),
-                            )
-                          else
-                            PopupMenuButton<String>(
-                              enabled: !_busy,
-                              onSelected: (value) {
-                                if (value == 'relogin') {
-                                  _loginShikimori(force: true);
-                                } else if (value == 'disconnect') {
-                                  _disconnectShikimori();
-                                }
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'relogin',
-                                  child: Text('Войти заново'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'disconnect',
-                                  child: Text('Отключить'),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-              ),
+              _sessionCard(),
               const SizedBox(height: 18),
               AniMixSurface(
                 elevated: true,

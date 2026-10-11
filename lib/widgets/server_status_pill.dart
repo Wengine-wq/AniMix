@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/server_health.dart';
+import 'server_status_card.dart';
 
 /// A quiet notice while the AniMix server is unreachable. The catalog,
 /// watching and downloads keep working; only account features wait.
@@ -34,7 +35,7 @@ class ServerStatusPill extends StatelessWidget {
                         ),
                         child: InkWell(
                           customBorder: const StadiumBorder(),
-                          onTap: ServerHealth.instance.retryNow,
+                          onTap: () => ServerStatusCard.showSheet(context),
                           child: const Padding(
                             padding: EdgeInsets.symmetric(
                               horizontal: 12,
@@ -50,7 +51,7 @@ class ServerStatusPill extends StatelessWidget {
                                 ),
                                 SizedBox(width: 6),
                                 Text(
-                                  'Сервер AniMix недоступен · работаем офлайн',
+                                  'Сервер AniMix на ремонте · подробнее',
                                   style: TextStyle(
                                     color: Color(0xFFFFE3A3),
                                     fontSize: 12,
