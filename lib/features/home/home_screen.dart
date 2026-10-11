@@ -16,6 +16,7 @@ import '../anime_detail/anime_detail_screen.dart';
 import '../recommendation/recommendation_screen.dart';
 import 'anime_search_sheet.dart';
 import 'continue_watching_shelf.dart';
+import '../wrapped/wrapped_banner.dart';
 
 class HomeData {
   const HomeData({
@@ -210,6 +211,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<Widget> _content(BuildContext context, HomeData data) => [
+    const SliverToBoxAdapter(child: WrappedBanner()),
     const SliverToBoxAdapter(child: ContinueWatchingShelf()),
     SliverToBoxAdapter(
       child: _DiscoveryStrip(

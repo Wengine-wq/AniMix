@@ -762,6 +762,46 @@ class _ExperimentalFeaturesScreen extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 22),
+            const _SettingsSectionLabel('Итоги года'),
+            AniMixSurface(
+              padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+              child: Row(
+                children: [
+                  _SettingsIcon(
+                    icon: CupertinoIcons.sparkles,
+                    color: settings.wrappedPreview
+                        ? Theme.of(context).colorScheme.primary
+                        : AniMixTheme.subtleText,
+                  ),
+                  const SizedBox(width: 13),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ранний доступ к итогам',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Открывает итоги года на главной уже сейчас, не дожидаясь 20 декабря. Цифры собираются за текущий год.',
+                          style: TextStyle(
+                            color: AniMixTheme.subtleText,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.wrappedPreview,
+                    onChanged: settings.setWrappedPreview,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       );

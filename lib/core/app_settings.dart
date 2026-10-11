@@ -112,6 +112,7 @@ class AppSettingsController extends ChangeNotifier {
   static const _preferredQualityKey = 'watch_preferred_quality_v1';
   static const _downloadQualityKey = 'download_quality_v1';
   static const _posterStorageKey = 'poster_storage_v1';
+  static const _wrappedPreviewKey = 'wrapped_preview_v1';
 
   AniMixAccent _accent = AniMixAccent.violet;
   AniMixContentLayout _contentLayout = AniMixContentLayout.automatic;
@@ -124,6 +125,7 @@ class AppSettingsController extends ChangeNotifier {
   String? _preferredQuality;
   AniMixDownloadQuality _downloadQuality = AniMixDownloadQuality.ask;
   AniMixPosterStorage _posterStorage = AniMixPosterStorage.device;
+  bool _wrappedPreview = false;
   bool _initialized = false;
 
   AniMixAccent get accent => _accent;
@@ -143,6 +145,9 @@ class AppSettingsController extends ChangeNotifier {
   String? get preferredQuality => _preferredQuality;
   AniMixDownloadQuality get downloadQuality => _downloadQuality;
   AniMixPosterStorage get posterStorage => _posterStorage;
+
+  /// Opens «Итоги года» outside the December window (testing, curiosity).
+  bool get wrappedPreview => _wrappedPreview;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -177,6 +182,7 @@ class AppSettingsController extends ChangeNotifier {
       (value) => value.name == prefs.getString(_posterStorageKey),
       orElse: () => AniMixPosterStorage.device,
     );
+    _wrappedPreview = prefs.getBool(_wrappedPreviewKey) ?? false;
     _initialized = true;
     notifyListeners();
   }
@@ -252,6 +258,14 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_downloadQualityKey, value.name);
+  }
+
+  Future<void> setWrappedPreview(bool value) async {
+    if (_wrappedPreview == value) return;
+    _wrappedPreview = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_wrappedPreviewKey, value);
   }
 
   Future<void> setPosterStorage(AniMixPosterStorage value) async {

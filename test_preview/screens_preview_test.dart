@@ -15,6 +15,10 @@ import 'package:animix/features/home/home_screen.dart';
 import 'package:animix/features/home/anime_search_sheet.dart';
 import 'package:animix/features/profile/profile_screen.dart';
 import 'package:animix/features/profile/settings_screen.dart';
+import 'package:animix/features/wrapped/wrapped_banner.dart';
+import 'package:animix/features/wrapped/wrapped_data.dart';
+import 'package:animix/features/wrapped/wrapped_screen.dart';
+import 'package:animix/features/wrapped/wrapped_stats.dart';
 import 'package:animix/features/recommendation/recommendation_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/models/shikimori_anime.dart';
@@ -303,6 +307,55 @@ void main() {
     testWidgets(
       'settings',
       (t) => shoot(t, 'settings', const SettingsScreen()),
+    );
+  }
+  if (want('wrapped')) {
+    final data = WrappedData(
+      stats: WrappedStats(
+        year: 2026,
+        watchSeconds: 312 * 3600,
+        episodes: 486,
+        titles: 31,
+        episodesByAnime: const {5: 64, 3: 40},
+        marathonDay: DateTime(2026, 3, 14),
+        marathonEpisodes: 17,
+        busiestMonth: 7,
+        busiestMonthSeconds: 52 * 3600,
+        activeDays: 211,
+      ),
+      anime: {5: _anime(5), 3: _anime(3)},
+      genres: const [
+        MapEntry('Фэнтези', 0.34),
+        MapEntry('Приключения', 0.22),
+        MapEntry('Драма', 0.12),
+      ],
+      achievementIndices: const [0, 1, 2, 4, 6],
+    );
+    for (var slide = 0; slide < 9; slide++) {
+      testWidgets(
+        'wrapped_$slide',
+        (t) => shoot(
+          t,
+          'wrapped_$slide',
+          WrappedScreen(year: 2026, previewData: data, previewSlide: slide),
+        ),
+      );
+    }
+    testWidgets(
+      'wrapped_banner',
+      (t) => shoot(
+        t,
+        'wrapped_banner',
+        Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                WrappedBanner(debugNow: DateTime(2026, 11, 8, 18, 42, 7)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
