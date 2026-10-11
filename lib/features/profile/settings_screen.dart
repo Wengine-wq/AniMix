@@ -1577,7 +1577,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.3',
+                'ВЕРСИЯ 2.5.31',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -2149,7 +2149,7 @@ typedef _Release = ({
 /// Newest first. Keep in step with the GitHub release notes.
 const List<_Release> _changelog = [
   (
-    version: '2.5.3',
+    version: '2.5.31',
     date: 'Октябрь 2026',
     changes: [
       (
@@ -2160,7 +2160,7 @@ const List<_Release> _changelog = [
       (
         CupertinoIcons.wrench_fill,
         'Статус сервера',
-        'Если сервер AniMix недоступен, приложение не зависает и честно показывает, что идёт ремонт',
+        'Приложение проверяет сервер запросом на вход: не зависает, показывает, что ответил Яндекс, и что идёт ремонт',
       ),
       (
         CupertinoIcons.chat_bubble_2_fill,
