@@ -185,7 +185,7 @@ void main() {
       ),
       const Size(1280, 720),
     );
-    expect(find.text('Профиль Shikimori'), findsOneWidget);
+    expect(find.text('Аккаунт AniMix'), findsOneWidget);
     expect(find.text('Войти'), findsOneWidget);
   });
 

@@ -482,7 +482,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (value == null) {
             return AniMixEmptyState(
               icon: CupertinoIcons.person_crop_circle,
-              title: 'Профиль Shikimori',
+              title: 'Аккаунт AniMix',
               message:
                   'Войдите, чтобы сохранить прогресс, оценки и собственный профиль.',
               actionLabel: 'Войти',

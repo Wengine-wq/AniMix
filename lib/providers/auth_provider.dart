@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../core/secure_storage.dart';
 import '../core/shikimori_auth_service.dart';
@@ -64,3 +65,38 @@ final userDataRevisionProvider =
     NotifierProvider<UserDataRevisionNotifier, int>(
       UserDataRevisionNotifier.new,
     );
+
+/// «Продолжить без входа»: the app works without an AniMix account (catalog
+/// from Shikimori, watching, local progress and downloads). Loaded before the
+/// first frame so the start screen does not flicker.
+class GuestMode {
+  GuestMode._();
+
+  static const _key = 'guest_mode_v1';
+  static bool enabled = false;
+
+  static Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    enabled = prefs.getBool(_key) ?? false;
+  }
+
+  static Future<void> save(bool value) async {
+    enabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key, value);
+  }
+}
+
+class GuestModeNotifier extends Notifier<bool> {
+  @override
+  bool build() => GuestMode.enabled;
+
+  Future<void> set(bool value) async {
+    state = value;
+    await GuestMode.save(value);
+  }
+}
+
+final guestModeProvider = NotifierProvider<GuestModeNotifier, bool>(
+  GuestModeNotifier.new,
+);

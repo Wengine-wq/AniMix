@@ -21,6 +21,8 @@ import 'package:animix/features/wrapped/wrapped_screen.dart';
 import 'package:animix/features/wrapped/wrapped_stats.dart';
 import 'package:animix/features/recommendation/recommendation_screen.dart';
 import 'package:animix/main.dart';
+import 'package:animix/features/auth/login_screen.dart';
+import 'package:animix/core/server_health.dart';
 import 'package:animix/models/shikimori_anime.dart';
 import 'package:animix/models/shikimori_anime_detail.dart';
 import 'package:animix/features/anime_detail/anime_detail_screen.dart';
@@ -378,5 +380,22 @@ void main() {
         ),
       ),
     );
+  }
+  if (want('guest')) {
+    testWidgets(
+      'guest_login',
+      (t) => shoot(t, 'guest_login', const LoginScreen(), loggedIn: false),
+    );
+    for (final (name, screen) in [
+      ('guest_home', const MainWrapper() as Widget),
+      ('guest_profile', const ProfileScreen()),
+      ('guest_recs', const RecommendationScreen()),
+    ]) {
+      testWidgets(name, (t) {
+        ServerHealth.instance.markDown();
+        addTearDown(ServerHealth.instance.markUp);
+        return shoot(t, name, screen, loggedIn: false);
+      });
+    }
   }
 }

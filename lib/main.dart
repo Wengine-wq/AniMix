@@ -23,6 +23,7 @@ import 'core/app_settings.dart';
 import 'core/app_logging.dart';
 import 'core/achievement_service.dart';
 import 'core/episode_notifier.dart';
+import 'widgets/server_status_pill.dart';
 import 'features/anime_detail/anime_detail_screen.dart';
 
 void main() {
@@ -49,6 +50,7 @@ void main() {
       // --dart-define, so no .env asset or secret is shipped with the app.
       await dotenv.load(fileName: '.env', isOptional: true);
       await AppSettingsController.instance.initialize();
+      await GuestMode.load();
       runApp(const ProviderScope(child: MyApp()));
     },
     (error, stackTrace) {
@@ -70,6 +72,7 @@ class MyApp extends ConsumerWidget {
     // Используем .maybeWhen, так как он поддерживается во всех версиях Riverpod (и 1.x, и 2.x)
     final authState = ref.watch(isLoggedInProvider);
     final authSignal = ref.watch(authSessionSignalProvider);
+    final guest = ref.watch(guestModeProvider);
     // Idempotent: keeps achievement sync bound to the signed-in account.
     final signedIn = authSignal ?? authState.value ?? false;
     final authService = ref.read(animixAuthServiceProvider);
@@ -121,12 +124,13 @@ class MyApp extends ConsumerWidget {
           );
         },
         home: authSignal != null
-            ? (authSignal ? const MainWrapper() : const LoginScreen())
+            ? (authSignal || guest ? const MainWrapper() : const LoginScreen())
             : authState.when(
                 skipLoadingOnRefresh: true,
                 skipLoadingOnReload: true,
-                data: (loggedIn) =>
-                    loggedIn ? const MainWrapper() : const LoginScreen(),
+                data: (loggedIn) => loggedIn || guest
+                    ? const MainWrapper()
+                    : const LoginScreen(),
                 loading: () => const _StartupLoading(),
                 error: (_, _) => _StartupError(
                   onRetry: () => ref.invalidate(isLoggedInProvider),
@@ -274,13 +278,25 @@ class _MainWrapperState extends ConsumerState<MainWrapper> {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 900;
         final visibleIndex = !wide && _currentIndex > 4 ? 4 : _currentIndex;
-        final content = IndexedStack(
-          index: visibleIndex,
+        final content = Stack(
           children: [
-            for (var index = 0; index < _screens.length; index++)
-              (_visited.contains(index) || index == visibleIndex)
-                  ? _screens[index]
-                  : const SizedBox.shrink(),
+            Positioned.fill(
+              child: IndexedStack(
+                index: visibleIndex,
+                children: [
+                  for (var index = 0; index < _screens.length; index++)
+                    (_visited.contains(index) || index == visibleIndex)
+                        ? _screens[index]
+                        : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: ServerStatusPill(bottomGap: wide ? 16 : 10),
+            ),
           ],
         );
         if (wide) {

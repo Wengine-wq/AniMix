@@ -153,8 +153,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           label: Text(_busy ? 'Открываем Google…' : 'Войти через Google'),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
         ),
+        if (!ref.watch(guestModeProvider)) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => ref.read(guestModeProvider.notifier).set(true),
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+            child: const Text('Продолжить без входа'),
+          ),
+        ],
         const SizedBox(height: 10),
         Text(
+          'Без входа работают каталог, просмотр и загрузки; прогресс хранится на устройстве. '
           'Google подтверждает email, а AniMix хранит только собственный профиль и сессию.',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -180,6 +191,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ref.read(userDataRevisionProvider.notifier).bump();
       ref.invalidate(currentUserProvider);
       ref.read(authSessionSignalProvider.notifier).signedIn();
+      await ref.read(guestModeProvider.notifier).set(false);
+      // Opened from a guest screen: go back to the app.
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } else {
       setState(() {
         _busy = false;

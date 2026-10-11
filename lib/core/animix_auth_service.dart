@@ -12,6 +12,7 @@ import 'achievement_service.dart';
 import 'animix_local_cache.dart';
 import 'config.dart';
 import 'secure_storage.dart';
+import 'server_health.dart';
 
 class AniMixAuthService {
   AniMixAuthService({Dio? dio, FutureOr<void> Function()? onSessionInvalidated})
@@ -54,16 +55,43 @@ class AniMixAuthService {
     _profileRequestInFlight = null;
   }
 
-  static Dio _createDio() => Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      sendTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: const {'Accept': 'application/json'},
-    ),
-  );
+  static Dio _createDio() =>
+      Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 8),
+            sendTimeout: const Duration(seconds: 20),
+            receiveTimeout: const Duration(seconds: 20),
+            headers: const {'Accept': 'application/json'},
+          ),
+        )
+        // Fail fast while the cloud is down instead of hanging every screen.
+        ..interceptors.add(ServerHealth.instance.interceptor);
+
+  /// Quick check before opening Google: during a cloud outage the browser
+  /// sign-in would otherwise end in a blank page or a long timeout.
+  Future<bool> isServerReachable() async {
+    ServerHealth.instance.retryNow();
+    try {
+      await _dio.get<dynamic>(
+        '${Config.animixApiBaseUrl}/health',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 8),
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      return true;
+    } on DioException catch (error) {
+      return !ServerHealth.isUnreachable(error);
+    }
+  }
 
   Future<AniMixAuthResult> loginWithGoogle() async {
+    if (!await isServerReachable()) {
+      return const AniMixAuthResult.failure(
+        'Сервер AniMix сейчас недоступен: у облака Яндекса авария. '
+        'Попробуйте войти позже или продолжите без входа.',
+      );
+    }
     try {
       final startUri = Uri.parse(
         '${Config.animixApiBaseUrl}/v1/auth/google/start',
