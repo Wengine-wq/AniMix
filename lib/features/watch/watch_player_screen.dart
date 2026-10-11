@@ -36,6 +36,10 @@ class WatchPlayerScreen extends StatefulWidget {
   static int _autoStreak = 0;
   static const _maxUnattendedEpisodes = 3;
 
+  /// Sleep timer state; static so it survives autoplay into the next episode.
+  static DateTime? _sleepDeadline;
+  static bool _sleepAfterEpisode = false;
+
   const WatchPlayerScreen({
     required this.animeId,
     required this.episodeNumber,
@@ -83,6 +87,8 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   bool _askStillWatching = false;
   // Natural forward playback in this screen; autoplay needs some of it.
   int _sessionPlaybackMs = 0;
+  Timer? _sleepTicker;
+  bool _sleepPaused = false;
   bool _isFullScreen = false;
   bool _controlsVisible = true;
   Timer? _hideControlsTimer;
@@ -126,6 +132,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
       });
     }
     HlsDownloadManager.instance.initialize();
+    _armSleepTicker();
     _showControls();
     WatchStorage.openingTimingRevision.addListener(_reloadOpeningTiming);
     unawaited(_reloadOpeningTiming());
@@ -475,6 +482,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   }
 
   void _updateNextEpisode(Duration position, Duration duration) {
+    if (WatchPlayerScreen._sleepAfterEpisode &&
+        duration - position <= const Duration(milliseconds: 900)) {
+      _fallAsleep();
+      return;
+    }
     if (widget.onPlayNext == null ||
         _nextCancelled ||
         _isAdvancingToNext ||
@@ -902,6 +914,13 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
             },
             child: Text('Качество · $_qualityBadge'),
           ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              _showSleepTimerMenu();
+            },
+            child: Text('Таймер сна · $_sleepLabel'),
+          ),
           for (final speed in const [0.75, 1.0, 1.25, 1.5, 2.0])
             CupertinoActionSheetAction(
               onPressed: () async {
@@ -976,8 +995,106 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     return '$minutes:${rest.toString().padLeft(2, '0')}';
   }
 
+  // ---------------------------------------------------------------- sleep
+
+  String get _sleepLabel {
+    if (WatchPlayerScreen._sleepAfterEpisode) return 'после серии';
+    final deadline = WatchPlayerScreen._sleepDeadline;
+    if (deadline == null) return 'выкл';
+    final left = deadline.difference(DateTime.now());
+    return '${(left.inSeconds / 60).ceil().clamp(1, 999)} мин';
+  }
+
+  bool get _sleepActive =>
+      WatchPlayerScreen._sleepAfterEpisode ||
+      WatchPlayerScreen._sleepDeadline != null;
+
+  /// Keeps the countdown chip fresh and pauses when the deadline passes.
+  /// The deadline is static, so it keeps running across autoplayed episodes.
+  void _armSleepTicker() {
+    _sleepTicker?.cancel();
+    if (!_sleepActive) return;
+    _sleepTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      final deadline = WatchPlayerScreen._sleepDeadline;
+      if (deadline != null && DateTime.now().isAfter(deadline)) {
+        _fallAsleep();
+      } else {
+        setState(() {});
+      }
+    });
+  }
+
+  void _fallAsleep() {
+    WatchPlayerScreen._sleepDeadline = null;
+    WatchPlayerScreen._sleepAfterEpisode = false;
+    _sleepTicker?.cancel();
+    unawaited(_videoController?.pause());
+    _syncWakeLock(false);
+    if (!mounted) return;
+    setState(() {
+      _sleepPaused = true;
+      _nextCountdown = null;
+    });
+    _showControls();
+  }
+
+  Future<void> _showSleepTimerMenu() async {
+    _userActive();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Таймер сна'),
+        message: const Text('Пауза и выключение экрана в выбранное время'),
+        actions: [
+          for (final minutes in const [15, 30, 45, 60, 90])
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                WatchPlayerScreen._sleepAfterEpisode = false;
+                WatchPlayerScreen._sleepDeadline = DateTime.now().add(
+                  Duration(minutes: minutes),
+                );
+                setState(() => _sleepPaused = false);
+                _armSleepTicker();
+              },
+              child: Text('Через $minutes мин'),
+            ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              WatchPlayerScreen._sleepDeadline = null;
+              WatchPlayerScreen._sleepAfterEpisode = true;
+              setState(() => _sleepPaused = false);
+              _armSleepTicker();
+            },
+            child: const Text('После этой серии'),
+          ),
+          if (_sleepActive)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                WatchPlayerScreen._sleepDeadline = null;
+                WatchPlayerScreen._sleepAfterEpisode = false;
+                _sleepTicker?.cancel();
+                setState(() {});
+              },
+              child: const Text('Выключить таймер'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(sheetContext),
+          child: const Text('Закрыть'),
+        ),
+      ),
+    );
+    _showControls();
+  }
+
   @override
   void dispose() {
+    _sleepTicker?.cancel();
     _flushPlaybackTime();
     _initializationGeneration++;
     _hideControlsTimer?.cancel();
@@ -1215,6 +1332,52 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 ),
               ),
             ),
+          if (_sleepPaused)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: .7),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        CupertinoIcons.moon_stars_fill,
+                        size: 44,
+                        color: Colors.white70,
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Спокойной ночи',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Таймер сна поставил паузу',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton(
+                        onPressed: () {
+                          _userActive();
+                          setState(() => _sleepPaused = false);
+                          unawaited(_togglePause());
+                        },
+                        child: const Text('Продолжить'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (_askStillWatching)
             Positioned.fill(
               child: ColoredBox(
@@ -1407,6 +1570,42 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                     ],
                   ),
                 ),
+                if (_sleepActive) ...[
+                  GestureDetector(
+                    onTap: _showSleepTimerMenu,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: .35),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            CupertinoIcons.moon_fill,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _sleepLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 _playerIconButton(
                   tooltip: 'Скачать',
                   icon: CupertinoIcons.arrow_down_circle,
