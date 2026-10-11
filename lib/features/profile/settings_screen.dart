@@ -1567,7 +1567,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.1',
+                'ВЕРСИЯ 2.5.2',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -1592,40 +1592,12 @@ class _AboutScreen extends StatelessWidget {
         const _SettingsSectionLabel('Возможности'),
         const _FeatureGrid(),
         const SizedBox(height: 28),
-        const _SettingsSectionLabel('Что нового'),
-        const AniMixSurface(
-          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-          child: Column(
-            children: [
-              _ChangeRow(
-                icon: CupertinoIcons.play_fill,
-                title: 'Плеер без задержек',
-                subtitle:
-                    'Мгновенные тапы, суммирующаяся перемотка, смена качества без чёрного экрана',
-              ),
-              _ChangeRow(
-                icon: CupertinoIcons.paintbrush_fill,
-                title: 'Новый тихий дизайн',
-                subtitle:
-                    'Главная с размытым фоном, новая карточка аниме, профиль и навигация',
-              ),
-              _ChangeRow(
-                icon: CupertinoIcons.arrow_down_circle_fill,
-                title: 'Загрузки заново',
-                subtitle:
-                    'Карточки тайтлов, массовое удаление, офлайн-обложки, одно качество для всех серий',
-              ),
-              _ChangeRow(
-                icon: CupertinoIcons.rosette,
-                title: 'Достижения онлайн',
-                subtitle:
-                    'Синхронизация с аккаунтом и награды друзей в профиле',
-                divider: false,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 28),
+        const _SettingsSectionLabel('Журнал изменений'),
+        for (final release in _changelog) ...[
+          _ReleaseNotes(release: release),
+          const SizedBox(height: 14),
+        ],
+        const SizedBox(height: 14),
         const _SettingsSectionLabel('Разработчик'),
         _SettingsGroup(
           children: [
@@ -2154,6 +2126,168 @@ class _EpisodeNotificationsRowState extends State<_EpisodeNotificationsRow> {
           : 'Уведомления выключены',
       onTap: () => _set(!enabled),
       trailing: Switch.adaptive(value: enabled, onChanged: _set),
+    );
+  }
+}
+
+typedef _Release = ({
+  String version,
+  String date,
+  List<(IconData, String, String)> changes,
+});
+
+/// Newest first. Keep in step with the GitHub release notes.
+const List<_Release> _changelog = [
+  (
+    version: '2.5.2',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.play_circle_fill,
+        'Продолжить просмотр',
+        'Полка на главной: серия, сколько осталось, а у досмотренных — следующая серия',
+      ),
+      (
+        CupertinoIcons.bell_fill,
+        'Уведомления о новых сериях',
+        'Онгоинги из «Смотрю» и «Пересматриваю»; на Android проверка идёт и в фоне',
+      ),
+      (
+        CupertinoIcons.moon_fill,
+        'Таймер сна',
+        '15–90 минут или «после этой серии»: плеер встанет на паузу и пожелает спокойной ночи',
+      ),
+      (
+        CupertinoIcons.sparkles,
+        'Итоги года',
+        'История с музыкой: часы, жанры, марафон и тайтл года. Открывается 20 декабря, отсчёт — на главной',
+      ),
+    ],
+  ),
+  (
+    version: '2.5.1',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.forward_end_fill,
+        'Автопереход без сюрпризов',
+        'Остаётся в полноэкранном режиме, не проматывает сезон и спрашивает «Вы ещё смотрите?» после трёх серий',
+      ),
+      (
+        CupertinoIcons.forward_fill,
+        'Автоскип на новых тайтлах',
+        'Опенинги и эндинги пропускаются и в свежих аниме благодаря AniSkip',
+      ),
+      (
+        CupertinoIcons.photo_fill,
+        'Надёжные обложки',
+        'Очередь с повторами, офлайн-хранение на устройстве и настройка «Обложки аниме»',
+      ),
+      (
+        CupertinoIcons.arrow_2_circlepath,
+        'Пересматриваю',
+        'Новый статус и вкладка, прогресс считается только автоматически',
+      ),
+      (
+        CupertinoIcons.person_crop_circle_fill,
+        'Профиль и иконки',
+        'Выровненный профиль с компактной диаграммой, иконки в стиле iOS везде',
+      ),
+    ],
+  ),
+  (
+    version: '2.5.0',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.play_fill,
+        'Плеер без задержек',
+        'Мгновенные тапы, суммирующаяся перемотка, смена качества без чёрного экрана',
+      ),
+      (
+        CupertinoIcons.paintbrush_fill,
+        'Новый тихий дизайн',
+        'Главная с размытым фоном, новая карточка аниме, профиль и навигация',
+      ),
+      (
+        CupertinoIcons.arrow_down_circle_fill,
+        'Загрузки заново',
+        'Карточки тайтлов, массовое удаление, офлайн-обложки, одно качество для всех серий',
+      ),
+      (
+        CupertinoIcons.rosette,
+        'Достижения онлайн',
+        'Синхронизация с аккаунтом и награды друзей в профиле',
+      ),
+    ],
+  ),
+];
+
+class _ReleaseNotes extends StatelessWidget {
+  const _ReleaseNotes({required this.release});
+
+  final _Release release;
+
+  @override
+  Widget build(BuildContext context) {
+    final latest = identical(release, _changelog.first);
+    return AniMixSurface(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Версия ${release.version}',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (latest) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: .16),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    'ТЕКУЩАЯ',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              Text(
+                release.date,
+                style: const TextStyle(
+                  color: AniMixTheme.subtleText,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (var i = 0; i < release.changes.length; i++)
+            _ChangeRow(
+              icon: release.changes[i].$1,
+              title: release.changes[i].$2,
+              subtitle: release.changes[i].$3,
+              divider: i < release.changes.length - 1,
+            ),
+        ],
+      ),
     );
   }
 }

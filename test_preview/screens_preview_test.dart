@@ -162,6 +162,7 @@ void main() {
     Size size = const Size(390, 844),
     Brightness brightness = Brightness.dark,
     bool loggedIn = true,
+    Future<void> Function(WidgetTester tester)? before,
   }) async {
     tester.view.physicalSize = size * 2;
     tester.view.devicePixelRatio = 2;
@@ -210,6 +211,12 @@ void main() {
     );
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 250));
+    }
+    if (before != null) {
+      await before(tester);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+      }
     }
     await expectLater(
       find.byType(MaterialApp),
@@ -307,6 +314,20 @@ void main() {
     testWidgets(
       'settings',
       (t) => shoot(t, 'settings', const SettingsScreen()),
+    );
+    testWidgets(
+      'about_changelog',
+      (t) => shoot(
+        t,
+        'about_changelog',
+        const SettingsScreen(),
+        size: const Size(390, 1900),
+        before: (tester) async {
+          await tester.tap(find.text('О приложении'));
+          await tester.pump(const Duration(milliseconds: 600));
+          await tester.drag(find.byType(ListView).last, const Offset(0, -560));
+        },
+      ),
     );
   }
   if (want('wrapped')) {
