@@ -31,6 +31,7 @@ import 'package:animix/models/shikimori_user.dart';
 import 'package:animix/core/shikimori_api_client.dart';
 import 'package:animix/providers/auth_provider.dart';
 import 'package:animix/providers/user_provider.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -385,14 +386,20 @@ void main() {
   if (want('guest')) {
     testWidgets(
       'guest_login',
-      (t) => shoot(t, 'guest_login', const LoginScreen(), loggedIn: false, before: (tester) async {
-        ServerStatusService.instance.status.value = ServerStatusInfo(
-          state: ServerState.outage,
-          title: ServerStatusInfo.defaultOutageTitle,
-          message: ServerStatusInfo.defaultOutageMessage,
-          checkedAt: DateTime(2026, 10, 11, 19, 12),
-        );
-      }),
+      (t) => shoot(
+        t,
+        'guest_login',
+        const LoginScreen(),
+        loggedIn: false,
+        before: (tester) async {
+          ServerStatusService.instance.status.value =
+              ServerStatusInfo.fromProbe(
+                error: DioExceptionType.connectionTimeout,
+                timeout: const Duration(seconds: 10),
+                at: DateTime(2026, 10, 11, 19, 12),
+              );
+        },
+      ),
     );
     testWidgets(
       'guest_login_wide',
