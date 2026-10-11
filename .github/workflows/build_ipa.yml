@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       # Public identifiers/endpoints, not secrets. Keeping production defaults
       # here prevents stale repository variables from silently reviving the
@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: 📥 Скачивание кода проекта
         uses: actions/checkout@v5
+
+      - name: 🛠 Свежий Xcode (нужен SDK iOS 26 для фоновых задач)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: 🐦 Установка Flutter
         uses: subosito/flutter-action@v2
