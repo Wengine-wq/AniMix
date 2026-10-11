@@ -1577,7 +1577,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.31',
+                'ВЕРСИЯ 2.5.32',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -2149,9 +2149,14 @@ typedef _Release = ({
 /// Newest first. Keep in step with the GitHub release notes.
 const List<_Release> _changelog = [
   (
-    version: '2.5.31',
+    version: '2.5.32',
     date: 'Октябрь 2026',
     changes: [
+      (
+        CupertinoIcons.photo_fill,
+        'Обложки снова на месте',
+        'Shikimori перенёс картинки: теперь обложки берутся из их нового API, а запасные источники ищут параллельно',
+      ),
       (
         CupertinoIcons.person_crop_circle_badge_checkmark,
         'Вход без аккаунта',
