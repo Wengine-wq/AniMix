@@ -15,6 +15,7 @@ import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../recommendation/recommendation_screen.dart';
 import 'anime_search_sheet.dart';
+import 'continue_watching_shelf.dart';
 
 class HomeData {
   const HomeData({
@@ -209,6 +210,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<Widget> _content(BuildContext context, HomeData data) => [
+    const SliverToBoxAdapter(child: ContinueWatchingShelf()),
     SliverToBoxAdapter(
       child: _DiscoveryStrip(
         best: data.topRated.firstOrNull ?? data.popular.firstOrNull,

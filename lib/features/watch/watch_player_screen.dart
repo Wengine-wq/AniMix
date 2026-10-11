@@ -448,6 +448,15 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
         (position.inSeconds - _lastSaveTime).abs() >= 5) {
       _lastSaveTime = position.inSeconds;
       WatchStorage.saveProgress(widget.animeId, widget.episodeNumber, position);
+      unawaited(
+        ContinueWatchingStore.record(
+          animeId: widget.animeId,
+          episode: widget.episodeNumber,
+          position: position,
+          duration: duration,
+          title: widget.animeTitle,
+        ),
+      );
     }
     _updateSkipSegment(position);
     _updateNextEpisode(position, duration);

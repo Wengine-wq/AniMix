@@ -295,3 +295,127 @@ class WatchStorage {
       end - start >= 5 &&
       end - start <= 600;
 }
+
+/// One title on the home "Продолжить просмотр" shelf.
+class ContinueEntry {
+  const ContinueEntry({
+    required this.animeId,
+    required this.episode,
+    required this.position,
+    required this.duration,
+    required this.updatedAt,
+    this.title,
+  });
+
+  final int animeId;
+  final String episode;
+  final Duration position;
+  final Duration duration;
+  final DateTime updatedAt;
+  final String? title;
+
+  /// Matches the player's "finished" rule (last minute or past 92 %).
+  bool get finished =>
+      duration > Duration.zero &&
+      (duration - position < const Duration(seconds: 60) ||
+          position.inMilliseconds >= duration.inMilliseconds * .92);
+
+  double get fraction => duration.inMilliseconds <= 0
+      ? 0
+      : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+
+  /// Next episode label when this one is finished (numeric episodes only).
+  String? get nextEpisode {
+    final number = double.tryParse(episode);
+    if (number == null) return null;
+    final next = number + 1;
+    return next == next.roundToDouble() ? '${next.toInt()}' : '$next';
+  }
+
+  Map<String, Object?> toJson() => {
+    'episode': episode,
+    'pos': position.inSeconds,
+    'dur': duration.inSeconds,
+    'at': updatedAt.millisecondsSinceEpoch,
+    'title': title,
+  };
+
+  static ContinueEntry? fromJson(int animeId, Object? raw) {
+    if (raw is! Map) return null;
+    final episode = raw['episode']?.toString();
+    final at = int.tryParse('${raw['at']}');
+    if (episode == null || at == null) return null;
+    return ContinueEntry(
+      animeId: animeId,
+      episode: episode,
+      position: Duration(seconds: int.tryParse('${raw['pos']}') ?? 0),
+      duration: Duration(seconds: int.tryParse('${raw['dur']}') ?? 0),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(at),
+      title: raw['title']?.toString(),
+    );
+  }
+}
+
+/// Stores the last watched episode per title for "Продолжить просмотр".
+abstract final class ContinueWatchingStore {
+  static const _key = 'continue_watching_v1';
+  static const _limit = 30;
+  static final ValueNotifier<int> revision = ValueNotifier(0);
+
+  static Future<Map<String, dynamic>> _read(SharedPreferences prefs) async {
+    final raw = prefs.getString(_key);
+    if (raw == null) return {};
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> record({
+    required int animeId,
+    required String episode,
+    required Duration position,
+    required Duration duration,
+    String? title,
+  }) async {
+    if (animeId <= 0 || duration <= Duration.zero) return;
+    final prefs = await SharedPreferences.getInstance();
+    final map = await _read(prefs);
+    final previous = ContinueEntry.fromJson(animeId, map['$animeId']);
+    map.remove('$animeId');
+    map['$animeId'] = ContinueEntry(
+      animeId: animeId,
+      episode: episode,
+      position: position,
+      duration: duration,
+      updatedAt: DateTime.now(),
+      title: title ?? previous?.title,
+    ).toJson();
+    while (map.length > _limit) {
+      map.remove(map.keys.first);
+    }
+    await prefs.setString(_key, jsonEncode(map));
+    revision.value++;
+  }
+
+  static Future<List<ContinueEntry>> entries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await _read(prefs);
+    final list = <ContinueEntry>[
+      for (final entry in map.entries)
+        if (int.tryParse(entry.key) case final id?)
+          ?ContinueEntry.fromJson(id, entry.value),
+    ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return list;
+  }
+
+  static Future<void> remove(int animeId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await _read(prefs);
+    if (map.remove('$animeId') != null) {
+      await prefs.setString(_key, jsonEncode(map));
+      revision.value++;
+    }
+  }
+}
