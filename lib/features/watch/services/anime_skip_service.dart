@@ -68,7 +68,8 @@ class AnimeSkipService {
     'ANIME_SKIP_CLIENT_ID',
     defaultValue: 'ZGfO0sMF3eCwLYf8yMSCJjlynwNGRXWE',
   );
-  static const _cachePrefix = 'anime_skip_segments_v1_';
+  // v2: old empty results cached before AniSkip was added must not stick.
+  static const _cachePrefix = 'anime_skip_segments_v2_';
   static const _cacheLifetime = Duration(days: 14);
 
   final Dio _dio = Dio(
@@ -114,6 +115,14 @@ class AnimeSkipService {
     final cached = await _readCache(malId, episodeNumber, videoDuration);
     if (cached != null) return cached;
 
+    // AniSkip has far better coverage of current seasons than Anime Skip,
+    // which mostly knows older shows. Shikimori IDs are MAL IDs.
+    final aniSkip = await _aniSkipSegments(malId, episodeNumber, videoDuration);
+    if (aniSkip.isNotEmpty) {
+      await _writeCache(malId, episodeNumber, videoDuration, aniSkip);
+      return aniSkip;
+    }
+
     try {
       final showId = await _findShowId(malId, title);
       if (showId == null) return const [];
@@ -141,6 +150,64 @@ class AnimeSkipService {
       return segments;
     } catch (error) {
       debugPrint('[Anime Skip] timestamps unavailable: $error');
+      return const [];
+    }
+  }
+
+  Future<List<AnimeSkipSegment>> _aniSkipSegments(
+    int malId,
+    String episodeNumber,
+    Duration videoDuration,
+  ) async {
+    final episode = double.tryParse(episodeNumber);
+    if (malId <= 0 || episode == null || episode != episode.roundToDouble()) {
+      return const [];
+    }
+    try {
+      final response = await _dio.getUri<Map<String, dynamic>>(
+        Uri.parse(
+          'https://api.aniskip.com/v2/skip-times/$malId/${episode.toInt()}'
+          '?types=op&types=ed&types=mixed-op&types=mixed-ed'
+          '&episodeLength=${videoDuration.inMilliseconds / 1000}',
+        ),
+        options: Options(validateStatus: (status) => status != null),
+      );
+      final results = response.data?['results'];
+      if (response.data?['found'] != true || results is! List) return const [];
+      final videoSeconds = videoDuration.inMilliseconds / 1000;
+      final segments = <AnimeSkipSegment>[];
+      for (final raw in results.whereType<Map>()) {
+        final interval = raw['interval'];
+        if (interval is! Map) continue;
+        final start = (interval['startTime'] as num?)?.toDouble();
+        final end = (interval['endTime'] as num?)?.toDouble();
+        final length = (raw['episodeLength'] as num?)?.toDouble();
+        if (start == null || end == null || end <= start) continue;
+        // Timings from a release of a different length are not trustworthy.
+        if (length != null &&
+            length > 0 &&
+            (length - videoSeconds).abs() > 15) {
+          continue;
+        }
+        final type = raw['skipType']?.toString() ?? '';
+        final kind = type.endsWith('ed')
+            ? AnimeSkipSegmentKind.ending
+            : AnimeSkipSegmentKind.opening;
+        if (segments.any((segment) => segment.kind == kind)) continue;
+        segments.add(
+          AnimeSkipSegment(
+            id: 'aniskip:${raw['skipId'] ?? '$type:$start'}',
+            kind: kind,
+            start: Duration(milliseconds: (start * 1000).round()),
+            end: Duration(
+              milliseconds: (end.clamp(0, videoSeconds) * 1000).round(),
+            ),
+          ),
+        );
+      }
+      return segments;
+    } catch (error) {
+      debugPrint('[AniSkip] unavailable: $error');
       return const [];
     }
   }

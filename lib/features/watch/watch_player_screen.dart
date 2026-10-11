@@ -29,6 +29,13 @@ class WatchPlayerScreen extends StatefulWidget {
   final Future<void> Function()? onPlayNext;
   final String? nextEpisodeTitle;
 
+  /// Set by autoplay so the next episode opens in fullscreen too.
+  static bool _carryFullScreen = false;
+
+  /// Episodes advanced by autoplay without any tap; resets on interaction.
+  static int _autoStreak = 0;
+  static const _maxUnattendedEpisodes = 3;
+
   const WatchPlayerScreen({
     required this.animeId,
     required this.episodeNumber,
@@ -72,6 +79,10 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   int? _nextCountdown;
   bool _nextCancelled = false;
   bool _isAdvancingToNext = false;
+  bool _handingOffFullScreen = false;
+  bool _askStillWatching = false;
+  // Natural forward playback in this screen; autoplay needs some of it.
+  int _sessionPlaybackMs = 0;
   bool _isFullScreen = false;
   bool _controlsVisible = true;
   Timer? _hideControlsTimer;
@@ -97,6 +108,23 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
       _sources['Авто'] = widget.videoUrl!;
     }
     _selectedQuality = _initialQuality(_sources.keys);
+    // Autoplay hands fullscreen over to the next episode's screen.
+    if (WatchPlayerScreen._carryFullScreen) {
+      WatchPlayerScreen._carryFullScreen = false;
+      _isFullScreen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !(Platform.isIOS || Platform.isAndroid)) return;
+        unawaited(
+          SystemChrome.setPreferredOrientations(const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]),
+        );
+        unawaited(
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+        );
+      });
+    }
     HlsDownloadManager.instance.initialize();
     _showControls();
     WatchStorage.openingTimingRevision.addListener(_reloadOpeningTiming);
@@ -145,9 +173,19 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
       }
 
       final savedPosition = await savedPositionFuture;
+      final duration = controller.value.duration;
+      // A resume point in the last minute (or past 92 %) means the episode was
+      // finished: start over instead of jumping to the end, which used to fire
+      // autoplay instantly and chain through every episode watched while
+      // asleep.
+      final finished =
+          savedPosition != null &&
+          (duration - savedPosition < const Duration(seconds: 60) ||
+              savedPosition.inMilliseconds >= duration.inMilliseconds * .92);
       if (savedPosition != null &&
           savedPosition > Duration.zero &&
-          savedPosition < controller.value.duration) {
+          savedPosition < duration &&
+          (position != null || !finished)) {
         await controller.seekTo(savedPosition);
       }
       if (_playbackSpeed != 1) {
@@ -382,6 +420,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
         // timeline resets are deliberately excluded from viewing time.
         if (elapsed > 0 && elapsed <= 2500) {
           _pendingPlaybackMilliseconds += elapsed;
+          _sessionPlaybackMs += elapsed;
           if (_pendingPlaybackMilliseconds >= 30000) {
             final seconds = _pendingPlaybackMilliseconds ~/ 1000;
             _pendingPlaybackMilliseconds %= 1000;
@@ -430,12 +469,27 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     if (widget.onPlayNext == null ||
         _nextCancelled ||
         _isAdvancingToNext ||
-        !AppSettingsController.instance.autoPlayNextEpisode) {
+        _askStillWatching ||
+        !AppSettingsController.instance.autoPlayNextEpisode ||
+        // Only after real viewing here: opening a finished episode or seeking
+        // to its end must never chain-advance by itself.
+        _sessionPlaybackMs < 60000) {
       return;
     }
     final remaining = duration - position;
     if (remaining > const Duration(seconds: 5)) return;
     if (remaining <= const Duration(milliseconds: 750)) {
+      if (WatchPlayerScreen._autoStreak >=
+          WatchPlayerScreen._maxUnattendedEpisodes) {
+        // Several episodes in a row with nobody touching the screen: likely
+        // asleep. Stop and ask instead of burning through the season.
+        unawaited(_videoController?.pause());
+        setState(() {
+          _askStillWatching = true;
+          _nextCountdown = null;
+        });
+        return;
+      }
       unawaited(_playNextEpisode());
       return;
     }
@@ -445,14 +499,24 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     }
   }
 
-  Future<void> _playNextEpisode() async {
+  Future<void> _playNextEpisode({bool byUser = false}) async {
     final callback = widget.onPlayNext;
-    if (callback == null || _isAdvancingToNext || _nextCancelled) return;
+    if (callback == null || _isAdvancingToNext) return;
+    if (_nextCancelled && !byUser) return;
     _isAdvancingToNext = true;
+    WatchPlayerScreen._autoStreak = byUser
+        ? 0
+        : WatchPlayerScreen._autoStreak + 1;
+    // Keep fullscreen across the route swap: this screen must not restore
+    // the system UI on dispose, and the next one starts in fullscreen.
+    _handingOffFullScreen = _isFullScreen;
+    WatchPlayerScreen._carryFullScreen = _isFullScreen;
     if (mounted) setState(() => _nextCountdown = 0);
     try {
       await callback();
     } catch (error, stackTrace) {
+      _handingOffFullScreen = false;
+      WatchPlayerScreen._carryFullScreen = false;
       AppLogBuffer.instance.recordError(
         error,
         stackTrace,
@@ -729,7 +793,11 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     );
   }
 
+  /// Any deliberate interaction proves someone is watching.
+  void _userActive() => WatchPlayerScreen._autoStreak = 0;
+
   void _toggleControls() {
+    _userActive();
     if (_controlsVisible) {
       _hideControlsTimer?.cancel();
       setState(() => _controlsVisible = false);
@@ -739,6 +807,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   }
 
   Future<void> _togglePause() async {
+    _userActive();
     final video = _videoController;
     if (video == null) return;
     if (video.value.isPlaying) {
@@ -772,6 +841,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
   }
 
   void _handleGestureSeek(int seconds) {
+    _userActive();
     _seekFeedbackTimer?.cancel();
     final previous = _seekFeedbackSeconds;
     setState(
@@ -903,7 +973,7 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
     _initializationGeneration++;
     _hideControlsTimer?.cancel();
     _seekFeedbackTimer?.cancel();
-    if (_isFullScreen) {
+    if (_isFullScreen && !_handingOffFullScreen) {
       unawaited(_restoreSystemUi());
     }
     WatchStorage.openingTimingRevision.removeListener(_reloadOpeningTiming);
@@ -1133,6 +1203,77 @@ class _WatchPlayerScreenState extends State<WatchPlayerScreen> {
                 label: Text(
                   _activeSkipSegment!.buttonLabel,
                   style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          if (_askStillWatching)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: .62),
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xF21C1C22),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Вы ещё смотрите?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Несколько серий подряд включились сами. Остановили, чтобы ничего не пропустить.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            height: 1.35,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () {
+                              setState(() => _askStillWatching = false);
+                              unawaited(_playNextEpisode(byUser: true));
+                            },
+                            child: Text(
+                              widget.nextEpisodeTitle == null
+                                  ? 'Смотреть дальше'
+                                  : 'Смотреть ${widget.nextEpisodeTitle}',
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            _userActive();
+                            setState(() {
+                              _askStillWatching = false;
+                              _nextCancelled = true;
+                            });
+                            _showControls();
+                          },
+                          child: const Text(
+                            'Остаться здесь',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
