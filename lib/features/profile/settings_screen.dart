@@ -1525,7 +1525,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.0',
+                'ВЕРСИЯ 2.5.1',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
