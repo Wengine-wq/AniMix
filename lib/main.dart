@@ -23,6 +23,7 @@ import 'core/app_settings.dart';
 import 'core/app_logging.dart';
 import 'core/achievement_service.dart';
 import 'core/api_endpoint.dart';
+import 'core/local_profile.dart';
 import 'core/config.dart';
 import 'core/episode_notifier.dart';
 import 'widgets/server_status_pill.dart';
@@ -54,6 +55,7 @@ void main() {
       await AppSettingsController.instance.initialize();
       await GuestMode.load();
       await ApiEndpoint.load();
+      await LocalProfile.load();
       runApp(const ProviderScope(child: MyApp()));
       unawaited(ApiEndpoint.refresh(builtIn: Config.builtInApiBaseUrl));
     },

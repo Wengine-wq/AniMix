@@ -185,8 +185,9 @@ void main() {
       ),
       const Size(1280, 720),
     );
-    expect(find.text('Аккаунт AniMix'), findsOneWidget);
-    expect(find.text('Войти'), findsOneWidget);
+    expect(find.text('Профиль'), findsWidgets);
+    expect(find.text('Создать локальный профиль'), findsOneWidget);
+    expect(find.text('Войти в аккаунт'), findsOneWidget);
   });
 
   testWidgets('mobile root uses the floating AniMix tab bar', (tester) async {

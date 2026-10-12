@@ -9,6 +9,7 @@ import '../../core/animix_theme.dart';
 import '../../core/app_logging.dart';
 import '../../core/app_settings.dart';
 import '../../core/episode_notifier.dart';
+import '../../core/local_profile.dart';
 import '../../core/poster_fallback_service.dart';
 import '../../core/secure_storage.dart';
 import '../../providers/auth_provider.dart';
@@ -54,8 +55,10 @@ class SettingsScreen extends ConsumerWidget {
                     title: 'Мой профиль',
                     subtitle: authenticated
                         ? 'Публичный профиль и библиотека AniMix'
+                        : profile?.isLocal == true
+                        ? 'Локальный · хранится только на этом устройстве'
                         : 'Войдите в основной аккаунт AniMix',
-                    onTap: authenticated
+                    onTap: authenticated || profile?.isLocal == true
                         ? () => Navigator.maybePop(context)
                         : () => _push(context, const LoginScreen()),
                   ),
@@ -169,6 +172,15 @@ class SettingsScreen extends ConsumerWidget {
                         ? () => _logout(context, ref)
                         : () => _push(context, const LoginScreen()),
                   ),
+                  if (!authenticated && profile?.isLocal == true)
+                    _SettingsRow(
+                      icon: CupertinoIcons.trash_fill,
+                      color: const Color(0xFFFF4E58),
+                      title: 'Удалить локальный профиль',
+                      subtitle: 'Списки и профиль на этом устройстве',
+                      destructive: true,
+                      onTap: () => _deleteLocalProfile(context, ref),
+                    ),
                 ],
               ),
             ],
@@ -180,6 +192,36 @@ class SettingsScreen extends ConsumerWidget {
 
   static void _push(BuildContext context, Widget page) =>
       Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => page));
+
+  static Future<void> _deleteLocalProfile(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final accepted = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Удалить локальный профиль?'),
+        content: const Text(
+          'Имя и списки на этом устройстве будут удалены. Загрузки и прогресс серий останутся.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    await LocalProfile.delete();
+    ref.read(userDataRevisionProvider.notifier).bump();
+    ref.invalidate(currentUserProvider);
+  }
 
   static Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final accepted = await showCupertinoDialog<bool>(
@@ -1577,7 +1619,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.32',
+                'ВЕРСИЯ 2.5.33',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -2148,6 +2190,32 @@ typedef _Release = ({
 
 /// Newest first. Keep in step with the GitHub release notes.
 const List<_Release> _changelog = [
+  (
+    version: '2.5.33',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.device_phone_portrait,
+        'Локальный профиль',
+        'Имя, списки, прогресс и достижения без аккаунта: всё хранится на устройстве и не уходит на сервер',
+      ),
+      (
+        CupertinoIcons.arrow_merge,
+        'Объединение списков',
+        'При входе в аккаунт AniMix локальные списки можно перенести в аккаунт',
+      ),
+      (
+        CupertinoIcons.photo_fill,
+        'Обложки грузятся',
+        'Исправлен загрузчик: картинки скачивались, но не показывались',
+      ),
+      (
+        CupertinoIcons.arrow_2_squarepath,
+        'Переезд сервера без обновления',
+        'Если сервер AniMix сменит адрес, приложение переключится само',
+      ),
+    ],
+  ),
   (
     version: '2.5.32',
     date: 'Октябрь 2026',

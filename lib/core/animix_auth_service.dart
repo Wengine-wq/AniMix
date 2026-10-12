@@ -11,6 +11,7 @@ import 'app_logging.dart';
 import 'achievement_service.dart';
 import 'animix_local_cache.dart';
 import 'config.dart';
+import 'local_profile.dart';
 import 'secure_storage.dart';
 import 'server_health.dart';
 
@@ -273,12 +274,19 @@ class AniMixAuthService {
     }
   }
 
-  Future<Map<String, dynamic>?> updateProfile({required String displayName}) =>
-      _profileResponse(
-        method: 'PATCH',
-        path: '/v1/me/profile',
-        data: {'display_name': displayName},
-      );
+  Future<Map<String, dynamic>?> updateProfile({
+    required String displayName,
+  }) async {
+    if (await _useLocalProfile()) {
+      await LocalProfile.rename(displayName);
+      return LocalProfile.asAccountJson();
+    }
+    return _profileResponse(
+      method: 'PATCH',
+      path: '/v1/me/profile',
+      data: {'display_name': displayName},
+    );
+  }
 
   Future<Map<String, dynamic>?> uploadProfileMedia({
     required AniMixProfileMediaKind kind,
@@ -314,8 +322,49 @@ class AniMixAuthService {
         : null;
   }
 
-  Future<List<Map<String, dynamic>>?> getLibraryEntries() =>
-      _cachedRead('library', _loadLibraryEntries);
+  Future<List<Map<String, dynamic>>?> getLibraryEntries() async {
+    if (await _useLocalProfile()) return LocalProfile.library();
+    return _cachedRead('library', _loadLibraryEntries);
+  }
+
+  /// Copies the device-only lists into the signed-in account. A title that
+  /// is already in the account is replaced only if the local record is newer.
+  /// Returns how many titles were added or updated.
+  Future<int> mergeLocalLibrary() async {
+    final local = await LocalProfile.library();
+    if (local.isEmpty) return 0;
+    invalidateReadCache();
+    final remote = await _loadLibraryEntries() ?? const [];
+    final remoteById = {
+      for (final entry in remote)
+        int.tryParse('${entry['shikimori_id']}') ?? 0: entry,
+    };
+    var merged = 0;
+    for (final entry in local) {
+      final id = int.tryParse('${entry['shikimori_id']}') ?? 0;
+      if (id <= 0) continue;
+      final existing = remoteById[id];
+      final localTime = int.tryParse('${entry['updated_at']}') ?? 0;
+      final remoteTime = int.tryParse('${existing?['updated_at']}') ?? 0;
+      if (existing != null && remoteTime >= localTime) continue;
+      final saved = await saveLibraryEntryWithResult(
+        animeId: id,
+        status: '${entry['status']}',
+        score: int.tryParse('${entry['score']}') ?? 0,
+        episodesWatched: int.tryParse('${entry['episodes_watched']}') ?? 0,
+      );
+      if (saved.success) merged++;
+    }
+    invalidateReadCache();
+    return merged;
+  }
+
+  /// No AniMix session but a profile kept on this device.
+  Future<bool> _useLocalProfile() async {
+    if (!LocalProfile.exists) return false;
+    final token = await SecureStorage.getAniMixAccessToken();
+    return token == null || token.isEmpty;
+  }
 
   Future<List<Map<String, dynamic>>?> _loadLibraryEntries() async {
     try {
@@ -365,6 +414,20 @@ class AniMixAuthService {
     required int score,
     required int episodesWatched,
   }) async {
+    if (await _useLocalProfile()) {
+      await LocalProfile.saveEntry(
+        animeId: animeId,
+        status: status,
+        score: score,
+        episodesWatched: episodesWatched,
+      );
+      try {
+        await AchievementService.instance.librarySaved(animeId, status);
+      } catch (_) {
+        // Lists matter more than an award.
+      }
+      return const AniMixLibrarySaveResult.success();
+    }
     try {
       final response = await _authorizedRequest(
         (token) => _dio.put<dynamic>(

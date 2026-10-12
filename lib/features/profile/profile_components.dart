@@ -277,7 +277,9 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(width: 7),
       ],
       Text(
-        _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
+        user.isLocal
+            ? 'Локальный профиль · на этом устройстве'
+            : _onlineText(user.lastOnlineAt, isAniMix: user.isAniMix),
         style: TextStyle(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 12,

@@ -7,6 +7,7 @@ import '../models/shikimori_user.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/app_logging.dart';
+import '../core/local_profile.dart';
 import '../core/secure_storage.dart';
 import 'auth_provider.dart';
 
@@ -57,7 +58,11 @@ final currentUserProvider = FutureProvider<ShikimoriUser?>((ref) async {
   try {
     ref.watch(userDataRevisionProvider);
     final localToken = await SecureStorage.getAniMixAccessToken();
-    if (localToken == null || localToken.isEmpty) return null;
+    if (localToken == null || localToken.isEmpty) {
+      // No account session: a device-only profile, if one was created.
+      final local = await LocalProfile.asAccountJson();
+      return local == null ? null : ShikimoriUser.localFromAniMixJson(local);
+    }
     final service = ref.read(animixAuthServiceProvider);
     final cached = await service.getCachedCurrentUser();
     if (cached != null) {

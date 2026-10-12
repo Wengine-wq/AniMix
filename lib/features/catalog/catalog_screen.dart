@@ -9,6 +9,7 @@ import '../../core/app_logging.dart';
 import '../../core/achievement_service.dart';
 import '../../core/app_settings.dart';
 import '../../core/episode_notifier.dart';
+import '../../core/local_profile.dart';
 import '../../models/shikimori_anime.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
@@ -101,7 +102,7 @@ final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((
 });
 
 Future<List<BookmarkEntry>> _loadBookmarks(Ref ref) async {
-  if (!await ref.watch(isLoggedInProvider.future)) {
+  if (!await ref.watch(isLoggedInProvider.future) && !LocalProfile.exists) {
     throw const _BookmarksAuthRequired();
   }
   ref.watch(userDataRevisionProvider);

@@ -20,6 +20,7 @@ import '../../widgets/animix_surface.dart';
 import '../../widgets/animix_skeletons.dart';
 import '../../widgets/smart_anime_poster.dart';
 import '../anime_detail/anime_detail_screen.dart';
+import '../auth/local_profile_sheet.dart';
 import '../auth/login_screen.dart';
 import '../watch/watch_storage.dart';
 import 'profile_cover_storage.dart';
@@ -224,7 +225,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final user = await userFuture;
       if (!mounted) return;
-      if (user?.isAniMix == true) {
+      if (user?.isAniMix == true && user?.isLocal != true) {
         await _pickAndUploadAniMixMedia(AniMixProfileMediaKind.banner);
         return;
       }
@@ -254,7 +255,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final user = await userFuture;
       if (!mounted) return;
-      if (user?.isAniMix == true) {
+      if (user?.isAniMix == true && user?.isLocal != true) {
         final updated = await service.deleteProfileMedia(
           AniMixProfileMediaKind.banner,
         );
@@ -332,11 +333,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final userFuture = ref.read(currentUserProvider.future);
     final user = await userFuture;
     if (!mounted) return;
-    if (user?.isAniMix != true) {
+    if (user?.isAniMix != true || user?.isLocal == true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Аватар Shikimori изменяется в Shikimori.'),
+          SnackBar(
+            content: Text(
+              user?.isLocal == true
+                  ? 'Аватар доступен в аккаунте AniMix. В локальном профиле можно поменять фон.'
+                  : 'Аватар Shikimori изменяется в Shikimori.',
+            ),
           ),
         );
       }
@@ -444,7 +449,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     : () => _startProfileEditing(loadedUser!),
                 icon: const Icon(CupertinoIcons.pencil_circle_fill),
               ),
-          if (loadedUser?.isAniMix == true)
+          if (loadedUser?.isAniMix == true && loadedUser?.isLocal != true)
             IconButton(
               tooltip: 'Друзья',
               onPressed: () => Navigator.push(
@@ -482,11 +487,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (value == null) {
             return AniMixEmptyState(
               icon: CupertinoIcons.person_crop_circle,
-              title: 'Аккаунт AniMix',
+              title: 'Профиль',
               message:
-                  'Войдите, чтобы сохранить прогресс, оценки и собственный профиль.',
-              actionLabel: 'Войти',
-              onAction: () => Navigator.push(
+                  'Создайте локальный профиль: списки, прогресс и достижения '
+                  'будут храниться на этом устройстве. Или войдите в аккаунт '
+                  'AniMix, чтобы синхронизировать их.',
+              actionLabel: 'Создать локальный профиль',
+              onAction: () => LocalProfileSheet.show(context),
+              secondaryLabel: 'Войти в аккаунт',
+              onSecondary: () => Navigator.push(
                 context,
                 CupertinoPageRoute<void>(builder: (_) => const LoginScreen()),
               ),
@@ -512,7 +521,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         children: [
                           ProfileHeader(
                             user: value,
-                            coverPath: value.isAniMix ? null : _coverPath,
+                            coverPath: value.isAniMix && !value.isLocal
+                                ? null
+                                : _coverPath,
                             avatarPath: null,
                             coverBusy: _coverBusy,
                             editing: _editingProfile,
@@ -535,6 +546,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                             child: Column(
                               children: [
+                                if (value.isLocal) ...[
+                                  const _LocalProfileNotice(),
+                                  const SizedBox(height: AniMixSpacing.lg),
+                                ],
                                 ProfileLibraryOverview(user: value),
                                 const SizedBox(height: AniMixSpacing.lg),
                                 usage.when(
@@ -556,7 +571,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                             AchievementStrip(
                                               unlocked:
                                                   snapshot.data ?? const {},
-                                              caption: value.isAniMix
+                                              caption: value.isLocal
+                                                  ? 'Хранятся на этом устройстве'
+                                                  : value.isAniMix
                                                   ? 'Синхронизируются с аккаунтом и видны друзьям'
                                                   : null,
                                               onTap: () => Navigator.push(
@@ -1221,5 +1238,55 @@ class _HistoryCard extends StatelessWidget {
     if (difference.inDays < 1) return '${difference.inHours} ч. назад';
     if (difference.inDays < 7) return '${difference.inDays} дн. назад';
     return '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}';
+  }
+}
+
+class _LocalProfileNotice extends StatelessWidget {
+  const _LocalProfileNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AniMixSurface(
+      padding: const EdgeInsets.all(AniMixSpacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(CupertinoIcons.device_phone_portrait, color: scheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Локальный профиль',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  localProfileNotice,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                  onPressed: () => Navigator.push(
+                    context,
+                    CupertinoPageRoute<void>(
+                      builder: (_) => const LoginScreen(),
+                    ),
+                  ),
+                  child: const Text('Войти в аккаунт AniMix'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

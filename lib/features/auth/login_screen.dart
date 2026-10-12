@@ -9,11 +9,13 @@ import 'package:webview_windows/webview_windows.dart';
 
 import '../../core/app_logging.dart';
 import '../../core/config.dart';
+import '../../core/local_profile.dart';
 import '../../core/shikimori_oauth_flow.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/server_status_card.dart';
 import '../profile/shikimori_integration_screen.dart';
+import 'local_profile_sheet.dart';
 
 /// Slow drifting accent glows behind the sign-in screen.
 class _LoginBackdrop extends StatefulWidget {
@@ -210,10 +212,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ),
-        if (!guest) ...[
+        if (!LocalProfile.exists) ...[
           const SizedBox(height: 10),
           OutlinedButton(
-            onPressed: _busy ? null : _continueAsGuest,
+            onPressed: _busy ? null : _createLocalProfile,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(54),
               shape: RoundedRectangleBorder(
@@ -225,9 +227,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            child: const Text('Продолжить без входа'),
+            child: const Text('Создать локальный профиль'),
           ),
         ],
+        if (!guest)
+          TextButton(
+            onPressed: _busy ? null : _continueAsGuest,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+            child: const Text('Просто смотреть, без профиля'),
+          ),
         const SizedBox(height: 6),
         TextButton.icon(
           onPressed: _busy ? null : _openShikimori,
@@ -237,9 +245,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: 14),
         Text(
-          'Без входа работают каталог, просмотр и загрузки, прогресс хранится '
-          'на устройстве. Аккаунт AniMix синхронизирует списки, профиль и '
-          'достижения между устройствами.',
+          'Локальный профиль хранит списки, прогресс и достижения только на '
+          'этом устройстве. Аккаунт AniMix синхронизирует их между '
+          'устройствами и показывает друзьям.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: scheme.onSurfaceVariant,
@@ -249,6 +257,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _offerLocalMerge() async {
+    final local = await LocalProfile.library();
+    if (local.isEmpty || !mounted) return;
+    final merge = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Объединить списки?'),
+        content: Text(
+          'В локальном профиле ${local.length} тайтлов. Добавить их в аккаунт '
+          'AniMix? Если тайтл уже есть в аккаунте, он обновится, только когда '
+          'локальная запись новее. Локальный профиль останется на устройстве.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Не сейчас'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Объединить'),
+          ),
+        ],
+      ),
+    );
+    if (merge != true || !mounted) return;
+    final merged = await ref
+        .read(animixAuthServiceProvider)
+        .mergeLocalLibrary();
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text('Списки объединены: $merged тайтлов в аккаунте.')),
+    );
+  }
+
+  Future<void> _createLocalProfile() async {
+    final created = await LocalProfileSheet.show(context);
+    if (created && mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _continueAsGuest() {
@@ -277,6 +327,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final result = await ref.read(animixAuthServiceProvider).loginWithGoogle();
     if (!mounted) return;
     if (result.success) {
+      // Offer the device-only lists to the account before the app switches
+      // to the signed-in screens (and this screen goes away).
+      await _offerLocalMerge();
+      if (!mounted) return;
       setState(() => _busy = false);
       ref.read(sessionNoticeProvider.notifier).clear();
       ref.read(userDataRevisionProvider.notifier).bump();

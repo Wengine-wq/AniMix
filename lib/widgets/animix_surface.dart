@@ -290,6 +290,8 @@ class AniMixEmptyState extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
     super.key,
   });
 
@@ -298,6 +300,8 @@ class AniMixEmptyState extends StatelessWidget {
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -331,6 +335,10 @@ class AniMixEmptyState extends StatelessWidget {
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: AniMixSpacing.lg),
               FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+            ],
+            if (secondaryLabel != null && onSecondary != null) ...[
+              const SizedBox(height: AniMixSpacing.xs),
+              TextButton(onPressed: onSecondary, child: Text(secondaryLabel!)),
             ],
           ],
         ),

@@ -22,6 +22,7 @@ import 'package:animix/features/wrapped/wrapped_stats.dart';
 import 'package:animix/features/recommendation/recommendation_screen.dart';
 import 'package:animix/main.dart';
 import 'package:animix/features/auth/login_screen.dart';
+import 'package:animix/features/auth/local_profile_sheet.dart';
 import 'package:animix/core/server_health.dart';
 import 'package:animix/core/server_status.dart';
 import 'package:animix/models/shikimori_anime.dart';
@@ -166,6 +167,7 @@ void main() {
     Size size = const Size(390, 844),
     Brightness brightness = Brightness.dark,
     bool loggedIn = true,
+    ShikimoriUser? user,
     Future<void> Function(WidgetTester tester)? before,
   }) async {
     tester.view.physicalSize = size * 2;
@@ -182,7 +184,7 @@ void main() {
         overrides: [
           isLoggedInProvider.overrideWith((ref) async => loggedIn),
           currentUserProvider.overrideWith(
-            (ref) async => loggedIn ? profile : null,
+            (ref) async => user ?? (loggedIn ? profile : null),
           ),
           apiClientProvider.overrideWith((ref) => _FakeApi(ref)),
           bookmarksProvider.overrideWith(
@@ -384,6 +386,30 @@ void main() {
     );
   }
   if (want('guest')) {
+    testWidgets(
+      'local_profile',
+      (t) => shoot(
+        t,
+        'local_profile',
+        const ProfileScreen(),
+        loggedIn: false,
+        user: ShikimoriUser.localFromAniMixJson({
+          'display_name': 'Тхкизхвх',
+          'local': true,
+          'created_at': 1791800000,
+          'stats': {'watching': 3, 'completed': 12, 'planned': 5},
+        }),
+      ),
+    );
+    testWidgets(
+      'local_profile_sheet',
+      (t) => shoot(
+        t,
+        'local_profile_sheet',
+        const Scaffold(body: LocalProfileSheet()),
+        loggedIn: false,
+      ),
+    );
     testWidgets(
       'guest_login',
       (t) => shoot(

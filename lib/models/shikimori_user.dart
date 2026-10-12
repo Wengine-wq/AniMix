@@ -25,6 +25,9 @@ class ShikimoriUser {
   final bool shikimoriLinked;
   final String? shikimoriUserId;
 
+  /// A profile kept only on this device (see LocalProfile).
+  final bool isLocal;
+
   ShikimoriUser.fromJson(Map<String, dynamic> json)
     : id = _safeInt(json['id']),
       nickname = _safeString(json['nickname']),
@@ -50,7 +53,8 @@ class ShikimoriUser {
       episodesWatched = _episodeCount(json),
       isAniMix = false,
       shikimoriLinked = true,
-      shikimoriUserId = _safeInt(json['id']).toString() {
+      shikimoriUserId = _safeInt(json['id']).toString(),
+      isLocal = false {
     debugPrint('📊 FULL USER LOADED: $nickname');
   }
 
@@ -76,7 +80,8 @@ class ShikimoriUser {
       episodesWatched = _stat(json, 'episodes_watched'),
       isAniMix = true,
       shikimoriLinked = json['shikimori_linked'] == true,
-      shikimoriUserId = _nullableString(json['shikimori_user_id']);
+      shikimoriUserId = _nullableString(json['shikimori_user_id']),
+      isLocal = json['local'] == true;
 
   static int _stat(Map<String, dynamic> json, String key) {
     final stats = json['stats'];
