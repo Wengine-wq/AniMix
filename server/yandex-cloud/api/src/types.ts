@@ -17,10 +17,12 @@ export type CloudFunctionResponse = {
 };
 
 export type RuntimeConfig = {
+  databaseUrl: string;
   ydbEndpoint: string;
   ydbDatabase: string;
   mediaBucket: string;
   mediaEndpoint: string;
+  mediaRegion: string;
   mediaPublicBaseUrl: string;
   mediaAccessKeyId: string;
   mediaSecretAccessKey: string;

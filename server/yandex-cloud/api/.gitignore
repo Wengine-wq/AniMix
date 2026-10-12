@@ -4,3 +4,5 @@ dist/
 *.key.json
 artifacts/
 .package-stage/
+backups/
+docker.env

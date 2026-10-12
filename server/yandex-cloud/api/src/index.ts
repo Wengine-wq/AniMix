@@ -4,7 +4,8 @@ import { runtimeConfig } from './config';
 import { epochIso, nowSeconds, pepperedHash, randomToken, timingSafeTextEqual } from './crypto';
 import { ProfileMediaStorage } from './media';
 import { CloudFunctionEvent, CloudFunctionResponse, LibraryEntry, RuntimeConfig, UserRow } from './types';
-import { YdbStore } from './ydb';
+import { PgStore } from './pg';
+import { Store, YdbStore } from './ydb';
 
 const SHIKIMORI_TOKEN_URL = 'https://shikimori.io/oauth/token';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -22,12 +23,16 @@ const MAX_IMPORT_UNIQUE_ENTRIES = 5_000;
 const LIBRARY_STATUSES = new Set(['planned', 'watching', 'completed', 'on_hold', 'dropped', 'rewatching']);
 
 let cachedConfig: RuntimeConfig | null = null;
-let cachedStore: YdbStore | null = null;
+let cachedStore: Store | null = null;
 let cachedMedia: ProfileMediaStorage | null = null;
 
-function services(): { config: RuntimeConfig; store: YdbStore; media: ProfileMediaStorage } {
+function services(): { config: RuntimeConfig; store: Store; media: ProfileMediaStorage } {
   if (!cachedConfig) cachedConfig = runtimeConfig();
-  if (!cachedStore) cachedStore = new YdbStore(cachedConfig);
+  if (!cachedStore) {
+    cachedStore = cachedConfig.databaseUrl
+      ? PgStore.fromUrl(cachedConfig.databaseUrl)
+      : new YdbStore(cachedConfig);
+  }
   if (!cachedMedia) cachedMedia = new ProfileMediaStorage(cachedConfig);
   return { config: cachedConfig, store: cachedStore, media: cachedMedia };
 }
@@ -130,7 +135,7 @@ function shikimoriAnimeId(payload: Record<string, unknown>): number {
   return Number(payload.shikimori_id ?? payload.target_id ?? nestedId ?? 0);
 }
 
-async function currentSession(event: CloudFunctionEvent, store: YdbStore): Promise<{ user: UserRow; sessionId: string } | null> {
+async function currentSession(event: CloudFunctionEvent, store: Store): Promise<{ user: UserRow; sessionId: string } | null> {
   const token = bearerToken(event);
   if (!token) return null;
   const now = nowSeconds();
@@ -145,7 +150,7 @@ async function currentSession(event: CloudFunctionEvent, store: YdbStore): Promi
   return { user, sessionId: session.id };
 }
 
-async function profile(user: UserRow, store: YdbStore, media: ProfileMediaStorage): Promise<Record<string, unknown>> {
+async function profile(user: UserRow, store: Store, media: ProfileMediaStorage): Promise<Record<string, unknown>> {
   const [entries, mediaRows, shikimori] = await Promise.all([
     store.libraryEntries(user.id),
     store.mediaForUser(user.id),
@@ -192,7 +197,7 @@ async function profile(user: UserRow, store: YdbStore, media: ProfileMediaStorag
   };
 }
 
-async function createSession(userId: string, store: YdbStore, config: RuntimeConfig): Promise<Record<string, unknown>> {
+async function createSession(userId: string, store: Store, config: RuntimeConfig): Promise<Record<string, unknown>> {
   const accessToken = randomToken();
   const refreshToken = randomToken(48);
   const now = nowSeconds();
@@ -213,7 +218,7 @@ async function createSession(userId: string, store: YdbStore, config: RuntimeCon
   };
 }
 
-async function googleStart(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+async function googleStart(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const returnUri = query(event, 'return_uri');
   if (returnUri !== config.allowedAppReturnUri) return json(event, config, { error: 'invalid_return_uri' }, 400);
   const state = randomToken(32);
@@ -236,7 +241,7 @@ async function googleStart(event: CloudFunctionEvent, config: RuntimeConfig, sto
   return redirect(authorizeUrl.toString());
 }
 
-async function googleCallback(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+async function googleCallback(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const state = query(event, 'state');
   const code = query(event, 'code');
   const stateHash = state ? pepperedHash(state, config.authTokenPepper) : '';
@@ -301,7 +306,7 @@ async function googleCallback(event: CloudFunctionEvent, config: RuntimeConfig, 
   return appRedirect(transaction.return_uri, { ticket, state });
 }
 
-async function googleExchange(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
+async function googleExchange(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
   const input = jsonBody(event);
   const ticket = typeof input.ticket === 'string' ? input.ticket.trim() : '';
   const state = typeof input.state === 'string' ? input.state.trim() : '';
@@ -319,7 +324,7 @@ async function googleExchange(event: CloudFunctionEvent, config: RuntimeConfig, 
   return json(event, config, { ...(await createSession(user.id, store, config)), user: userProfile });
 }
 
-async function refresh(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
+async function refresh(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
   const input = jsonBody(event);
   const refreshToken = typeof input.refresh_token === 'string' ? input.refresh_token.trim() : '';
   if (!refreshToken) return json(event, config, { error: 'invalid_refresh_token' }, 401);
@@ -332,7 +337,7 @@ async function refresh(event: CloudFunctionEvent, config: RuntimeConfig, store: 
   return json(event, config, { ...(await createSession(user.id, store, config)), user: userProfile });
 }
 
-async function updateProfile(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
+async function updateProfile(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   const raw = jsonBody(event).display_name;
@@ -343,9 +348,10 @@ async function updateProfile(event: CloudFunctionEvent, config: RuntimeConfig, s
   return json(event, config, { user: updated ? await profile(updated, store, media) : null });
 }
 
-async function changeMedia(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage, kind: 'avatar' | 'banner'): Promise<CloudFunctionResponse> {
+async function changeMedia(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage, kind: 'avatar' | 'banner'): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  if (!media.enabled) return json(event, config, { error: 'profile_media_unavailable' }, 503);
   const contentType = header(event, 'content-type').split(';')[0].trim().toLowerCase();
   const data = bodyBuffer(event);
   if (contentType !== 'image/jpeg') return json(event, config, { error: 'unsupported_profile_media' }, 415);
@@ -360,7 +366,7 @@ async function changeMedia(event: CloudFunctionEvent, config: RuntimeConfig, sto
   return json(event, config, { user: updated ? await profile(updated, store, media) : null });
 }
 
-async function removeMedia(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage, kind: 'avatar' | 'banner'): Promise<CloudFunctionResponse> {
+async function removeMedia(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage, kind: 'avatar' | 'banner'): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   const previous = await store.deleteMedia(session.user.id, kind);
@@ -372,7 +378,7 @@ async function removeMedia(event: CloudFunctionEvent, config: RuntimeConfig, sto
 async function publicMedia(
   event: CloudFunctionEvent,
   config: RuntimeConfig,
-  store: YdbStore,
+  store: Store,
   media: ProfileMediaStorage,
   userId: string,
   kind: 'avatar' | 'banner',
@@ -387,7 +393,7 @@ async function publicMedia(
 async function publicProfile(
   event: CloudFunctionEvent,
   config: RuntimeConfig,
-  store: YdbStore,
+  store: Store,
   media: ProfileMediaStorage,
   userId: string,
 ): Promise<CloudFunctionResponse> {
@@ -399,7 +405,7 @@ async function publicProfile(
   return json(event, config, { user: result });
 }
 
-async function privacy(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+async function privacy(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   if (event.httpMethod === 'PUT') {
@@ -411,7 +417,7 @@ async function privacy(event: CloudFunctionEvent, config: RuntimeConfig, store: 
 }
 
 async function publicLibrary(
-  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, userId: string,
+  event: CloudFunctionEvent, config: RuntimeConfig, store: Store, userId: string,
 ): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
@@ -426,7 +432,7 @@ async function publicLibrary(
 }
 
 async function searchUsers(
-  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage,
+  event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage,
 ): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
@@ -441,7 +447,7 @@ async function searchUsers(
 }
 
 async function friends(
-  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage,
+  event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage,
   peerId?: string,
 ): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
@@ -482,7 +488,7 @@ async function friends(
   return json(event, config, { error: 'method_not_allowed' }, 405);
 }
 
-async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage, animeId?: number): Promise<CloudFunctionResponse> {
+async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage, animeId?: number): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   if (event.httpMethod === 'GET') {
@@ -512,7 +518,7 @@ function achievementMap(rows: Array<{ achievement_id: string; unlocked_at: numbe
  * (`{ achievements: { id: unlockedAtMs } }`, earliest wins) and returns the
  * merged set, so every device converges on the same list.
  */
-async function myAchievements(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+async function myAchievements(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   if (event.httpMethod === 'PUT') {
@@ -537,7 +543,7 @@ async function myAchievements(event: CloudFunctionEvent, config: RuntimeConfig, 
 
 /** Achievements are part of the public profile for signed-in users. */
 async function publicAchievements(
-  event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, userId: string,
+  event: CloudFunctionEvent, config: RuntimeConfig, store: Store, userId: string,
 ): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
@@ -545,7 +551,7 @@ async function publicAchievements(
   return json(event, config, { achievements: achievementMap(await store.achievements(userId)) });
 }
 
-async function usage(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore): Promise<CloudFunctionResponse> {
+async function usage(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   if (event.httpMethod === 'GET') {
@@ -594,7 +600,7 @@ async function usage(event: CloudFunctionEvent, config: RuntimeConfig, store: Yd
   return json(event, config, { ok: true });
 }
 
-async function importShikimori(event: CloudFunctionEvent, config: RuntimeConfig, store: YdbStore, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
+async function importShikimori(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   const input = jsonBody(event);
@@ -696,7 +702,7 @@ function requestPath(event: CloudFunctionEvent): string {
 /** Yandex Cloud Functions entry point: `index.handler`. */
 export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionResponse> {
   let config: RuntimeConfig;
-  let store: YdbStore;
+  let store: Store;
   let media: ProfileMediaStorage;
   try {
     ({ config, store, media } = services());

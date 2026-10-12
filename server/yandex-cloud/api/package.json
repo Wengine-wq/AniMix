@@ -6,19 +6,24 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "@yandex-cloud/nodejs-sdk": "^2.7.7",
     "@aws-sdk/client-s3": "^3.900.0",
     "@aws-sdk/s3-request-presigner": "^3.900.0",
+    "@yandex-cloud/nodejs-sdk": "^2.7.7",
+    "pg": "^8.13.1",
     "ydb-sdk": "^5.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "pg-mem": "^3.0.4",
     "typescript": "^5.7.2"
   }
 }

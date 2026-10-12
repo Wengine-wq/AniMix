@@ -140,3 +140,29 @@ Cloudflare пока не удаляется и остаётся аварийны
 и одноразовые билеты переносить нельзя.
 
 Откат — вернуть прежний `ANIMIX_API_BASE_URL` в CI и выпустить hotfix. Никаких `DROP TABLE`, удаления D1 или bucket в этом процессе нет.
+
+## Запуск на любой ВМ (Docker + PostgreSQL)
+
+Тот же код API работает без Yandex Cloud: обычный Node-сервер (`src/server.ts`)
+с PostgreSQL вместо YDB (`src/pg.ts`, схема `schema/postgres/001_initial.sql`).
+Хранилище выбирается переменной `DATABASE_URL`: если она задана, используется
+PostgreSQL, иначе YDB, как раньше.
+
+1. ВМ с Docker (Ubuntu 22.04+, 1 ГБ RAM достаточно) и домен или поддомен,
+   указывающий на неё.
+2. `cp docker.env.example docker.env` и заполнить. `AUTH_TOKEN_PEPPER` должен совпадать
+   с текущим, иначе все сессии придётся открывать заново.
+3. В Google OAuth-клиент добавить redirect URI
+   `https://<API_DOMAIN>/v1/auth/google/callback`.
+4. `docker compose --env-file docker.env up -d` — поднимаются API, PostgreSQL, HTTPS (Caddy,
+   сертификат Let's Encrypt) и ежедневный бэкап в `./backups`.
+5. Перенос данных из YDB (повторяемый, строки обновляются):
+   ```bash
+   YDB_ENDPOINT=grpcs://ydb.serverless.yandexcloud.net:2135 \
+   YDB_DATABASE=/ru-central1/... YDB_ACCESS_TOKEN="$(yc iam create-token)" \
+   DATABASE_URL=postgres://animix:<пароль>@<host>:5432/animix \
+   node scripts/ydb-to-postgres.cjs
+   ```
+
+Проверка: `npm run build && npm test` (хранилище PostgreSQL проверяется на
+встроенной в память базе pg-mem, HTTP-сервер — настоящими запросами).

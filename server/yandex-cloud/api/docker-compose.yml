@@ -1,0 +1,63 @@
+# One VM runs everything: API, PostgreSQL, HTTPS and a daily database backup.
+# Usage: cp docker.env.example docker.env, fill it in, then
+# `docker compose --env-file docker.env up -d`.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: animix
+      POSTGRES_USER: animix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in docker.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U animix -d animix"]
+      interval: 10s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: docker.env
+    environment:
+      DATABASE_URL: postgres://animix:${POSTGRES_PASSWORD}@db:5432/animix
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Automatic HTTPS (Let's Encrypt) for API_DOMAIN pointing at this VM.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in docker.env}
+    command: caddy reverse-proxy --from ${API_DOMAIN} --to api:8080
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - api
+
+  # Nightly dump kept for 14 days in ./backups (copy it off the VM too).
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U animix -d animix -Fc -f /backups/animix-$$(date +%F).dump &&
+        find /backups -name "animix-*.dump" -mtime +14 -delete;
+        sleep 86400; done'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  caddy-data:

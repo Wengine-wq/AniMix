@@ -4,7 +4,7 @@ import { Driver, MetadataAuthService, TypedData, TypedValues, Types } from 'ydb-
 
 import { RuntimeConfig, UserRow, LibraryEntry } from './types';
 
-type SessionRow = {
+export type SessionRow = {
   id: string;
   user_id: string;
   access_token_hash: string;
@@ -15,27 +15,27 @@ type SessionRow = {
   last_used_at: number;
 };
 
-type MediaRow = {
+export type MediaRow = {
   kind: 'avatar' | 'banner';
   object_key: string;
   content_type: string;
   updated_at: number;
 };
 
-type ExternalAccount = {
+export type ExternalAccount = {
   provider: string;
   provider_subject: string;
   user_id: string;
   provider_email?: string | null;
 };
 
-type OAuthTransaction = {
+export type OAuthTransaction = {
   state_hash: string;
   return_uri: string;
   expires_at: number;
 };
 
-type AuthTicket = {
+export type AuthTicket = {
   ticket_hash: string;
   state_hash: string;
   user_id: string;
@@ -539,3 +539,6 @@ export class YdbStore {
     await this.execute('UPDATE auth_tickets SET consumed_at = $now WHERE ticket_hash = $ticketHash;', { now, ticketHash });
   }
 }
+
+/** What the API needs from a database; YDB and PostgreSQL both provide it. */
+export type Store = Pick<YdbStore, keyof YdbStore>;

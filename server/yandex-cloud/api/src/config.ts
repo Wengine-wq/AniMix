@@ -14,14 +14,21 @@ function optional(name: string, fallback: string): string {
 }
 
 export function runtimeConfig(): RuntimeConfig {
+  // DATABASE_URL selects PostgreSQL (any VM / Docker); otherwise YDB.
+  const databaseUrl = optional('DATABASE_URL', '');
+  const ydb = (name: string) => (databaseUrl ? optional(name, '') : required(name));
   return {
-    ydbEndpoint: required('YDB_ENDPOINT'),
-    ydbDatabase: required('YDB_DATABASE'),
-    mediaBucket: required('MEDIA_BUCKET'),
+    databaseUrl,
+    ydbEndpoint: ydb('YDB_ENDPOINT'),
+    ydbDatabase: ydb('YDB_DATABASE'),
+    // Profile avatars and banners go to any S3-compatible bucket. Without one
+    // the API still works; only uploading profile media is unavailable.
+    mediaBucket: optional('MEDIA_BUCKET', ''),
     mediaEndpoint: optional('MEDIA_ENDPOINT', 'https://storage.yandexcloud.net'),
-    mediaPublicBaseUrl: required('MEDIA_PUBLIC_BASE_URL').replace(/\/+$/, ''),
-    mediaAccessKeyId: required('MEDIA_ACCESS_KEY_ID'),
-    mediaSecretAccessKey: required('MEDIA_SECRET_ACCESS_KEY'),
+    mediaRegion: optional('MEDIA_REGION', 'ru-central1'),
+    mediaPublicBaseUrl: optional('MEDIA_PUBLIC_BASE_URL', '').replace(/\/+$/, ''),
+    mediaAccessKeyId: optional('MEDIA_ACCESS_KEY_ID', ''),
+    mediaSecretAccessKey: optional('MEDIA_SECRET_ACCESS_KEY', ''),
     googleClientId: required('GOOGLE_CLIENT_ID'),
     googleClientSecret: required('GOOGLE_CLIENT_SECRET'),
     googleRedirectUri: required('GOOGLE_REDIRECT_URI'),

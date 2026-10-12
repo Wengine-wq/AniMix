@@ -12,7 +12,7 @@ export class ProfileMediaStorage {
   constructor(private readonly config: RuntimeConfig) {
     this.client = new S3Client({
       endpoint: config.mediaEndpoint,
-      region: 'ru-central1',
+      region: config.mediaRegion,
       forcePathStyle: true,
       credentials: {
         accessKeyId: config.mediaAccessKeyId,
@@ -29,7 +29,12 @@ export class ProfileMediaStorage {
     return `${this.config.mediaPublicBaseUrl}/${key.split('/').map(encodeURIComponent).join('/')}`;
   }
 
+  get enabled(): boolean {
+    return Boolean(this.config.mediaBucket && this.config.mediaAccessKeyId);
+  }
+
   async upload(key: string, content: Buffer): Promise<void> {
+    if (!this.enabled) throw new Error('Profile media storage is not configured.');
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.config.mediaBucket,
@@ -42,6 +47,7 @@ export class ProfileMediaStorage {
   }
 
   async remove(key: string): Promise<void> {
+    if (!this.enabled) return;
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.config.mediaBucket, Key: key }),
     );
