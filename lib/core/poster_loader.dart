@@ -84,7 +84,11 @@ class PosterLoader {
 
   /// Returns the poster file for [url], from disk when already saved.
   Future<File?> load(String url) =>
-      _inflight[url] ??= _load(url).whenComplete(() => _inflight.remove(url));
+      _inflight[url] ??= _load(url).whenComplete(() {
+        // A block body on purpose: returning the removed future would make
+        // this future wait for itself and never complete.
+        _inflight.remove(url);
+      });
 
   Future<File?> _load(String url) async {
     final cache = AniMixMediaCache.postersFor(
