@@ -1,5 +1,7 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'api_endpoint.dart';
+
 class Config {
   // These values identify the public AniMix OAuth client and backend.
   // OAuth client IDs and HTTPS endpoint URLs are not credentials: every
@@ -67,10 +69,13 @@ class Config {
   /// through the SHIKIMORI_CLIENT_SECRET build secret when needed.
   static String get shikimoriClientSecret => _value('SHIKIMORI_CLIENT_SECRET');
 
-  static String get shikimoriOAuthProxyUrl => _value(
-    'SHIKIMORI_OAUTH_PROXY_URL',
-    fallback: _productionShikimoriOAuthProxyUrl,
-  );
+  // The OAuth proxy is the same AniMix server, so it follows a server move.
+  static String get shikimoriOAuthProxyUrl =>
+      ApiEndpoint.override ??
+      _value(
+        'SHIKIMORI_OAUTH_PROXY_URL',
+        fallback: _productionShikimoriOAuthProxyUrl,
+      );
 
   /// The redirect registered in Shikimori must be identical for authorize and
   /// token exchange. Only HTTPS overrides are accepted: obsolete OOB and
@@ -93,7 +98,11 @@ class Config {
   /// browsing does not consume AniMix/Yandex Cloud invocations.
   static const String shikimoriApiBaseUrl = shikimoriBaseUrl;
 
-  static String get animixApiBaseUrl => _value(
+  static String get animixApiBaseUrl =>
+      ApiEndpoint.override ?? builtInApiBaseUrl;
+
+  /// The server address compiled into this build.
+  static String get builtInApiBaseUrl => _value(
     'ANIMIX_API_BASE_URL',
     fallback: _productionAniMixApiBaseUrl,
   ).replaceFirst(RegExp(r'/*$'), '');

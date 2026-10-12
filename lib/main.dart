@@ -22,6 +22,8 @@ import 'core/animix_motion.dart';
 import 'core/app_settings.dart';
 import 'core/app_logging.dart';
 import 'core/achievement_service.dart';
+import 'core/api_endpoint.dart';
+import 'core/config.dart';
 import 'core/episode_notifier.dart';
 import 'widgets/server_status_pill.dart';
 import 'features/anime_detail/anime_detail_screen.dart';
@@ -51,7 +53,9 @@ void main() {
       await dotenv.load(fileName: '.env', isOptional: true);
       await AppSettingsController.instance.initialize();
       await GuestMode.load();
+      await ApiEndpoint.load();
       runApp(const ProviderScope(child: MyApp()));
+      unawaited(ApiEndpoint.refresh(builtIn: Config.builtInApiBaseUrl));
     },
     (error, stackTrace) {
       AppLogBuffer.instance.recordError(
