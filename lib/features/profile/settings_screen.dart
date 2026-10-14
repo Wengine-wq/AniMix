@@ -16,6 +16,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/animix_surface.dart';
 import '../auth/login_screen.dart';
+import '../import/anixart_import_screen.dart';
 import '../catalog/catalog_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../downloads/hls_download_manager.dart';
@@ -119,6 +120,13 @@ class SettingsScreen extends ConsumerWidget {
                     title: 'Данные и кеш',
                     subtitle: 'Загрузки, привязки и временные файлы',
                     onTap: () => _push(context, const _DataScreen()),
+                  ),
+                  _SettingsRow(
+                    icon: CupertinoIcons.arrow_down_doc_fill,
+                    color: const Color(0xFFFF7A59),
+                    title: 'Перенести из Anixart',
+                    subtitle: 'Смотрю, в планах, просмотрено и другие списки',
+                    onTap: () => _push(context, const AnixartImportScreen()),
                   ),
                 ],
               ),
