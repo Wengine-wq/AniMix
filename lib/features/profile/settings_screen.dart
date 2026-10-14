@@ -1627,7 +1627,7 @@ class _AboutScreen extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'ВЕРСИЯ 2.5.33',
+                'ВЕРСИЯ 2.5.34',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
@@ -2198,6 +2198,17 @@ typedef _Release = ({
 
 /// Newest first. Keep in step with the GitHub release notes.
 const List<_Release> _changelog = [
+  (
+    version: '2.5.34',
+    date: 'Октябрь 2026',
+    changes: [
+      (
+        CupertinoIcons.arrow_down_doc_fill,
+        'Перенос из Anixart',
+        'Списки переезжают по нику, без пароля: тайтлы сами находятся в каталоге',
+      ),
+    ],
+  ),
   (
     version: '2.5.33',
     date: 'Октябрь 2026',
