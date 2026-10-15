@@ -34,6 +34,8 @@ data class AniMixColors(
     val rimHighlight: Color,
     /** How strong accent glows are; light backgrounds need less. */
     val glowScale: Float,
+    /** Quiet translucent fill for chips and small controls. */
+    val chip: Color,
 ) {
     val accentGradient: Brush get() = Brush.horizontalGradient(listOf(gradientStart, gradientEnd))
 }
@@ -59,8 +61,9 @@ val HorizonDusk = AniMixColors(
     star = Color(0xFFFFC978),
     danger = Color(0xFFFF7A85),
     accentText = Color(0xFFFFD3DF),
-    rimHighlight = Color(0x2EFFFFFF),
+    rimHighlight = Color(0x14FFFFFF),
     glowScale = 1f,
+    chip = Color(0x14FFFFFF),
 )
 
 /** Horizon Dawn — the light theme: porcelain and muted rose. */
@@ -84,6 +87,7 @@ val HorizonDawn = AniMixColors(
     star = Color(0xFFE59A2E),
     danger = Color(0xFFD94B5A),
     accentText = Color(0xFF8A5462),
-    rimHighlight = Color(0xFFFFFFFF),
+    rimHighlight = Color(0xB3FFFFFF),
     glowScale = 0.7f,
+    chip = Color(0x0D2B2627),
 )

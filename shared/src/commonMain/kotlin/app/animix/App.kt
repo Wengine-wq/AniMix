@@ -1,5 +1,25 @@
 package app.animix
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.unit.DpOffset
+import app.animix.ui.components.AmbientBackdrop
+import app.animix.ui.components.LocalHaze
+import app.animix.ui.components.glass
+import app.animix.ui.components.pressScale
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -100,36 +120,57 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     }
 }
 
+/** What the ambient backdrop behind the current screen shows; screens set it with [Ambient]. */
+@Stable
+class AmbientState {
+    /** The screen currently on top; only its image is shown. */
+    var currentKey by mutableStateOf("")
+    val images = mutableStateMapOf<String, String?>()
+    val imageUrl: String? get() = images[currentKey]
+}
+
+val LocalAmbient = staticCompositionLocalOf { AmbientState() }
+private val LocalScreenKey = staticCompositionLocalOf { "" }
+
+/** Sets the soft blurred backdrop behind this screen. Screens that never call it show a quiet accent glow. */
+@Composable
+fun Ambient(imageUrl: String?) {
+    val ambient = LocalAmbient.current
+    val key = LocalScreenKey.current
+    LaunchedEffect(key, imageUrl) { ambient.images[key] = imageUrl }
+}
+
+/**
+ * One layout for every platform: the screen fills the window over a soft ambient backdrop,
+ * and navigation is a floating glass bar at the bottom, on phones and desktop alike.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) {
     val colors = AniMixTheme.colors
+    val haze = rememberHazeState()
+    val ambient = remember { AmbientState() }
     BackHandler(enabled = navigator.canGoBack) { if (!navigator.back()) onExit() }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
-        val wide = maxWidth >= 840.dp
-        val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        if (wide) {
-            Row(Modifier.fillMaxSize()) {
-                SideRail(navigator)
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar))
-                }
+    CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient) {
+        Box(Modifier.fillMaxSize().background(colors.background)) {
+            val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Box(Modifier.fillMaxSize().hazeSource(haze)) {
+                AmbientBackdrop(ambient.imageUrl)
+                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + BottomBarSpace))
             }
-        } else {
-            Box(Modifier.fillMaxSize()) {
-                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + 76.dp))
-                // Keeps the status bar readable over scrolled content.
-                Box(
-                    Modifier.fillMaxWidth().height(statusBar + 8.dp)
-                        .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.9f), Color.Transparent))),
-                )
-                BottomBar(navigator, Modifier.align(Alignment.BottomCenter))
-            }
+            // Keeps the status bar readable over scrolled content.
+            Box(
+                Modifier.fillMaxWidth().height(statusBar + 12.dp)
+                    .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.85f), Color.Transparent))),
+            )
+            BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
         }
     }
 }
+
+private val BottomBarSpace = 92.dp
 
 @Composable
 private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
@@ -138,16 +179,20 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
     // Remember which route each key showed, so a screen can still draw while it animates out.
     val routes = remember { HashMap<String, Route?>() }
     routes[screenKey] = navigator.current
+    val ambient = LocalAmbient.current
+    SideEffect { ambient.currentKey = screenKey }
     AnimatedContent(
         targetState = screenKey,
         transitionSpec = {
-            (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 12 }) togetherWith fadeOut(tween(140))
+            val enter = tween<Float>(320, easing = FastOutSlowInEasing)
+            (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(180))
         },
         modifier = Modifier.fillMaxSize(),
     ) { key ->
         holder.SaveableStateProvider(key) {
             val route = routes[key]
             val tab = Tab.valueOf(key.substringBefore('/'))
+            CompositionLocalProvider(LocalScreenKey provides key) {
             Box(Modifier.fillMaxSize()) {
                 when {
                     route is Route.Detail -> DetailScreen(graph, navigator, route.anime, padding)
@@ -165,70 +210,44 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     }
                 }
             }
+            }
         }
     }
 }
 
+/** Floating frosted-glass navigation, icons only; the selected tab gets a quiet tinted pill. */
 @Composable
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
+    val shape = AniMixTheme.shapes.extraLarge
     Row(
         modifier
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .widthIn(max = 440.dp)
             .fillMaxWidth()
-            .background(colors.background.copy(alpha = 0.92f))
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(AniMixTheme.shapes.extraLarge)
-            .background(colors.surface)
-            .rim(AniMixTheme.shapes.extraLarge, accent = false)
-            .padding(vertical = 6.dp),
+            .dropShadow(shape, Shadow(radius = 24.dp, color = Color.Black.copy(alpha = if (colors.isDark) 0.35f else 0.08f), offset = DpOffset(0.dp, 8.dp)))
+            .glass(shape)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        // Icons only, as in the concepts; the label stays as the accessibility description.
         Tab.entries.forEach { tab ->
             val selected = navigator.tab == tab
+            val interaction = remember { MutableInteractionSource() }
+            val pill by animateColorAsState(if (selected) colors.accentSoft else Color.Transparent, tween(250))
+            val tint by animateColorAsState(if (selected) colors.accent else colors.textMuted, tween(250))
             Box(
                 Modifier.weight(1f).height(48.dp)
-                    .clickable(remember { MutableInteractionSource() }, indication = null) { navigator.select(tab) },
+                    .pressScale(interaction, pressed = 0.9f)
+                    .clickable(interaction, indication = null) { navigator.select(tab) },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    Modifier.size(44.dp)
-                        .then(if (selected) Modifier.accentGlow(CircleShape, 0.3f) else Modifier)
-                        .clip(CircleShape)
-                        .background(if (selected) colors.accentSoft else Color.Transparent),
+                    Modifier.size(width = 52.dp, height = 40.dp).clip(AniMixTheme.shapes.pill).background(pill),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(tab.icon, tab.label, Modifier.size(24.dp), tint = if (selected) colors.accent else colors.textMuted)
+                    Icon(tab.icon, tab.label, Modifier.size(22.dp), tint = tint)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SideRail(navigator: Navigator) {
-    val colors = AniMixTheme.colors
-    Column(
-        Modifier.fillMaxHeight().width(220.dp).background(colors.surface)
-            .padding(horizontal = 14.dp, vertical = 20.dp),
-    ) {
-        AniMixWordmark(Modifier.padding(start = 10.dp, bottom = 28.dp))
-        Tab.entries.forEach { tab ->
-            val selected = navigator.tab == tab
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(AniMixTheme.shapes.medium)
-                    .background(if (selected) colors.accentSoft else colors.surface)
-                    .clickable { navigator.select(tab) }
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(tab.icon, tab.label, Modifier.size(20.dp), tint = if (selected) colors.accent else colors.textSecondary)
-                Spacer(Modifier.width(12.dp))
-                Txt(tab.label, AniMixTheme.type.bodyStrong, color = if (selected) colors.textPrimary else colors.textSecondary)
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Txt("3.0 New Horizons", AniMixTheme.type.micro, modifier = Modifier.padding(start = 12.dp))
     }
 }

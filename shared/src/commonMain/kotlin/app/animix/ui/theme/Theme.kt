@@ -17,9 +17,9 @@ import app.animix.core.ThemeMode
 @Immutable
 object AniMixShapes {
     val small = RoundedCornerShape(10.dp)
-    val medium = RoundedCornerShape(14.dp)
-    val large = RoundedCornerShape(20.dp)
-    val extraLarge = RoundedCornerShape(28.dp)
+    val medium = RoundedCornerShape(16.dp)
+    val large = RoundedCornerShape(22.dp)
+    val extraLarge = RoundedCornerShape(30.dp)
     val pill = RoundedCornerShape(percent = 50)
 }
 

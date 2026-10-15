@@ -41,6 +41,7 @@ kotlin {
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
+            implementation(libs.haze.blur)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

@@ -84,17 +84,18 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     shape: Shape = AniMixTheme.shapes.medium,
     contentScale: ContentScale = ContentScale.Crop,
+    placeholder: Boolean = true,
 ) {
     val colors = AniMixTheme.colors
-    Box(modifier.clip(shape).background(colors.surfaceRaised)) {
+    Box(modifier.clip(shape).then(if (placeholder) Modifier.background(colors.surfaceRaised) else Modifier)) {
         if (url != null) {
             SubcomposeAsyncImage(
                 model = url,
                 contentDescription = null,
                 contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
-                loading = { Shimmer(Modifier.fillMaxSize()) },
-                error = { Box(Modifier.fillMaxSize().background(colors.surfaceRaised)) },
+                loading = { if (placeholder) Shimmer(Modifier.fillMaxSize()) },
+                error = { if (placeholder) Box(Modifier.fillMaxSize().background(colors.surfaceRaised)) },
             )
         }
     }
@@ -155,12 +156,13 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
 @Composable
 fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val type = AniMixTheme.type
-    Column(modifier.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)) {
+    val interaction = remember { MutableInteractionSource() }
+    Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)) {
         Box {
-            RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f))
+            RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Txt(anime.title, type.label, maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
         Spacer(Modifier.height(2.dp))
         Txt(anime.metaLine(), type.micro, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
@@ -170,7 +172,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
 @Composable
 fun AnimeCardPlaceholder(modifier: Modifier = Modifier) {
     Column(modifier) {
-        Shimmer(Modifier.fillMaxWidth().aspectRatio(0.7f))
+        Shimmer(Modifier.fillMaxWidth().aspectRatio(0.7f), AniMixTheme.shapes.large)
         Spacer(Modifier.height(8.dp))
         Shimmer(Modifier.fillMaxWidth(0.8f).height(12.dp), AniMixTheme.shapes.small)
         Spacer(Modifier.height(6.dp))
@@ -198,15 +200,16 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
 fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val colors = AniMixTheme.colors
     val shape = AniMixTheme.shapes.pill
-    val background by animateColorAsState(if (selected) colors.accentSoft else colors.surfaceRaised)
-    val content by animateColorAsState(if (selected) colors.accentText else colors.textPrimary)
+    val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip)
+    val content by animateColorAsState(if (selected) colors.accentText else colors.textSecondary)
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier
-            .then(if (selected) Modifier.accentGlow(shape, strength = 0.35f) else Modifier)
+            .pressScale(interaction)
             .clip(shape)
             .background(background)
             .rim(shape, accent = selected)
-            .clickable(onClick = onClick)
+            .clickable(interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -228,14 +231,16 @@ fun PrimaryButton(
 ) {
     val colors = AniMixTheme.colors
     val shape = AniMixTheme.shapes.pill
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier
             .height(50.dp)
-            .then(if (enabled) Modifier.accentGlow(shape, strength = 0.55f) else Modifier)
+            .pressScale(interaction)
+            .then(if (enabled) Modifier.accentGlow(shape) else Modifier)
             .clip(shape)
             .background(if (enabled) colors.accentGradient else SolidColor(colors.surfaceRaised))
             .then(if (enabled) Modifier.highlight(shape) else Modifier)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(interaction, indication = null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 22.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -257,7 +262,7 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
         modifier
             .height(50.dp)
             .clip(shape)
-            .background(colors.surfaceRaised)
+            .background(colors.chip)
             .rim(shape, accent = false)
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
@@ -284,14 +289,19 @@ fun IconCircle(
     active: Boolean = false,
 ) {
     val colors = AniMixTheme.colors
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .size(size)
-            .then(if (active) Modifier.accentGlow(CircleShape, strength = 0.4f) else Modifier)
-            .clip(CircleShape)
-            .background(if (active) colors.accentSoft else if (glass) colors.surfaceGlass else colors.surfaceRaised)
-            .rim(CircleShape, accent = active)
-            .clickable(onClick = onClick),
+            .pressScale(interaction, pressed = 0.92f)
+            .then(
+                when {
+                    active -> Modifier.clip(CircleShape).background(colors.accentSoft).rim(CircleShape, accent = true)
+                    glass -> Modifier.glass(CircleShape, backdrop = false)
+                    else -> Modifier.clip(CircleShape).background(colors.chip).rim(CircleShape, accent = false)
+                },
+            )
+            .clickable(interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val iconTint = when {
@@ -311,24 +321,27 @@ fun IconCircle(
 fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
     val colors = AniMixTheme.colors
     val brush = if (accent) {
-        Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.95f), colors.accent.copy(alpha = 0.35f)))
+        Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.45f), colors.accent.copy(alpha = 0.12f)))
     } else {
-        Brush.verticalGradient(listOf(colors.rimHighlight, colors.outline.copy(alpha = 0.6f)))
+        Brush.verticalGradient(listOf(colors.rimHighlight, Color.Transparent))
     }
     return border(1.dp, brush, shape)
 }
 
 /** Soft pink light around an accented control. */
 @Composable
-fun Modifier.accentGlow(shape: Shape, strength: Float = 0.5f): Modifier {
+fun Modifier.accentGlow(shape: Shape, strength: Float = 0.22f): Modifier {
     val colors = AniMixTheme.colors
-    return dropShadow(shape, Shadow(radius = 14.dp, color = colors.accent.copy(alpha = strength * colors.glowScale)))
+    return dropShadow(
+        shape,
+        Shadow(radius = 18.dp, color = colors.accent.copy(alpha = strength * colors.glowScale), offset = DpOffset(0.dp, 6.dp)),
+    )
 }
 
 /** The glossy highlight on filled buttons: light catching the top edge. */
 @Composable
 fun Modifier.highlight(shape: Shape): Modifier =
-    innerShadow(shape, Shadow(radius = 6.dp, color = Color.White.copy(alpha = 0.45f), offset = DpOffset(0.dp, 1.5.dp)))
+    innerShadow(shape, Shadow(radius = 4.dp, color = Color.White.copy(alpha = 0.22f), offset = DpOffset(0.dp, 1.dp)))
 
 @Composable
 fun MessageState(
@@ -417,8 +430,8 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
         modifier
             .fillMaxWidth()
             .clip(AniMixTheme.shapes.large)
-            .background(colors.surface)
-            .border(1.dp, colors.outline, AniMixTheme.shapes.large),
+            .background(colors.surface.copy(alpha = 0.72f))
+            .rim(AniMixTheme.shapes.large, accent = false),
     ) { content() }
 }
 

@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
+import app.animix.Ambient
 import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
 import androidx.compose.runtime.collectAsState
@@ -83,6 +84,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         if (anime.title.isEmpty()) awaitCancellation()
         graph.anime.similar(anime)
     }
+    Ambient(anime.posterUrl)
     val library by graph.library.state.collectAsState()
     val entry = library.entry(anime)
     val actions: @Composable () -> Unit = {
@@ -178,17 +180,8 @@ private fun Backdrop(url: String?, height: androidx.compose.ui.unit.Dp) {
 @Composable
 private fun WideHeader(anime: Anime, detail: AnimeDetail?, actions: @Composable () -> Unit) {
     val colors = AniMixTheme.colors
+    // The blurred mood comes from the shared ambient backdrop, so the header stays open and light.
     Box(Modifier.fillMaxWidth().height(460.dp)) {
-        RemoteImage(
-            anime.posterUrl,
-            Modifier.fillMaxSize().blur(40.dp),
-            shape = androidx.compose.ui.graphics.RectangleShape,
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to colors.background.copy(alpha = 0.55f), 1f to colors.background),
-            ),
-        )
         Row(
             Modifier.align(Alignment.BottomStart).padding(start = 40.dp, end = 40.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom,

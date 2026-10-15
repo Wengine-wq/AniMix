@@ -36,6 +36,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.BasicText
 import app.animix.AppGraph
+import app.animix.Ambient
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -83,6 +88,8 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         }
     }
     val open: (Anime) -> Unit = { navigator.push(Route.Detail(it)) }
+    var heroImage by remember { mutableStateOf<String?>(null) }
+    Ambient(heroImage)
     val library by graph.library.state.collectAsState()
     val watching = library.inStatus(ListStatus.Watching).map { it.anime }
 
@@ -106,7 +113,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             }
             is Load.Ready -> {
                 val data = state.value
-                item { HeroCarousel(data.ongoing.take(5), open) }
+                item { HeroCarousel(data.ongoing.take(5), open, onShown = { heroImage = it.posterUrl }) }
                 item {
                     QuickFilters(
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
@@ -146,15 +153,11 @@ fun AniMixWordmark(modifier: Modifier = Modifier) {
 @Composable
 private fun HomeTopBar(onSearch: () -> Unit) {
     val colors = AniMixTheme.colors
-    BoxWithConstraints {
-    // On wide windows the side rail already shows the wordmark.
-    val wide = maxWidth >= 600.dp
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (wide) Txt("Главная", AniMixTheme.type.title, modifier = Modifier.weight(1f))
-        else AniMixWordmark(Modifier.weight(1f))
+        AniMixWordmark(Modifier.weight(1f))
         IconCircle(AniMixIcons.Search, onSearch)
         Spacer(Modifier.width(10.dp))
         Box(
@@ -164,14 +167,14 @@ private fun HomeTopBar(onSearch: () -> Unit) {
             Icon(AniMixIcons.User, null, Modifier.size(20.dp), tint = colors.onAccent)
         }
     }
-    }
 }
 
 @Composable
-private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit) {
+private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (Anime) -> Unit) {
     if (items.isEmpty()) return
     val colors = AniMixTheme.colors
     val pager = rememberPagerState { items.size }
+    LaunchedEffect(pager.currentPage, items) { onShown(items[pager.currentPage]) }
     // Advance on its own, but pause while the user is swiping.
     LaunchedEffect(pager, items.size) {
         while (items.size > 1) {
@@ -186,7 +189,18 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit) {
             pageSpacing = 12.dp,
             key = { items[it].key },
         ) { page ->
-            HeroCard(items[page], onClick = { onOpen(items[page]) })
+            // Neighbouring banners sit slightly smaller and dimmer, so the current one leads.
+            val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).let { if (it < 0) -it else it }.coerceAtMost(1f)
+            HeroCard(
+                items[page],
+                onClick = { onOpen(items[page]) },
+                modifier = Modifier.graphicsLayer {
+                    val scale = 1f - 0.05f * offset
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = 1f - 0.35f * offset
+                },
+            )
         }
         if (items.size > 1) {
             Row(
@@ -207,9 +221,9 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit) {
 
 /** The same banner on every platform: blurred backdrop, poster on the right, title and play on the left. */
 @Composable
-private fun HeroCard(anime: Anime, onClick: () -> Unit) {
+private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
         val wide = maxWidth > 700.dp
         val height = if (wide) 320.dp else 230.dp
         val inset = if (wide) 24.dp else 16.dp
@@ -219,7 +233,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(0f to Color(0xCC000000), 0.7f to Color(0x66000000), 1f to Color(0x33000000)),
+                    Brush.horizontalGradient(0f to Color(0x99000000), 0.6f to Color(0x4D000000), 1f to Color(0x1A000000)),
                 ),
             )
             Row(Modifier.fillMaxSize().padding(inset), verticalAlignment = Alignment.CenterVertically) {
@@ -232,7 +246,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit) {
                     Txt(meta, AniMixTheme.type.caption, color = Color(0xCCFFFFFF), maxLines = 1)
                     Spacer(Modifier.height(if (wide) 18.dp else 12.dp))
                     Box(
-                        Modifier.size(if (wide) 52.dp else 44.dp).accentGlow(CircleShape, 0.6f).clip(CircleShape)
+                        Modifier.size(if (wide) 52.dp else 44.dp).accentGlow(CircleShape).clip(CircleShape)
                             .background(colors.accentGradient).highlight(CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -258,7 +272,7 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
         Triple("Анонсы", CatalogQuery(status = "anons"), AniMixIcons.Bell),
     )
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(presets) { (label, query, icon) ->
@@ -270,7 +284,7 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
 @Composable
 private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, onMore: () -> Unit) {
     if (items.isEmpty()) return
-    Column(Modifier.padding(bottom = 22.dp)) {
+    Column(Modifier.padding(bottom = 32.dp)) {
         SectionHeader(title, Modifier.padding(horizontal = 20.dp), action = "Все", onAction = onMore)
         Spacer(Modifier.height(12.dp))
         LazyRow(
