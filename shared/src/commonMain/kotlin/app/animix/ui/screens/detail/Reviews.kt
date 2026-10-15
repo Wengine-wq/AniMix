@@ -109,7 +109,11 @@ fun ReviewCard(review: Review, modifier: Modifier = Modifier, collapsedLines: In
 /** Preview on the anime page: a couple of YummyAnime reviews and a way to read everything. */
 @Composable
 fun ReviewsPreview(graph: AppGraph, anime: Anime, detail: AnimeDetail?, onOpenAll: () -> Unit) {
-    val reviews = rememberLoad(anime.key) { graph.anime.yummyReviews(anime) }
+    // Wait for the titles: a deep link starts with only an id, and YummyAnime is searched by title.
+    val reviews = rememberLoad(anime.key to anime.title.isNotEmpty()) {
+        if (anime.title.isEmpty()) awaitCancellation()
+        graph.anime.yummyReviews(anime)
+    }
     val type = AniMixTheme.type
     Row(verticalAlignment = Alignment.CenterVertically) {
         Txt("Отзывы", type.heading, modifier = Modifier.weight(1f))

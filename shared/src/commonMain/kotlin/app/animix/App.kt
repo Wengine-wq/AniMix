@@ -48,6 +48,7 @@ import app.animix.ui.components.accentGlow
 import app.animix.ui.components.rim
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.navigation.Tab
@@ -119,6 +120,11 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
         } else {
             Box(Modifier.fillMaxSize()) {
                 Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + 76.dp))
+                // Keeps the status bar readable over scrolled content.
+                Box(
+                    Modifier.fillMaxWidth().height(statusBar + 8.dp)
+                        .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.9f), Color.Transparent))),
+                )
                 BottomBar(navigator, Modifier.align(Alignment.BottomCenter))
             }
         }
