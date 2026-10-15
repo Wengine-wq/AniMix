@@ -31,6 +31,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
+import app.animix.data.library.ListStatus
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import app.animix.core.ThemeMode
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.NavRow
@@ -45,9 +58,11 @@ import app.animix.ui.theme.AniMixTheme
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(navigator: Navigator, contentPadding: PaddingValues) {
+fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
+    val library by graph.library.state.collectAsState()
+    var editing by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding) {
         Txt("Профиль", type.title, modifier = Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))
@@ -59,25 +74,32 @@ fun ProfileScreen(navigator: Navigator, contentPadding: PaddingValues) {
                 Icon(AniMixIcons.User, null, Modifier.size(32.dp), tint = colors.onAccent)
             }
             Spacer(Modifier.width(16.dp))
-            Column {
-                Txt("Гость", type.heading)
+            Column(Modifier.weight(1f)) {
+                if (editing) {
+                    NameField(library.profile.name) { name ->
+                        graph.library.renameProfile(name)
+                        editing = false
+                    }
+                } else {
+                    Txt(library.profile.name, type.heading, modifier = Modifier.clickable { editing = true })
+                }
                 Spacer(Modifier.height(2.dp))
-                Txt("Списки хранятся на этом устройстве", type.caption)
+                Txt("Локальный профиль · списки хранятся на этом устройстве", type.caption)
             }
         }
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("0", "Аниме", Modifier.weight(1f))
-            Stat("0", "Достижения", Modifier.weight(1f))
-            Stat("0", "Коллекции", Modifier.weight(1f))
+            Stat(library.listed.toString(), "В списках", Modifier.weight(1f))
+            Stat(library.inStatus(ListStatus.Completed).size.toString(), "Просмотрено", Modifier.weight(1f))
+            Stat(library.favorites.size.toString(), "Избранное", Modifier.weight(1f))
         }
         Spacer(Modifier.height(20.dp))
         Panel {
-            NavRow("Мои списки", AniMixIcons.Bookmark, onClick = {})
+            NavRow("Мои списки", AniMixIcons.Bookmark, onClick = { navigator.push(Route.Lists) }, trailing = library.listed.takeIf { it > 0 }?.toString())
             Divider()
             NavRow("История просмотров", AniMixIcons.History, onClick = {})
             Divider()
-            NavRow("Избранное", AniMixIcons.Heart, onClick = { navigator.select(Tab.Favorites) })
+            NavRow("Избранное", AniMixIcons.Heart, onClick = { navigator.select(Tab.Favorites) }, trailing = library.favorites.size.takeIf { it > 0 }?.toString())
             Divider()
             NavRow("Загрузки", AniMixIcons.Download, onClick = { navigator.select(Tab.Downloads) })
             Divider()
@@ -147,6 +169,26 @@ private fun ScreenColumn(contentPadding: PaddingValues, content: @Composable and
             content = content,
         )
     }
+}
+
+@Composable
+private fun NameField(initial: String, onDone: (String) -> Unit) {
+    val colors = AniMixTheme.colors
+    var value by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    BasicTextField(
+        value = value,
+        onValueChange = { value = it.take(32) },
+        singleLine = true,
+        textStyle = AniMixTheme.type.heading,
+        cursorBrush = SolidColor(colors.accent),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone(value) }),
+        modifier = Modifier.fillMaxWidth().focusRequester(focus)
+            .onFocusChanged { if (!it.isFocused && value != initial) onDone(value) }
+            .clip(AniMixTheme.shapes.small).background(colors.surfaceRaised).padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

@@ -36,6 +36,10 @@ sealed interface Route {
         override val key get() = "search"
     }
 
+    data object Lists : Route {
+        override val key get() = "lists"
+    }
+
     data object Settings : Route {
         override val key get() = "settings"
     }
@@ -79,6 +83,7 @@ class Navigator {
             }
             "search" -> push(Route.Search(path.drop(1).joinToString("/").decodeUrlComponent()))
             "settings" -> { tab = Tab.Profile; push(Route.Settings) }
+            "lists" -> { tab = Tab.Profile; push(Route.Lists) }
             else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false
         }
         return true

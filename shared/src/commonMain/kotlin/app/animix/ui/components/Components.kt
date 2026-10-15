@@ -270,18 +270,24 @@ fun IconCircle(
     size: Dp = 42.dp,
     glass: Boolean = false,
     tint: Color = Color.Unspecified,
+    active: Boolean = false,
 ) {
     val colors = AniMixTheme.colors
     Box(
         modifier
             .size(size)
             .clip(CircleShape)
-            .background(if (glass) colors.surfaceGlass else colors.surfaceRaised)
-            .border(1.dp, colors.outline.copy(alpha = if (glass) 0.4f else 1f), CircleShape)
+            .background(if (active) colors.accentSoft else if (glass) colors.surfaceGlass else colors.surfaceRaised)
+            .border(1.dp, if (active) colors.accent else colors.outline.copy(alpha = if (glass) 0.4f else 1f), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, Modifier.size(size * 0.48f), tint = if (tint != Color.Unspecified) tint else colors.textPrimary)
+        val iconTint = when {
+            tint != Color.Unspecified -> tint
+            active -> colors.accent
+            else -> colors.textPrimary
+        }
+        Icon(icon, null, Modifier.size(size * 0.48f), tint = iconTint)
     }
 }
 

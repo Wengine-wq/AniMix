@@ -5,6 +5,7 @@ import app.animix.core.DiskStore
 import app.animix.core.Platform
 import app.animix.data.AnimeRepository
 import app.animix.data.cache.ResponseCache
+import app.animix.data.library.Library
 import app.animix.data.createHttpClient
 import app.animix.data.shikimori.ShikimoriApi
 import app.animix.data.shikimori.ShikimoriRepository
@@ -21,6 +22,9 @@ class AppGraph {
     val http = createHttpClient()
 
     val settings = AppSettings(DiskStore(Platform.dataDir), scope)
+
+    /** The local profile and lists, stored on this device. */
+    val library = Library(DiskStore(Platform.dataDir), scope)
 
     private val apiCache = ResponseCache(DiskStore("${Platform.cacheDir}/api"))
 

@@ -40,6 +40,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
+import app.animix.data.library.LibraryEntry
+import app.animix.data.library.ListStatus
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.awaitCancellation
 import app.animix.data.yummy.WatchSourceNotFound
 import app.animix.model.Anime
@@ -76,6 +79,17 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         graph.yummy.watchSource(anime, force)
     }
 
+    val library by graph.library.state.collectAsState()
+    val entry = library.entry(anime)
+    val actions: @Composable () -> Unit = {
+        WatchActions(
+            entry = entry,
+            onWatch = {},
+            onFavorite = { graph.library.toggleFavorite(anime) },
+            onStatus = { graph.library.setStatus(anime, it) },
+        )
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 900.dp
         Column(
@@ -83,13 +97,13 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                 .padding(bottom = contentPadding.calculateBottomPadding() + 32.dp),
         ) {
             if (wide) {
-                WideHeader(anime, ready, onWatch = {})
+                WideHeader(anime, ready, actions)
             } else {
                 Backdrop(anime.posterUrl, height = 380.dp)
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     TitleBlock(anime, ready)
                     Spacer(Modifier.height(18.dp))
-                    WatchButtons(onWatch = {})
+                    actions()
                 }
             }
             Column(
@@ -138,7 +152,7 @@ private fun Backdrop(url: String?, height: androidx.compose.ui.unit.Dp) {
 }
 
 @Composable
-private fun WideHeader(anime: Anime, detail: AnimeDetail?, onWatch: () -> Unit) {
+private fun WideHeader(anime: Anime, detail: AnimeDetail?, actions: @Composable () -> Unit) {
     val colors = AniMixTheme.colors
     Box(Modifier.fillMaxWidth().height(460.dp)) {
         RemoteImage(
@@ -160,7 +174,7 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, onWatch: () -> Unit) 
             Column(Modifier.widthIn(max = 640.dp).padding(bottom = 8.dp)) {
                 TitleBlock(anime, detail)
                 Spacer(Modifier.height(20.dp))
-                WatchButtons(onWatch)
+                actions()
             }
         }
     }
@@ -219,13 +233,32 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?) {
 }
 
 @Composable
-private fun WatchButtons(onWatch: () -> Unit) {
+private fun WatchActions(
+    entry: LibraryEntry?,
+    onWatch: () -> Unit,
+    onFavorite: () -> Unit,
+    onStatus: (ListStatus?) -> Unit,
+) {
+    val favorite = entry?.favorite == true
     Row(verticalAlignment = Alignment.CenterVertically) {
         PrimaryButton("Смотреть", onWatch, icon = AniMixIcons.Play, modifier = Modifier.weight(1f, fill = false).widthIn(min = 200.dp))
         Spacer(Modifier.width(10.dp))
-        IconCircle(AniMixIcons.Heart, onClick = {}, size = 50.dp)
+        IconCircle(if (favorite) AniMixIcons.HeartFilled else AniMixIcons.Heart, onClick = onFavorite, size = 50.dp, active = favorite)
         Spacer(Modifier.width(10.dp))
         IconCircle(AniMixIcons.Download, onClick = {}, size = 50.dp)
+    }
+    Spacer(Modifier.height(14.dp))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(ListStatus.entries.toList()) { status ->
+            val selected = entry?.status == status
+            Chip(
+                status.label,
+                selected = selected,
+                // Tapping the current status again takes the anime off the list.
+                onClick = { onStatus(if (selected) null else status) },
+                icon = if (selected) AniMixIcons.Check else null,
+            )
+        }
     }
 }
 

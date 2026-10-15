@@ -36,6 +36,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.BasicText
 import app.animix.AppGraph
+import app.animix.data.library.ListStatus
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import app.animix.data.shikimori.CatalogOrder
 import app.animix.data.shikimori.CatalogQuery
 import app.animix.model.Anime
@@ -73,6 +76,8 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         }
     }
     val open: (Anime) -> Unit = { navigator.push(Route.Detail(it)) }
+    val library by graph.library.state.collectAsState()
+    val watching = library.inStatus(ListStatus.Watching).map { it.anime }
 
     LazyColumn(
         state = rememberLazyListState(),
@@ -101,6 +106,9 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                     QuickFilters(
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
                     )
+                }
+                if (watching.isNotEmpty()) {
+                    item { Shelf("Продолжить просмотр", watching, open) { navigator.push(Route.Lists) } }
                 }
                 item { Shelf("Сейчас на экранах", data.ongoing.drop(1), open) {
                     navigator.push(Route.Catalog(CatalogQuery(status = "ongoing"), "Сейчас на экранах"))

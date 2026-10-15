@@ -22,6 +22,7 @@ import app.animix.ui.theme.HorizonDawn
 import app.animix.ui.theme.HorizonDusk
 import java.awt.Dimension
 import javax.imageio.ImageIO
+import kotlinx.coroutines.runBlocking
 
 fun main(args: Array<String>) {
     val graph = AppGraph()
@@ -30,7 +31,11 @@ fun main(args: Array<String>) {
         val icon = remember {
             javaClass.getResourceAsStream("/animix_icon.png")?.use { ImageIO.read(it) }?.let { BitmapPainter(it.toComposeImageBitmap()) }
         }
-        Window(onCloseRequest = ::exitApplication, state = state, title = "AniMix", icon = icon) {
+        val exit: () -> Unit = {
+            runBlocking { graph.library.flush() } // never lose the last list change
+            exitApplication()
+        }
+        Window(onCloseRequest = exit, state = state, title = "AniMix", icon = icon) {
             val settings by graph.settings.state.collectAsState()
             val dark = when (settings.themeMode) {
                 ThemeMode.System -> isSystemInDarkTheme()
@@ -42,7 +47,7 @@ fun main(args: Array<String>) {
                 WindowsTitleBar.apply(window, dark, colors.background.toArgb(), colors.textPrimary.toArgb())
             }
             LaunchedEffect(Unit) { window.minimumSize = Dimension(400, 640) }
-            App(graph, startLink = args.firstOrNull { it.startsWith("animix://") }, onExit = ::exitApplication)
+            App(graph, startLink = args.firstOrNull { it.startsWith("animix://") }, onExit = exit)
         }
     }
 }

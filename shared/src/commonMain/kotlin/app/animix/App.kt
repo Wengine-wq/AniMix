@@ -53,6 +53,7 @@ import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
 import app.animix.ui.screens.profile.DownloadsScreen
 import app.animix.ui.screens.profile.FavoritesScreen
+import app.animix.ui.screens.profile.ListsScreen
 import app.animix.ui.screens.profile.ProfileScreen
 import app.animix.ui.screens.profile.SettingsScreen
 import app.animix.ui.theme.AniMixTheme
@@ -68,7 +69,10 @@ import okio.Path.Companion.toPath
 @Composable
 fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startLink: String? = null, onExit: () -> Unit = {}) {
     val settings by graph.settings.state.collectAsState()
-    LaunchedEffect(Unit) { graph.settings.load() }
+    LaunchedEffect(Unit) {
+        graph.settings.load()
+        graph.library.load()
+    }
     LaunchedEffect(startLink) { startLink?.let(navigator::openLink) }
 
     setSingletonImageLoaderFactory { context ->
@@ -139,12 +143,13 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Catalog -> CatalogScreen(graph, navigator, padding, title = route.title, preset = route.preset, showBack = true)
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
+                    route == Route.Lists -> ListsScreen(graph, navigator, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)
-                        Tab.Favorites -> FavoritesScreen(padding)
+                        Tab.Favorites -> FavoritesScreen(graph, navigator, padding)
                         Tab.Downloads -> DownloadsScreen(padding)
-                        Tab.Profile -> ProfileScreen(navigator, padding)
+                        Tab.Profile -> ProfileScreen(graph, navigator, padding)
                     }
                 }
             }
