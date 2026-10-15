@@ -5,8 +5,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * The New Horizons palettes.
- * Horizon Dusk: graphite + pastel pink. Horizon Dawn: porcelain + muted rose.
+ * The New Horizons palettes, from the brand sheet:
+ * graphite #08080F, light graphite #1A1A1F, pastel pink #FFB4C8, light #FBF8FA,
+ * accent gradient #FF9EC6 -> #FF889D.
+ * Horizon Dusk: graphite + pastel pink. Horizon Dawn: porcelain (#FBF8FA) + muted rose.
  */
 @Immutable
 data class AniMixColors(
@@ -43,21 +45,21 @@ data class AniMixColors(
 /** Horizon Dusk — the dark theme: graphite and pastel pink. */
 val HorizonDusk = AniMixColors(
     isDark = true,
-    background = Color(0xFF09090B),
-    surface = Color(0xFF141417),
-    surfaceRaised = Color(0xFF1C1C20),
-    surfaceGlass = Color(0xB31C1C20),
+    background = Color(0xFF08080F),
+    surface = Color(0xFF1A1A1F),
+    surfaceRaised = Color(0xFF222229),
+    surfaceGlass = Color(0xB31A1A1F),
     outline = Color(0xFF29292E),
-    textPrimary = Color(0xFFF7F3F5),
+    textPrimary = Color(0xFFFBF8FA),
     textSecondary = Color(0xFFA7A1A6),
     textMuted = Color(0xFF6E696E),
     accent = Color(0xFFFFB4C8),
     accentStrong = Color(0xFFFF9EBB),
     accentSoft = Color(0x26FFB4C8),
     onAccent = Color(0xFF2A1219),
-    gradientStart = Color(0xFFFFB4C8),
-    gradientEnd = Color(0xFFC88E9B),
-    scrim = Color(0xCC09090B),
+    gradientStart = Color(0xFFFF9EC6),
+    gradientEnd = Color(0xFFFF889D),
+    scrim = Color(0xCC08080F),
     star = Color(0xFFFFC978),
     danger = Color(0xFFFF7A85),
     accentText = Color(0xFFFFD3DF),
@@ -69,11 +71,11 @@ val HorizonDusk = AniMixColors(
 /** Horizon Dawn — the light theme: porcelain and muted rose. */
 val HorizonDawn = AniMixColors(
     isDark = false,
-    background = Color(0xFFF7F3F0),
-    surface = Color(0xFFFFFDFB),
-    surfaceRaised = Color(0xFFEFE9E5),
-    surfaceGlass = Color(0xCCFFFDFB),
-    outline = Color(0xFFE4DCD7),
+    background = Color(0xFFFBF8FA),
+    surface = Color(0xFFFFFFFF),
+    surfaceRaised = Color(0xFFF2ECEF),
+    surfaceGlass = Color(0xCCFFFFFF),
+    outline = Color(0xFFE8E0E4),
     textPrimary = Color(0xFF2B2627),
     textSecondary = Color(0xFF6E6567),
     textMuted = Color(0xFFA2989A),
