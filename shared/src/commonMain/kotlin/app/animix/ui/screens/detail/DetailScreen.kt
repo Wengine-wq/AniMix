@@ -44,6 +44,7 @@ import kotlinx.coroutines.awaitCancellation
 import app.animix.data.yummy.WatchSourceNotFound
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
+import app.animix.model.AnimeSource
 import app.animix.model.Dubbing
 import app.animix.model.WatchSource
 import app.animix.ui.components.AnimeCard
@@ -66,11 +67,11 @@ import app.animix.ui.theme.AniMixTheme
 
 @Composable
 fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPadding: PaddingValues) {
-    val detail = rememberLoad(opened.id) { force -> graph.shikimori.detail(opened.id, force) }
+    val detail = rememberLoad(opened.key) { force -> graph.anime.detail(opened, force) }
     val ready = (detail.value as? Load.Ready)?.value
     // A deep link only knows the id; show the full entry once it has loaded.
     val anime = ready?.anime ?: opened
-    val source = rememberLoad(anime.id to anime.title.isNotEmpty()) { force ->
+    val source = rememberLoad(anime.key to anime.title.isNotEmpty()) { force ->
         if (anime.title.isEmpty()) awaitCancellation()
         graph.yummy.watchSource(anime, force)
     }
@@ -107,7 +108,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     SectionHeader("Связанное")
                     Spacer(Modifier.height(12.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(related, key = { it.id }) { item ->
+                        items(related, key = { it.key }) { item ->
                             AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp))
                         }
                     }
@@ -174,6 +175,15 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?) {
     if (anime.originalTitle != anime.title) {
         Spacer(Modifier.height(4.dp))
         Txt(anime.originalTitle, type.caption, maxLines = 1)
+    }
+    if (anime.source == AnimeSource.Yummy) {
+        Spacer(Modifier.height(8.dp))
+        Txt(
+            "Нет на Shikimori · из каталога YummyAnime",
+            type.micro,
+            color = colors.accent,
+            modifier = Modifier.clip(AniMixTheme.shapes.pill).background(colors.accentSoft).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
     }
     Spacer(Modifier.height(10.dp))
     val meta = buildList {
@@ -274,10 +284,16 @@ private fun DubbingPicker(dubbings: List<Dubbing>) {
     }
     val colors = AniMixTheme.colors
     var selected by remember(dubbings) { mutableStateOf(dubbings.first()) }
+    // When one studio is served by several players, name the player to tell them apart.
+    val sharedStudios = dubbings.groupingBy { it.studio }.eachCount().filterValues { it > 1 }.keys
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(end = 20.dp)) {
         items(dubbings, key = { it.key }) { dubbing ->
             Chip(
-                "${dubbing.studio} · ${dubbing.episodes.size}",
+                buildString {
+                    append(dubbing.studio)
+                    if (dubbing.studio in sharedStudios) append(" (${dubbing.player})")
+                    append(" · ${dubbing.episodes.size}")
+                },
                 selected = dubbing.key == selected.key,
                 onClick = { selected = dubbing },
                 icon = AniMixIcons.Mic,

@@ -137,7 +137,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                 when {
                     route is Route.Detail -> DetailScreen(graph, navigator, route.anime, padding)
                     route is Route.Catalog -> CatalogScreen(graph, navigator, padding, title = route.title, preset = route.preset, showBack = true)
-                    route == Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true)
+                    route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)

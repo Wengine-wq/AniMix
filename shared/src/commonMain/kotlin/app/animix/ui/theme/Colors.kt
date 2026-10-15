@@ -5,8 +5,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * AniMix palette: graphite surfaces with a pastel pink accent.
- * Brand references: graphite #292929, pastel pink #C88E9B, bright pink #FFB4C8.
+ * The New Horizons palettes.
+ * Horizon Dusk: graphite + pastel pink. Horizon Dawn: porcelain + muted rose.
  */
 @Immutable
 data class AniMixColors(
@@ -32,7 +32,8 @@ data class AniMixColors(
     val accentGradient: Brush get() = Brush.horizontalGradient(listOf(gradientStart, gradientEnd))
 }
 
-val DarkColors = AniMixColors(
+/** Horizon Dusk — the dark theme: graphite and pastel pink. */
+val HorizonDusk = AniMixColors(
     isDark = true,
     background = Color(0xFF09090B),
     surface = Color(0xFF141417),
@@ -53,23 +54,24 @@ val DarkColors = AniMixColors(
     danger = Color(0xFFFF7A85),
 )
 
-val LightColors = AniMixColors(
+/** Horizon Dawn — the light theme: porcelain and muted rose. */
+val HorizonDawn = AniMixColors(
     isDark = false,
-    background = Color(0xFFFBF8FA),
-    surface = Color(0xFFFFFFFF),
-    surfaceRaised = Color(0xFFF4EEF1),
-    surfaceGlass = Color(0xCCFFFFFF),
-    outline = Color(0xFFE9E1E5),
-    textPrimary = Color(0xFF292929),
-    textSecondary = Color(0xFF6F676C),
-    textMuted = Color(0xFFA39BA0),
-    accent = Color(0xFFC88E9B),
-    accentStrong = Color(0xFFA9677A),
-    accentSoft = Color(0x24C88E9B),
+    background = Color(0xFFF7F3F0),
+    surface = Color(0xFFFFFDFB),
+    surfaceRaised = Color(0xFFEFE9E5),
+    surfaceGlass = Color(0xCCFFFDFB),
+    outline = Color(0xFFE4DCD7),
+    textPrimary = Color(0xFF2B2627),
+    textSecondary = Color(0xFF6E6567),
+    textMuted = Color(0xFFA2989A),
+    accent = Color(0xFFB57F8C),
+    accentStrong = Color(0xFF94606D),
+    accentSoft = Color(0x24B57F8C),
     onAccent = Color(0xFFFFFFFF),
-    gradientStart = Color(0xFFE7A3B6),
-    gradientEnd = Color(0xFFC88E9B),
-    scrim = Color(0x99292929),
+    gradientStart = Color(0xFFCB98A4),
+    gradientEnd = Color(0xFFAD7482),
+    scrim = Color(0x992B2627),
     star = Color(0xFFE59A2E),
     danger = Color(0xFFD94B5A),
 )

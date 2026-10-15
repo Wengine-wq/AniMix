@@ -9,7 +9,11 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class ThemeMode { System, Dark, Light }
+enum class ThemeMode(val label: String) {
+    System("Как в системе"),
+    Dusk("Horizon Dusk"),
+    Dawn("Horizon Dawn"),
+}
 
 @Serializable
 data class Settings(

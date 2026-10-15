@@ -86,10 +86,11 @@ fun CatalogScreen(
     preset: CatalogQuery = CatalogQuery(),
     searchMode: Boolean = false,
     showBack: Boolean = false,
+    initialSearch: String = "",
 ) {
     var kinds by remember(preset) { mutableStateOf(preset.kinds) }
     var order by remember(preset) { mutableStateOf(preset.order) }
-    var search by rememberSaveable { mutableStateOf("") }
+    var search by rememberSaveable { mutableStateOf(initialSearch) }
     val query = preset.copy(kinds = kinds, order = order, search = search.trim().ifEmpty { null }, page = 1)
     val paging = remember(query) { CatalogPaging(graph, query) }
     val scope = rememberCoroutineScope()
@@ -132,7 +133,7 @@ fun CatalogScreen(
                     Txt(if (searchMode) "Поиск" else title, AniMixTheme.type.title, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(16.dp))
-                SearchField(search, onChange = { search = it }, autoFocus = searchMode)
+                SearchField(search, onChange = { search = it }, autoFocus = searchMode && initialSearch.isEmpty())
                 if (!searchMode) {
                     Spacer(Modifier.height(14.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -151,7 +152,7 @@ fun CatalogScreen(
             }
         }
 
-        items(paging.items, key = { it.id }) { anime ->
+        items(paging.items, key = { it.key }) { anime ->
             AnimeCard(anime, onClick = { navigator.push(Route.Detail(anime)) })
         }
 
@@ -241,9 +242,9 @@ private class CatalogPaging(private val graph: AppGraph, private val query: Cata
         loading = true
         error = null
         try {
-            val result = graph.shikimori.catalog(query.copy(page = page))
-            val known = items.mapTo(HashSet()) { it.id }
-            items += result.filter { it.id !in known }
+            val result = graph.anime.catalog(query.copy(page = page))
+            val known = items.mapTo(HashSet()) { it.key }
+            items += result.filter { it.key !in known }
             if (result.size < query.limit) endReached = true
             page++
         } catch (cancel: CancellationException) {

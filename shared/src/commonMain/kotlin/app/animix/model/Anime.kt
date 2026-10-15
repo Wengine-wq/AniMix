@@ -32,7 +32,11 @@ enum class AnimeStatus(val label: String) {
     }
 }
 
-/** A catalog entry, as shown in lists and grids. */
+/** Where a catalog entry comes from. Shikimori is the base; YummyAnime fills in what Shikimori lacks. */
+@Serializable
+enum class AnimeSource { Shikimori, Yummy }
+
+/** A catalog entry, as shown in lists and grids. [id] is the id within its [source]. */
 @Serializable
 data class Anime(
     val id: Int,
@@ -47,12 +51,16 @@ data class Anime(
     val episodesAired: Int,
     val year: Int?,
     val genres: List<String>,
+    val source: AnimeSource = AnimeSource.Shikimori,
 ) {
+    /** Unique across sources; use for list keys and storage. */
+    val key: String get() = if (source == AnimeSource.Yummy) "y$id" else "s$id"
+
     companion object {
         /** An entry known only by id, filled in once its details load. */
-        fun placeholder(id: Int) = Anime(
+        fun placeholder(id: Int, source: AnimeSource = AnimeSource.Shikimori) = Anime(
             id = id, title = "", originalTitle = "", englishTitle = null, posterUrl = null, score = null,
-            kind = AnimeKind.Other, status = AnimeStatus.Unknown, episodes = 0, episodesAired = 0, year = null, genres = emptyList(),
+            kind = AnimeKind.Other, status = AnimeStatus.Unknown, episodes = 0, episodesAired = 0, year = null, genres = emptyList(), source = source,
         )
     }
 

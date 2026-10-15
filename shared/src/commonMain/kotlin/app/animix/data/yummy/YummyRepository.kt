@@ -2,6 +2,10 @@ package app.animix.data.yummy
 
 import app.animix.data.cache.ResponseCache
 import app.animix.model.Anime
+import app.animix.model.AnimeDetail
+import app.animix.model.AnimeSource
+import kotlinx.serialization.builtins.ListSerializer
+import kotlin.time.Duration.Companion.hours
 import app.animix.model.Dubbing
 import app.animix.model.Episode
 import app.animix.model.SkipRange
@@ -11,19 +15,36 @@ import kotlin.time.Duration.Companion.minutes
 
 class WatchSourceNotFound(title: String) : Exception("«$title» не найдено на YummyAnime")
 
-/** Finds where an anime from Shikimori can be watched on YummyAnime. */
+/**
+ * YummyAnime: the watch source for every title, and the catalog for titles
+ * Shikimori does not have.
+ */
 class YummyRepository internal constructor(
     private val api: YummyApi,
     private val cache: ResponseCache,
 ) {
     suspend fun watchSource(anime: Anime, forceRefresh: Boolean = false): WatchSource =
-        cache.get("yummy:source:${anime.id}", ttl = 15.minutes, WatchSource.serializer(), forceRefresh) {
-            val release = findRelease(anime)
-            WatchSource(
-                yummyId = release.anime_id,
-                title = release.title,
-                dubbings = groupDubbings(api.videos(release.anime_id)),
-            )
+        cache.get("yummy:source:${anime.key}", ttl = 15.minutes, WatchSource.serializer(), forceRefresh) {
+            val (id, title) = if (anime.source == AnimeSource.Yummy) {
+                anime.id to anime.title
+            } else {
+                findRelease(anime).let { it.anime_id to it.title }
+            }
+            WatchSource(yummyId = id, title = title, dubbings = groupDubbings(api.videos(id)))
+        }
+
+    /** Titles found on YummyAnime that have no Shikimori entry. */
+    suspend fun searchOnlyOnYummy(text: String): List<Anime> {
+        val query = text.trim()
+        if (query.length < 2) return emptyList()
+        return cache.get("yummy:only:${query.lowercase()}", ttl = 1.hours, ListSerializer(Anime.serializer())) {
+            api.search(query, limit = 20).filter { it.shikimoriId == null && it.title.isNotBlank() }.map { it.toAnime() }
+        }
+    }
+
+    suspend fun detail(yummyId: Int, forceRefresh: Boolean = false): AnimeDetail =
+        cache.get("yummy:detail:$yummyId", ttl = 30.minutes, AnimeDetail.serializer(), forceRefresh) {
+            api.anime(yummyId).toDetail()
         }
 
     /** The YummyAnime release for a Shikimori anime, remembered for a month once found. */
@@ -46,7 +67,7 @@ class YummyRepository internal constructor(
                 continue
             }
             // Yummy links most releases to Shikimori directly; that match is exact.
-            results.firstOrNull { it.remote_ids?.shikimori_id == anime.id }?.let { return it }
+            results.firstOrNull { it.shikimoriId == anime.id }?.let { return it }
             for (release in results) {
                 val score = TitleMatcher.best(titles, listOf(release.title))
                 val yearMatches = anime.year == null || release.year == null || anime.year == release.year

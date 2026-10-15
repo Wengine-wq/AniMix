@@ -18,8 +18,8 @@ import androidx.compose.ui.window.rememberWindowState
 import app.animix.App
 import app.animix.AppGraph
 import app.animix.core.ThemeMode
-import app.animix.ui.theme.DarkColors
-import app.animix.ui.theme.LightColors
+import app.animix.ui.theme.HorizonDawn
+import app.animix.ui.theme.HorizonDusk
 import java.awt.Dimension
 import javax.imageio.ImageIO
 
@@ -34,11 +34,11 @@ fun main(args: Array<String>) {
             val settings by graph.settings.state.collectAsState()
             val dark = when (settings.themeMode) {
                 ThemeMode.System -> isSystemInDarkTheme()
-                ThemeMode.Dark -> true
-                ThemeMode.Light -> false
+                ThemeMode.Dusk -> true
+                ThemeMode.Dawn -> false
             }
             LaunchedEffect(dark) {
-                val colors = if (dark) DarkColors else LightColors
+                val colors = if (dark) HorizonDusk else HorizonDawn
                 WindowsTitleBar.apply(window, dark, colors.background.toArgb(), colors.textPrimary.toArgb())
             }
             LaunchedEffect(Unit) { window.minimumSize = Dimension(400, 640) }

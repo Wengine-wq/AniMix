@@ -23,7 +23,7 @@ object AniMixShapes {
     val pill = RoundedCornerShape(percent = 50)
 }
 
-private val LocalColors = staticCompositionLocalOf { DarkColors }
+private val LocalColors = staticCompositionLocalOf { HorizonDusk }
 private val LocalType = staticCompositionLocalOf<AniMixType> { error("AniMixTheme is missing") }
 
 object AniMixTheme {
@@ -38,10 +38,10 @@ object AniMixTheme {
 fun AniMixTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     val dark = when (mode) {
         ThemeMode.System -> isSystemInDarkTheme()
-        ThemeMode.Dark -> true
-        ThemeMode.Light -> false
+        ThemeMode.Dusk -> true
+        ThemeMode.Dawn -> false
     }
-    val colors = if (dark) DarkColors else LightColors
+    val colors = if (dark) HorizonDusk else HorizonDawn
     val type = rememberAniMixType(colors)
     CompositionLocalProvider(LocalColors provides colors, LocalType provides type) {
         MaterialTheme(colorScheme = colors.toMaterial(), typography = type.toMaterial(), content = content)

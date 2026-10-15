@@ -79,7 +79,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
     ) {
-        item { HomeTopBar(onSearch = { navigator.push(Route.Search) }) }
+        item { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
         when (val state = load.value) {
             Load.Loading -> item { HomePlaceholder() }
             is Load.Failed -> item {
@@ -238,7 +238,7 @@ private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, on
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(items, key = { it.id }) { anime ->
+            items(items, key = { it.key }) { anime ->
                 AnimeCard(anime, onClick = { onOpen(anime) }, modifier = Modifier.width(132.dp))
             }
         }

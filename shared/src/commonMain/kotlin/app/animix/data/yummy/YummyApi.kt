@@ -23,13 +23,47 @@ internal class YummyRemoteIds(
 internal class YummyPoster(val fullsize: String? = null, val big: String? = null, val medium: String? = null)
 
 @Serializable
+internal class YummyNamed(val title: String? = null, val alias: String? = null)
+
+@Serializable
+internal class YummyRating(val average: Double? = null, val shikimori_rating: Double? = null)
+
+@Serializable
+internal class YummyEpisodes(val count: Int? = null, val aired: Int? = null)
+
+@Serializable
+internal class YummyScreenshotSizes(val small: String? = null, val full: String? = null)
+
+@Serializable
+internal class YummyScreenshot(val sizes: YummyScreenshotSizes? = null)
+
+@Serializable
+internal class YummyMinAge(val title: String? = null)
+
+/** A release as returned by search; the detail call fills in the optional fields. */
+@Serializable
 internal class YummyRelease(
     val anime_id: Int,
     val title: String = "",
     val year: Int? = null,
     val poster: YummyPoster? = null,
     val remote_ids: YummyRemoteIds? = null,
-)
+    val type: YummyNamed? = null,
+    val anime_status: YummyNamed? = null,
+    val rating: YummyRating? = null,
+    val genres: List<YummyNamed>? = null,
+    val min_age: YummyMinAge? = null,
+    // Detail-only fields.
+    val description: String? = null,
+    val episodes: YummyEpisodes? = null,
+    val duration: Int? = null,
+    val studios: List<YummyNamed>? = null,
+    val other_titles: List<String>? = null,
+    val random_screenshots: List<YummyScreenshot>? = null,
+) {
+    /** YummyAnime uses 0 for "no Shikimori entry". */
+    val shikimoriId: Int? get() = remote_ids?.shikimori_id?.takeIf { it > 0 }
+}
 
 @Serializable
 internal class YummyVideoData(val player: String? = null, val dubbing: String? = null)
@@ -61,6 +95,9 @@ internal class YummyApi(
             parameter("q", query)
             parameter("limit", limit)
         }
+
+    suspend fun anime(animeId: Int): YummyRelease =
+        get("$baseUrl/anime/$animeId", YummyRelease.serializer()) {}
 
     suspend fun videos(animeId: Int): List<YummyVideo> =
         get("$baseUrl/anime/$animeId/videos", ListSerializer(YummyVideo.serializer())) {}

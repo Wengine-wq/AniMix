@@ -3,6 +3,7 @@ package app.animix
 import app.animix.core.AppSettings
 import app.animix.core.DiskStore
 import app.animix.core.Platform
+import app.animix.data.AnimeRepository
 import app.animix.data.cache.ResponseCache
 import app.animix.data.createHttpClient
 import app.animix.data.shikimori.ShikimoriApi
@@ -26,6 +27,9 @@ class AppGraph {
     val shikimori = ShikimoriRepository(ShikimoriApi(http), apiCache)
 
     val yummy = YummyRepository(YummyApi(http), apiCache)
+
+    /** The combined catalog screens use: Shikimori plus YummyAnime-only titles. */
+    val anime = AnimeRepository(shikimori, yummy)
 
     suspend fun clearCache() = apiCache.clear()
 }

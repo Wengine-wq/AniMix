@@ -107,14 +107,15 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
         GroupTitle("Внешний вид")
         Panel {
             Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemeOption("Системная", AniMixIcons.Monitor, settings.themeMode == ThemeMode.System, Modifier.weight(1f)) {
-                    graph.settings.update { it.copy(themeMode = ThemeMode.System) }
-                }
-                ThemeOption("Тёмная", AniMixIcons.Moon, settings.themeMode == ThemeMode.Dark, Modifier.weight(1f)) {
-                    graph.settings.update { it.copy(themeMode = ThemeMode.Dark) }
-                }
-                ThemeOption("Светлая", AniMixIcons.Sun, settings.themeMode == ThemeMode.Light, Modifier.weight(1f)) {
-                    graph.settings.update { it.copy(themeMode = ThemeMode.Light) }
+                ThemeMode.entries.forEach { mode ->
+                    val icon = when (mode) {
+                        ThemeMode.System -> AniMixIcons.Monitor
+                        ThemeMode.Dusk -> AniMixIcons.Moon
+                        ThemeMode.Dawn -> AniMixIcons.Sun
+                    }
+                    ThemeOption(mode.label, icon, settings.themeMode == mode, Modifier.weight(1f)) {
+                        graph.settings.update { it.copy(themeMode = mode) }
+                    }
                 }
             }
         }
