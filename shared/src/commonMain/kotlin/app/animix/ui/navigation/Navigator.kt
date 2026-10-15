@@ -1,0 +1,90 @@
+package app.animix.ui.navigation
+
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
+import app.animix.data.shikimori.CatalogQuery
+import app.animix.model.Anime
+import app.animix.ui.icons.AniMixIcons
+
+enum class Tab(val label: String, val icon: ImageVector) {
+    Home("Главная", AniMixIcons.Home),
+    Catalog("Каталог", AniMixIcons.Catalog),
+    Favorites("Избранное", AniMixIcons.Heart),
+    Downloads("Загрузки", AniMixIcons.Download),
+    Profile("Профиль", AniMixIcons.User),
+}
+
+/** A screen pushed on top of a tab. */
+sealed interface Route {
+    val key: String
+
+    data class Detail(val anime: Anime) : Route {
+        override val key get() = "detail:${anime.id}"
+    }
+
+    data class Catalog(val preset: CatalogQuery, val title: String) : Route {
+        override val key get() = "catalog:${preset.cacheKey}"
+    }
+
+    data object Search : Route {
+        override val key get() = "search"
+    }
+
+    data object Settings : Route {
+        override val key get() = "settings"
+    }
+}
+
+/** Each tab keeps its own back stack, so switching tabs never loses your place. */
+@Stable
+class Navigator {
+    var tab by mutableStateOf(Tab.Home)
+        private set
+
+    private val stacks: Map<Tab, MutableList<Route>> = Tab.entries.associateWith { mutableStateListOf() }
+
+    val current: Route? get() = stacks.getValue(tab).lastOrNull()
+
+    val canGoBack: Boolean get() = stacks.getValue(tab).isNotEmpty() || tab != Tab.Home
+
+    fun select(target: Tab) {
+        if (target == tab) stacks.getValue(tab).clear() else tab = target
+    }
+
+    fun push(route: Route) {
+        val stack = stacks.getValue(tab)
+        if (stack.lastOrNull()?.key != route.key) stack.add(route)
+    }
+
+    /**
+     * Opens an animix:// link: animix://anime/<shikimori id>, animix://search,
+     * animix://settings or animix://<tab> (home, catalog, favorites, downloads, profile).
+     */
+    fun openLink(link: String): Boolean {
+        val path = link.trim().removePrefix("animix://").trim('/').split('/')
+        when (path.firstOrNull()?.lowercase()) {
+            "anime" -> {
+                val id = path.getOrNull(1)?.toIntOrNull() ?: return false
+                push(Route.Detail(Anime.placeholder(id)))
+            }
+            "search" -> push(Route.Search)
+            "settings" -> { tab = Tab.Profile; push(Route.Settings) }
+            else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false
+        }
+        return true
+    }
+
+    /** Returns false when there is nowhere left to go back to. */
+    fun back(): Boolean {
+        val stack = stacks.getValue(tab)
+        return when {
+            stack.isNotEmpty() -> { stack.removeAt(stack.lastIndex); true }
+            tab != Tab.Home -> { tab = Tab.Home; true }
+            else -> false
+        }
+    }
+}

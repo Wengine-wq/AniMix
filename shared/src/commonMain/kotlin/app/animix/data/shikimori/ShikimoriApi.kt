@@ -1,0 +1,73 @@
+package app.animix.data.shikimori
+
+import app.animix.core.AppJson
+import io.ktor.client.HttpClient
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/** Shikimori catalog through its public GraphQL endpoint. No account needed. */
+internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: String = BASE_URL) {
+
+    suspend fun animes(query: CatalogQuery): List<AnimeDto> {
+        val variables = buildMap {
+            put("page", JsonPrimitive(query.page))
+            put("limit", JsonPrimitive(query.limit))
+            put("order", JsonPrimitive(query.order.apiValue))
+            query.kinds.takeIf { it.isNotEmpty() }?.let { put("kind", JsonPrimitive(it.joinToString(","))) }
+            query.status?.let { put("status", JsonPrimitive(it)) }
+            query.season?.let { put("season", JsonPrimitive(it)) }
+            query.genreIds.takeIf { it.isNotEmpty() }?.let { put("genre", JsonPrimitive(it.joinToString(","))) }
+            query.search?.takeIf { it.isNotBlank() }?.let { put("search", JsonPrimitive(it.trim())) }
+        }
+        val response = AppJson.decodeFromString(AnimesResponse.serializer(), post(LIST_QUERY, JsonObject(variables)))
+        response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
+        return response.data?.animes ?: throw ShikimoriException("Shikimori returned no data")
+    }
+
+    suspend fun anime(id: Int): AnimeDto? {
+        val variables = JsonObject(mapOf("ids" to JsonPrimitive(id.toString())))
+        val response = AppJson.decodeFromString(AnimesResponse.serializer(), post(DETAIL_QUERY, variables))
+        response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
+        return response.data?.animes?.firstOrNull()
+    }
+
+    suspend fun genres(): List<GenreDto> {
+        val response = AppJson.decodeFromString(GenresResponse.serializer(), post(GENRES_QUERY, null))
+        response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
+        return response.data?.genres.orEmpty()
+    }
+
+    private suspend fun post(query: String, variables: JsonObject?): String =
+        http.post("$baseUrl/api/graphql") {
+            contentType(ContentType.Application.Json)
+            setBody(AppJson.encodeToString(GraphQlRequest.serializer(), GraphQlRequest(query, variables)))
+        }.bodyAsText()
+
+    companion object {
+        const val BASE_URL = "https://shikimori.io"
+
+        private const val CARD_FIELDS =
+            "id name russian english kind score status episodes episodesAired " +
+                "airedOn { year } poster { mainUrl main2xUrl originalUrl } genres { id russian kind }"
+
+        private const val LIST_QUERY =
+            "query(\$page: PositiveInt, \$limit: PositiveInt, \$order: OrderEnum, \$kind: AnimeKindString, " +
+                "\$status: AnimeStatusString, \$season: SeasonString, \$genre: String, \$search: String) { " +
+                "animes(page: \$page, limit: \$limit, order: \$order, kind: \$kind, status: \$status, " +
+                "season: \$season, genre: \$genre, search: \$search, censored: true) { $CARD_FIELDS } }"
+
+        private const val DETAIL_QUERY =
+            "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
+                "description duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
+                "related { relationKind relationText anime { $CARD_FIELDS } } } }"
+
+        private const val GENRES_QUERY = "{ genres(entryType: Anime) { id russian name kind } }"
+    }
+}
+
+class ShikimoriException(message: String) : Exception(message)
