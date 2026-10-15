@@ -7,6 +7,7 @@ import app.animix.data.yummy.YummyRepository
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
 import app.animix.model.AnimeSource
+import app.animix.model.Review
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -44,6 +45,15 @@ class AnimeRepository(
         // A Yummy-only title that matches the query well goes first; looser matches go last.
         close + base + rest
     }
+
+    /** Titles similar to this one (Shikimori recommendations; none for YummyAnime-only titles). */
+    suspend fun similar(anime: Anime): List<Anime> =
+        if (anime.source == AnimeSource.Shikimori) shikimori.similar(anime.id) else emptyList()
+
+    suspend fun yummyReviews(anime: Anime): List<Review> = yummy.reviews(anime)
+
+    suspend fun shikimoriDiscussion(detail: AnimeDetail, page: Int = 1): List<Review> =
+        detail.topicId?.let { shikimori.discussion(it, page) }.orEmpty()
 
     suspend fun detail(anime: Anime, forceRefresh: Boolean = false): AnimeDetail = when (anime.source) {
         AnimeSource.Shikimori -> shikimori.detail(anime.id, forceRefresh)

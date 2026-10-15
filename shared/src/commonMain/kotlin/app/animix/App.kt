@@ -44,11 +44,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import app.animix.core.Platform
 import app.animix.ui.components.Txt
+import app.animix.ui.components.accentGlow
+import app.animix.ui.components.rim
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.navigation.Tab
 import app.animix.ui.screens.catalog.CatalogScreen
 import app.animix.ui.screens.detail.DetailScreen
+import app.animix.ui.screens.detail.ReviewsScreen
 import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
 import app.animix.ui.screens.profile.DownloadsScreen
@@ -113,7 +118,7 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             }
         } else {
             Box(Modifier.fillMaxSize()) {
-                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + 84.dp))
+                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + 76.dp))
                 BottomBar(navigator, Modifier.align(Alignment.BottomCenter))
             }
         }
@@ -144,6 +149,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
                     route == Route.Lists -> ListsScreen(graph, navigator, padding)
+                    route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)
@@ -168,21 +174,27 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(AniMixTheme.shapes.extraLarge)
             .background(colors.surface)
-            .border(1.dp, colors.outline, AniMixTheme.shapes.extraLarge)
-            .padding(vertical = 8.dp),
+            .rim(AniMixTheme.shapes.extraLarge, accent = false)
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
+        // Icons only, as in the concepts; the label stays as the accessibility description.
         Tab.entries.forEach { tab ->
             val selected = navigator.tab == tab
-            Column(
-                Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
-                    .clickable(remember { MutableInteractionSource() }, indication = null) { navigator.select(tab) }
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Box(
+                Modifier.weight(1f).height(48.dp)
+                    .clickable(remember { MutableInteractionSource() }, indication = null) { navigator.select(tab) },
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(tab.icon, tab.label, Modifier.size(22.dp), tint = if (selected) colors.accent else colors.textMuted)
-                Spacer(Modifier.height(4.dp))
-                Txt(tab.label, AniMixTheme.type.micro, color = if (selected) colors.accent else colors.textMuted, maxLines = 1)
+                Box(
+                    Modifier.size(44.dp)
+                        .then(if (selected) Modifier.accentGlow(CircleShape, 0.3f) else Modifier)
+                        .clip(CircleShape)
+                        .background(if (selected) colors.accentSoft else Color.Transparent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(tab.icon, tab.label, Modifier.size(24.dp), tint = if (selected) colors.accent else colors.textMuted)
+                }
             }
         }
     }

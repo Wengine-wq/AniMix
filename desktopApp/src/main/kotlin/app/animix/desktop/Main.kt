@@ -26,6 +26,7 @@ import kotlinx.coroutines.runBlocking
 
 fun main(args: Array<String>) {
     val graph = AppGraph()
+    if (Snapshot.runIfRequested(args, graph)) kotlin.system.exitProcess(0)
     application {
         val state = rememberWindowState(size = DpSize(1280.dp, 820.dp), position = WindowPosition.Aligned(Alignment.Center))
         val icon = remember {

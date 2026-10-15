@@ -66,6 +66,34 @@ internal class YummyRelease(
 }
 
 @Serializable
+internal class YummyAvatars(val small: String? = null, val big: String? = null)
+
+@Serializable
+internal class YummyAuthor(val nickname: String? = null, val avatars: YummyAvatars? = null)
+
+@Serializable
+internal class YummyReviewRating(val average: Double? = null)
+
+@Serializable
+internal class YummyLikes(val likes: Int? = null, val dislikes: Int? = null)
+
+@Serializable
+internal class YummyReview(
+    val review_id: Long,
+    val create_date: Long = 0,
+    val rating: YummyReviewRating? = null,
+    val nickname: String? = null,
+    val author: YummyAuthor? = null,
+    val avatar: YummyAvatars? = null,
+    val likes: YummyLikes? = null,
+    val text_html: String? = null,
+    val text_preview: String? = null,
+)
+
+@Serializable
+internal class YummyReviews(val reviews: List<YummyReview> = emptyList())
+
+@Serializable
 internal class YummyVideoData(val player: String? = null, val dubbing: String? = null)
 
 @Serializable
@@ -98,6 +126,9 @@ internal class YummyApi(
 
     suspend fun anime(animeId: Int): YummyRelease =
         get("$baseUrl/anime/$animeId", YummyRelease.serializer()) {}
+
+    suspend fun reviews(animeId: Int, limit: Int = 20): List<YummyReview> =
+        get("$baseUrl/anime/$animeId/reviews", YummyReviews.serializer()) { parameter("limit", limit) }.reviews
 
     suspend fun videos(animeId: Int): List<YummyVideo> =
         get("$baseUrl/anime/$animeId/videos", ListSerializer(YummyVideo.serializer())) {}

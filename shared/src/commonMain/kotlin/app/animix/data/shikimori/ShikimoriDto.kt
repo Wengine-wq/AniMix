@@ -41,6 +41,40 @@ internal class StudioDto(val name: String)
 internal class ScreenshotDto(val originalUrl: String? = null, val x332Url: String? = null)
 
 @Serializable
+internal class TopicDto(val id: String? = null, val commentsCount: Int? = null)
+
+/** The REST shape of an anime (used by /similar). */
+@Serializable
+internal class RestImageDto(val original: String? = null, val preview: String? = null)
+
+@Serializable
+internal class RestAnimeDto(
+    val id: Int,
+    val name: String = "",
+    val russian: String? = null,
+    val image: RestImageDto? = null,
+    val kind: String? = null,
+    val score: String? = null,
+    val status: String? = null,
+    val episodes: Int = 0,
+    val episodes_aired: Int = 0,
+    val aired_on: String? = null,
+)
+
+@Serializable
+internal class RestUserDto(val nickname: String = "", val image: Map<String, String>? = null, val avatar: String? = null)
+
+@Serializable
+internal class CommentDto(
+    val id: Long,
+    val body: String = "",
+    val html_body: String? = null,
+    val created_at: String = "",
+    val user: RestUserDto? = null,
+    val is_offtopic: Boolean = false,
+)
+
+@Serializable
 internal class RelatedDto(val relationKind: String? = null, val relationText: String? = null, val anime: AnimeDto? = null)
 
 @Serializable
@@ -65,4 +99,5 @@ internal class AnimeDto(
     val studios: List<StudioDto>? = null,
     val screenshots: List<ScreenshotDto>? = null,
     val related: List<RelatedDto>? = null,
+    val topic: TopicDto? = null,
 )

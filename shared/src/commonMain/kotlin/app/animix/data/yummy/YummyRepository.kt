@@ -8,6 +8,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlin.time.Duration.Companion.hours
 import app.animix.model.Dubbing
 import app.animix.model.Episode
+import app.animix.model.Review
 import app.animix.model.SkipRange
 import app.animix.model.WatchSource
 import kotlin.time.Duration.Companion.days
@@ -39,6 +40,14 @@ class YummyRepository internal constructor(
         if (query.length < 2) return emptyList()
         return cache.get("yummy:only:${query.lowercase()}", ttl = 1.hours, ListSerializer(Anime.serializer())) {
             api.search(query, limit = 20).filter { it.shikimoriId == null && it.title.isNotBlank() }.map { it.toAnime() }
+        }
+    }
+
+    /** YummyAnime reviews of this anime, newest first. */
+    suspend fun reviews(anime: Anime): List<Review> {
+        val id = if (anime.source == AnimeSource.Yummy) anime.id else findRelease(anime).anime_id
+        return cache.get("yummy:reviews:$id", ttl = 30.minutes, ListSerializer(Review.serializer())) {
+            api.reviews(id).map { it.toReview() }.filter { it.text.isNotBlank() }
         }
     }
 

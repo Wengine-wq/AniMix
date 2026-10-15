@@ -36,6 +36,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.BasicText
 import app.animix.AppGraph
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import app.animix.ui.components.accentGlow
+import app.animix.ui.components.highlight
+import app.animix.ui.components.rim
 import app.animix.data.library.ListStatus
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -99,9 +106,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             }
             is Load.Ready -> {
                 val data = state.value
-                data.ongoing.firstOrNull()?.let { hero ->
-                    item { HeroCard(hero, onClick = { open(hero) }) }
-                }
+                item { HeroCarousel(data.ongoing.take(5), open) }
                 item {
                     QuickFilters(
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
@@ -110,7 +115,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                 if (watching.isNotEmpty()) {
                     item { Shelf("Продолжить просмотр", watching, open) { navigator.push(Route.Lists) } }
                 }
-                item { Shelf("Сейчас на экранах", data.ongoing.drop(1), open) {
+                item { Shelf("Сейчас на экранах", data.ongoing.drop(5), open) {
                     navigator.push(Route.Catalog(CatalogQuery(status = "ongoing"), "Сейчас на экранах"))
                 } }
                 item { Shelf("Популярное", data.popular, open) {
@@ -163,56 +168,82 @@ private fun HomeTopBar(onSearch: () -> Unit) {
 }
 
 @Composable
+private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit) {
+    if (items.isEmpty()) return
+    val colors = AniMixTheme.colors
+    val pager = rememberPagerState { items.size }
+    // Advance on its own, but pause while the user is swiping.
+    LaunchedEffect(pager, items.size) {
+        while (items.size > 1) {
+            delay(6_000)
+            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size)
+        }
+    }
+    Column {
+        HorizontalPager(
+            state = pager,
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            pageSpacing = 12.dp,
+            key = { items[it].key },
+        ) { page ->
+            HeroCard(items[page], onClick = { onOpen(items[page]) })
+        }
+        if (items.size > 1) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                repeat(items.size) { index ->
+                    val selected = index == pager.currentPage
+                    Box(
+                        Modifier.padding(horizontal = 3.dp).height(6.dp).width(if (selected) 18.dp else 6.dp)
+                            .clip(CircleShape).background(if (selected) colors.accent else colors.outline),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The same banner on every platform: blurred backdrop, poster on the right, title and play on the left. */
+@Composable
 private fun HeroCard(anime: Anime, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
         val wide = maxWidth > 700.dp
-        val height = if (wide) 320.dp else 220.dp
+        val height = if (wide) 320.dp else 230.dp
+        val inset = if (wide) 24.dp else 16.dp
         Box(
             Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(onClick = onClick),
         ) {
-            RemoteImage(
-                anime.posterUrl,
-                if (wide) Modifier.fillMaxSize().blur(36.dp) else Modifier.fillMaxSize(),
-                shape = AniMixTheme.shapes.large,
-            )
-            if (wide) {
-                Box(Modifier.fillMaxSize().background(Color(0x66000000)))
-                RemoteImage(
-                    anime.posterUrl,
-                    Modifier.align(Alignment.CenterEnd).padding(24.dp).fillMaxHeight().aspectRatio(0.7f),
-                    shape = AniMixTheme.shapes.medium,
-                )
-            }
+            RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.45f to Color(0x33000000),
-                        1f to Color(0xE6000000),
-                    ),
+                    Brush.horizontalGradient(0f to Color(0xCC000000), 0.7f to Color(0x66000000), 1f to Color(0x33000000)),
                 ),
             )
-            Row(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .padding(start = if (wide) 32.dp else 18.dp, bottom = if (wide) 28.dp else 18.dp, top = 18.dp, end = if (wide) 230.dp else 18.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Column(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxSize().padding(inset), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).fillMaxHeight().padding(start = if (wide) 8.dp else 2.dp, end = 12.dp)) {
                     Txt("Сейчас на экранах", AniMixTheme.type.micro, color = colors.gradientStart)
-                    Spacer(Modifier.height(4.dp))
-                    Txt(anime.title, AniMixTheme.type.title, color = Color.White, maxLines = 2)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.weight(1f))
+                    Txt(anime.title, if (wide) AniMixTheme.type.display else AniMixTheme.type.heading, color = Color.White, maxLines = if (wide) 2 else 3)
+                    Spacer(Modifier.height(6.dp))
                     val meta = listOfNotNull(anime.metaLine(), anime.score?.let { "★ ${formatScore(it)}" }).joinToString(" · ")
-                    Txt(meta, AniMixTheme.type.caption, color = Color(0xCCFFFFFF))
+                    Txt(meta, AniMixTheme.type.caption, color = Color(0xCCFFFFFF), maxLines = 1)
+                    Spacer(Modifier.height(if (wide) 18.dp else 12.dp))
+                    Box(
+                        Modifier.size(if (wide) 52.dp else 44.dp).accentGlow(CircleShape, 0.6f).clip(CircleShape)
+                            .background(colors.accentGradient).highlight(CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(AniMixIcons.Play, null, Modifier.size(if (wide) 22.dp else 18.dp), tint = colors.onAccent)
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(colors.accentGradient),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(AniMixIcons.Play, null, Modifier.size(20.dp), tint = colors.onAccent)
-                }
+                RemoteImage(
+                    anime.posterUrl,
+                    Modifier.fillMaxHeight().aspectRatio(0.7f).rim(AniMixTheme.shapes.medium, accent = false),
+                    shape = AniMixTheme.shapes.medium,
+                )
             }
         }
     }

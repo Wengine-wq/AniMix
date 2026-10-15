@@ -28,6 +28,12 @@ data class AniMixColors(
     val scrim: Color,
     val star: Color,
     val danger: Color,
+    /** Accent used for text on tinted (accentSoft) backgrounds. */
+    val accentText: Color,
+    /** Top edge of a neutral rim. */
+    val rimHighlight: Color,
+    /** How strong accent glows are; light backgrounds need less. */
+    val glowScale: Float,
 ) {
     val accentGradient: Brush get() = Brush.horizontalGradient(listOf(gradientStart, gradientEnd))
 }
@@ -52,6 +58,9 @@ val HorizonDusk = AniMixColors(
     scrim = Color(0xCC09090B),
     star = Color(0xFFFFC978),
     danger = Color(0xFFFF7A85),
+    accentText = Color(0xFFFFD3DF),
+    rimHighlight = Color(0x2EFFFFFF),
+    glowScale = 1f,
 )
 
 /** Horizon Dawn — the light theme: porcelain and muted rose. */
@@ -74,4 +83,7 @@ val HorizonDawn = AniMixColors(
     scrim = Color(0x992B2627),
     star = Color(0xFFE59A2E),
     danger = Color(0xFFD94B5A),
+    accentText = Color(0xFF8A5462),
+    rimHighlight = Color(0xFFFFFFFF),
+    glowScale = 0.7f,
 )

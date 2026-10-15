@@ -36,6 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.innerShadow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -192,13 +197,15 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
 @Composable
 fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val colors = AniMixTheme.colors
-    val background by animateColorAsState(if (selected) colors.accent else colors.surfaceRaised)
-    val content by animateColorAsState(if (selected) colors.onAccent else colors.textPrimary)
+    val shape = AniMixTheme.shapes.pill
+    val background by animateColorAsState(if (selected) colors.accentSoft else colors.surfaceRaised)
+    val content by animateColorAsState(if (selected) colors.accentText else colors.textPrimary)
     Row(
         modifier
-            .clip(AniMixTheme.shapes.pill)
+            .then(if (selected) Modifier.accentGlow(shape, strength = 0.35f) else Modifier)
+            .clip(shape)
             .background(background)
-            .border(1.dp, if (selected) Color.Transparent else colors.outline, AniMixTheme.shapes.pill)
+            .rim(shape, accent = selected)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -220,11 +227,14 @@ fun PrimaryButton(
     enabled: Boolean = true,
 ) {
     val colors = AniMixTheme.colors
+    val shape = AniMixTheme.shapes.pill
     Row(
         modifier
             .height(50.dp)
-            .clip(AniMixTheme.shapes.pill)
-            .background(if (enabled) colors.accentGradient else Brush.linearGradient(listOf(colors.surfaceRaised, colors.surfaceRaised)))
+            .then(if (enabled) Modifier.accentGlow(shape, strength = 0.55f) else Modifier)
+            .clip(shape)
+            .background(if (enabled) colors.accentGradient else SolidColor(colors.surfaceRaised))
+            .then(if (enabled) Modifier.highlight(shape) else Modifier)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 22.dp),
         horizontalArrangement = Arrangement.Center,
@@ -242,12 +252,13 @@ fun PrimaryButton(
 @Composable
 fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val colors = AniMixTheme.colors
+    val shape = AniMixTheme.shapes.pill
     Row(
         modifier
             .height(50.dp)
-            .clip(AniMixTheme.shapes.pill)
+            .clip(shape)
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outline, AniMixTheme.shapes.pill)
+            .rim(shape, accent = false)
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.Center,
@@ -276,9 +287,10 @@ fun IconCircle(
     Box(
         modifier
             .size(size)
+            .then(if (active) Modifier.accentGlow(CircleShape, strength = 0.4f) else Modifier)
             .clip(CircleShape)
             .background(if (active) colors.accentSoft else if (glass) colors.surfaceGlass else colors.surfaceRaised)
-            .border(1.dp, if (active) colors.accent else colors.outline.copy(alpha = if (glass) 0.4f else 1f), CircleShape)
+            .rim(CircleShape, accent = active)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -290,6 +302,33 @@ fun IconCircle(
         Icon(icon, null, Modifier.size(size * 0.48f), tint = iconTint)
     }
 }
+
+/**
+ * The thin light rim from the concepts: brighter along the top edge, fading downwards.
+ * Accent rims are pink; neutral ones are a faint highlight.
+ */
+@Composable
+fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
+    val colors = AniMixTheme.colors
+    val brush = if (accent) {
+        Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.95f), colors.accent.copy(alpha = 0.35f)))
+    } else {
+        Brush.verticalGradient(listOf(colors.rimHighlight, colors.outline.copy(alpha = 0.6f)))
+    }
+    return border(1.dp, brush, shape)
+}
+
+/** Soft pink light around an accented control. */
+@Composable
+fun Modifier.accentGlow(shape: Shape, strength: Float = 0.5f): Modifier {
+    val colors = AniMixTheme.colors
+    return dropShadow(shape, Shadow(radius = 14.dp, color = colors.accent.copy(alpha = strength * colors.glowScale)))
+}
+
+/** The glossy highlight on filled buttons: light catching the top edge. */
+@Composable
+fun Modifier.highlight(shape: Shape): Modifier =
+    innerShadow(shape, Shadow(radius = 6.dp, color = Color.White.copy(alpha = 0.45f), offset = DpOffset(0.dp, 1.5.dp)))
 
 @Composable
 fun MessageState(

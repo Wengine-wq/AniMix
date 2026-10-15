@@ -6,6 +6,10 @@ import app.animix.model.AnimeDetail
 import app.animix.model.AnimeKind
 import app.animix.model.AnimeSource
 import app.animix.model.AnimeStatus
+import app.animix.model.Review
+import app.animix.model.ReviewSource
+import app.animix.core.formatDate
+import app.animix.core.htmlToText
 
 private fun String.absolute(): String = if (startsWith("//")) "https:$this" else this
 
@@ -25,6 +29,17 @@ internal fun YummyRelease.toAnime(): Anime = Anime(
     year = year?.takeIf { it > 0 },
     genres = genres.orEmpty().mapNotNull { it.title?.takeIf(String::isNotBlank) },
     source = AnimeSource.Yummy,
+)
+
+internal fun YummyReview.toReview(): Review = Review(
+    id = "y$review_id",
+    author = author?.nickname ?: nickname.orEmpty(),
+    avatarUrl = (author?.avatars?.small ?: avatar?.small)?.absolute(),
+    text = htmlToText(text_html ?: text_preview.orEmpty()),
+    score = rating?.average?.takeIf { it > 0 },
+    date = formatDate(create_date),
+    likes = likes?.likes,
+    source = ReviewSource.Yummy,
 )
 
 internal fun YummyRelease.toDetail(): AnimeDetail {

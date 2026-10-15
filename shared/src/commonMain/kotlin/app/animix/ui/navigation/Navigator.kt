@@ -36,6 +36,10 @@ sealed interface Route {
         override val key get() = "search"
     }
 
+    data class Reviews(val anime: Anime) : Route {
+        override val key get() = "reviews:${anime.key}"
+    }
+
     data object Lists : Route {
         override val key get() = "lists"
     }
@@ -80,6 +84,10 @@ class Navigator {
             "yummy" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false
                 push(Route.Detail(Anime.placeholder(id, AnimeSource.Yummy)))
+            }
+            "reviews" -> {
+                val id = path.getOrNull(1)?.toIntOrNull() ?: return false
+                push(Route.Reviews(Anime.placeholder(id)))
             }
             "search" -> push(Route.Search(path.drop(1).joinToString("/").decodeUrlComponent()))
             "settings" -> { tab = Tab.Profile; push(Route.Settings) }

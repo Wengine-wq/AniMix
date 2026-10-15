@@ -2,7 +2,10 @@ package app.animix.data.shikimori
 
 import app.animix.core.AppJson
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import kotlinx.serialization.builtins.ListSerializer
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -42,6 +45,22 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
         return response.data?.genres.orEmpty()
     }
 
+    suspend fun similar(id: Int): List<RestAnimeDto> =
+        AppJson.decodeFromString(ListSerializer(RestAnimeDto.serializer()), http.get("$baseUrl/api/animes/$id/similar").bodyAsText())
+
+    /** Comments of a topic, newest first. */
+    suspend fun comments(topicId: Int, page: Int, limit: Int): List<CommentDto> =
+        AppJson.decodeFromString(
+            ListSerializer(CommentDto.serializer()),
+            http.get("$baseUrl/api/comments") {
+                parameter("commentable_id", topicId)
+                parameter("commentable_type", "Topic")
+                parameter("page", page)
+                parameter("limit", limit)
+                parameter("desc", 1)
+            }.bodyAsText(),
+        )
+
     private suspend fun post(query: String, variables: JsonObject?): String =
         http.post("$baseUrl/api/graphql") {
             contentType(ContentType.Application.Json)
@@ -64,7 +83,7 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
         private const val DETAIL_QUERY =
             "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
                 "description duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
-                "related { relationKind relationText anime { $CARD_FIELDS } } } }"
+                "related { relationKind relationText anime { $CARD_FIELDS } } topic { id commentsCount } } }"
 
         private const val GENRES_QUERY = "{ genres(entryType: Anime) { id russian name kind } }"
     }

@@ -79,6 +79,10 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         graph.yummy.watchSource(anime, force)
     }
 
+    val similar = rememberLoad(anime.key to anime.title.isNotEmpty()) {
+        if (anime.title.isEmpty()) awaitCancellation()
+        graph.anime.similar(anime)
+    }
     val library by graph.library.state.collectAsState()
     val entry = library.entry(anime)
     val actions: @Composable () -> Unit = {
@@ -115,18 +119,26 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     is Load.Failed -> Txt(state.error.userMessage(), AniMixTheme.type.caption)
                     is Load.Ready -> Description(state.value)
                 }
-                Spacer(Modifier.height(28.dp))
-                WatchSection(source.value, onRetry = source::refresh)
-                ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
+                ready?.screenshots?.takeIf { it.isNotEmpty() }?.let { shots ->
                     Spacer(Modifier.height(28.dp))
-                    SectionHeader("Связанное")
+                    SectionHeader("Кадры")
                     Spacer(Modifier.height(12.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(related, key = { it.key }) { item ->
-                            AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(shots) { url ->
+                            RemoteImage(url, Modifier.width(if (wide) 300.dp else 240.dp).aspectRatio(16f / 9f), shape = AniMixTheme.shapes.medium)
                         }
                     }
                 }
+                Spacer(Modifier.height(28.dp))
+                WatchSection(source.value, onRetry = source::refresh)
+                ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
+                    AnimeShelf("Связанное", related, navigator)
+                }
+                (similar.value as? Load.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { items ->
+                    AnimeShelf("Похожее", items, navigator)
+                }
+                Spacer(Modifier.height(28.dp))
+                ReviewsPreview(graph, anime, ready, onOpenAll = { navigator.push(Route.Reviews(anime)) })
             }
         }
         IconCircle(
@@ -135,6 +147,18 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             glass = true,
             modifier = Modifier.statusBarsPadding().padding(16.dp),
         )
+    }
+}
+
+@Composable
+private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator) {
+    Spacer(Modifier.height(28.dp))
+    SectionHeader(title)
+    Spacer(Modifier.height(12.dp))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(items, key = { it.key }) { item ->
+            AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp))
+        }
     }
 }
 

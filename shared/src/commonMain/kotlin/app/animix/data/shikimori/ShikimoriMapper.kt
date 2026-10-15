@@ -5,6 +5,10 @@ import app.animix.model.AnimeDetail
 import app.animix.model.AnimeKind
 import app.animix.model.AnimeStatus
 import app.animix.model.Genre
+import app.animix.model.Review
+import app.animix.model.ReviewSource
+import app.animix.core.formatIsoDate
+import app.animix.core.htmlToText
 
 internal fun AnimeDto.toAnime(): Anime = Anime(
     id = id.toIntOrNull() ?: 0,
@@ -32,6 +36,37 @@ internal fun AnimeDto.toDetail(): AnimeDetail = AnimeDetail(
     screenshots = screenshots.orEmpty().mapNotNull { it.originalUrl ?: it.x332Url },
     nextEpisodeAt = nextEpisodeAt,
     related = related.orEmpty().mapNotNull { it.anime?.toAnime() }.filter { it.id > 0 }.distinctBy { it.id },
+    topicId = topic?.id?.toIntOrNull(),
+    commentsCount = topic?.commentsCount ?: 0,
+)
+
+private fun absoluteShikimori(path: String): String =
+    if (path.startsWith("http")) path else "${ShikimoriApi.BASE_URL}${if (path.startsWith("/")) path else "/$path"}"
+
+internal fun RestAnimeDto.toAnime(): Anime = Anime(
+    id = id,
+    title = russian?.takeIf { it.isNotBlank() } ?: name,
+    originalTitle = name,
+    englishTitle = null,
+    posterUrl = image?.original?.let(::absoluteShikimori),
+    score = score?.toDoubleOrNull()?.takeIf { it > 0 },
+    kind = AnimeKind.from(kind),
+    status = AnimeStatus.from(status),
+    episodes = episodes,
+    episodesAired = episodes_aired,
+    year = aired_on?.take(4)?.toIntOrNull(),
+    genres = emptyList(),
+)
+
+internal fun CommentDto.toReview(): Review = Review(
+    id = "s$id",
+    author = user?.nickname.orEmpty(),
+    avatarUrl = (user?.image?.get("x80") ?: user?.image?.get("x48") ?: user?.avatar)?.let(::absoluteShikimori),
+    text = html_body?.let(::htmlToText)?.ifBlank { null } ?: stripBbCode(body),
+    score = null,
+    date = formatIsoDate(created_at),
+    likes = null,
+    source = ReviewSource.Shikimori,
 )
 
 internal fun GenreDto.toGenre(): Genre? {

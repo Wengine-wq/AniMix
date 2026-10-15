@@ -83,6 +83,9 @@ data class AnimeDetail(
     val screenshots: List<String>,
     val nextEpisodeAt: String?,
     val related: List<Anime>,
+    /** Shikimori discussion topic of this anime. */
+    val topicId: Int? = null,
+    val commentsCount: Int = 0,
 )
 
 @Serializable
