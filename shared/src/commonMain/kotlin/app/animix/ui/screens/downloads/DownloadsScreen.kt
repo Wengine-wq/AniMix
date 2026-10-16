@@ -114,6 +114,8 @@ import kotlinx.coroutines.launch
                     onFullscreenChange = { fullscreen = it },
                     onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
                     onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
+                    onWatchTime = graph.library::addWatchTime,
+                    maxStartQuality = graph.connection.playbackCap(),
                 )
             }
         }

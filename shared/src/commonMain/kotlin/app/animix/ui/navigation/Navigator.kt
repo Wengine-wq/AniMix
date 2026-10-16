@@ -15,7 +15,7 @@ import app.animix.ui.icons.AniMixIcons
 enum class Tab(val label: String, val icon: ImageVector) {
     Home("Главная", AniMixIcons.Home),
     Catalog("Каталог", AniMixIcons.Catalog),
-    Favorites("Избранное", AniMixIcons.Heart),
+    Lists("Списки", AniMixIcons.Bookmark),
     Downloads("Загрузки", AniMixIcons.Download),
     Profile("Профиль", AniMixIcons.User),
 }
@@ -63,6 +63,10 @@ sealed interface Route {
 
     data object Lists : Route {
         override val key get() = "lists"
+    }
+
+    data class SettingsSection(val id: String) : Route {
+        override val key get() = "settings:$id"
     }
 
     data object Settings : Route {
@@ -116,7 +120,7 @@ class Navigator {
             }
             "search" -> push(Route.Search(path.drop(1).joinToString("/").decodeUrlComponent()))
             "settings" -> { tab = Tab.Profile; push(Route.Settings) }
-            "lists" -> { tab = Tab.Profile; push(Route.Lists) }
+            "lists", "favorites" -> tab = Tab.Lists
             "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
             "history" -> { tab = Tab.Profile; push(Route.History) }
             "support" -> { tab = Tab.Profile; push(Route.Support) }

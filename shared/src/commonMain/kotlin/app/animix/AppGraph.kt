@@ -43,9 +43,14 @@ class AppGraph {
     /** The combined catalog screens use: Shikimori plus YummyAnime-only titles. */
     val anime = AnimeRepository(shikimori, yummy)
 
+    /** «Подобрано для вас» from the local library. */
+    val recommendations = app.animix.data.Recommendations(shikimori, anime)
+
     /** Short-lived direct streams; independent of the catalog's stale/offline cache. */
     val kodik = KodikResolver(http)
-    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"))
+    /** «Умное соединение» and «Экономия трафика». */
+    val connection = app.animix.data.ConnectionPolicy(settings)
+    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"), parallelism = { connection.downloadParallelism() })
 
     /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
     val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)

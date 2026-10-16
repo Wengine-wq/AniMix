@@ -47,6 +47,8 @@ data class LocalProfile(
 data class LibraryData(
     val profile: LocalProfile = LocalProfile(),
     val entries: Map<String, LibraryEntry> = emptyMap(),
+    /** Seconds watched per local day (see [app.animix.core.localDayIndex]), for streaks and the activity chart. */
+    val watchDays: Map<Long, Int> = emptyMap(),
 ) {
     fun entry(anime: Anime): LibraryEntry? = entries[anime.key]
 
@@ -107,6 +109,14 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     }
 
     fun setScore(anime: Anime, score: Int?) = change(anime) { it.copy(score = score?.coerceIn(1, 10)) }
+
+    /** Adds playback time to today; called by the player while video is playing. */
+    fun addWatchTime(seconds: Int) {
+        if (seconds <= 0) return
+        val day = app.animix.core.localDayIndex()
+        _state.update { it.copy(watchDays = it.watchDays + (day to (it.watchDays[day] ?: 0) + seconds)) }
+        save()
+    }
 
     fun renameProfile(name: String) {
         val clean = name.trim().take(32)

@@ -23,6 +23,12 @@ data class Settings(
     val autoNextEpisode: Boolean = true,
     /** Whether the viewer has answered the auto-next question at the end of an episode. */
     val autoNextAsked: Boolean = false,
+    /** Show «Избранное» after the status lists instead of first. */
+    val favoritesLast: Boolean = false,
+    /** Умное соединение: next episodes resolved ahead, parallel downloads, warm caches. */
+    val smartConnection: Boolean = true,
+    /** Экономия трафика on metered (mobile) networks: playback up to 720p, fewer parallel downloads. */
+    val trafficSaver: Boolean = true,
     val preferredDubbing: String? = null,
     /** The quality picked last in the player, used for the next episode too. */
     val preferredQuality: String? = null,

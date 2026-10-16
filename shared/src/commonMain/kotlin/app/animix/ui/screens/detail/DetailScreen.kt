@@ -70,6 +70,8 @@ import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
+import kotlinx.coroutines.launch
+import app.animix.ui.screens.downloads.DownloadSheet
 
 @Composable
 fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPadding: PaddingValues) {
@@ -84,14 +86,35 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     }
     Ambient(anime.posterUrl)
     val library by graph.library.state.collectAsState()
+    val settings by graph.settings.state.collectAsState()
     val entry = library.entry(anime)
+    var sheet by remember { mutableStateOf<DetailSheet?>(null) }
+    // Умное соединение: warm the episode list, so «Смотреть» opens without waiting.
+    androidx.compose.runtime.LaunchedEffect(anime.key, anime.title.isNotEmpty()) {
+        if (anime.title.isNotEmpty() && graph.connection.prefetch) graph.scope.launch { runCatching { graph.yummy.watchSource(anime) } }
+    }
+    var notice by remember { mutableStateOf<String?>(null) }
     val actions: @Composable () -> Unit = {
         WatchActions(
             entry = entry,
             onWatch = { navigator.push(Route.Watch(anime)) },
+            onLists = { sheet = DetailSheet.Lists },
+            onDownload = { sheet = DetailSheet.Download },
+            onRate = { sheet = DetailSheet.Rate },
+            notice = notice,
+        )
+    }
+    when (sheet) {
+        DetailSheet.Lists -> ListsSheet(
+            entry = entry,
+            favoritesLast = settings.favoritesLast,
             onFavorite = { graph.library.toggleFavorite(anime) },
             onStatus = { graph.library.setStatus(anime, it) },
+            onDismiss = { sheet = null },
         )
+        DetailSheet.Rate -> RateSheet(entry?.score, onScore = { graph.library.setScore(anime, it); sheet = null }, onDismiss = { sheet = null })
+        DetailSheet.Download -> DownloadSheet(graph, anime, onQueued = { notice = it }, onDismiss = { sheet = null })
+        null -> Unit
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -103,9 +126,9 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             if (wide) {
                 WideHeader(anime, ready, actions)
             } else {
-                Backdrop(anime.posterUrl, height = 380.dp)
+                MobileHero(anime, ready)
                 Column(Modifier.padding(horizontal = 20.dp)) {
-                    TitleBlock(anime, ready)
+                    Genres(anime)
                     Spacer(Modifier.height(18.dp))
                     actions()
                 }
@@ -160,22 +183,38 @@ private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator) 
     }
 }
 
+private enum class DetailSheet { Lists, Rate, Download }
+
+/**
+ * The phone hero: a wide still (or the poster) under a soft scrim, with the poster
+ * and title laid over its lower part, like the desktop header.
+ */
 @Composable
-private fun Backdrop(url: String?, height: androidx.compose.ui.unit.Dp) {
+private fun MobileHero(anime: Anime, detail: AnimeDetail?) {
     val colors = AniMixTheme.colors
-    Box(Modifier.fillMaxWidth().height(height)) {
-        RemoteImage(url, Modifier.fillMaxSize(), shape = androidx.compose.ui.graphics.RectangleShape)
+    val still = detail?.screenshots?.firstOrNull()
+    Box(Modifier.fillMaxWidth().height(420.dp)) {
+        RemoteImage(still ?: anime.posterUrl, Modifier.fillMaxSize().then(if (still == null) Modifier.blur(24.dp) else Modifier), shape = androidx.compose.ui.graphics.RectangleShape)
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to colors.background),
+                Brush.verticalGradient(
+                    0f to colors.background.copy(alpha = 0.45f),
+                    0.3f to Color.Transparent,
+                    0.62f to colors.background.copy(alpha = 0.78f),
+                    1f to colors.background,
+                ),
             ),
         )
+        Row(Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
+            RemoteImage(anime.posterUrl, Modifier.width(112.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f).padding(bottom = 4.dp)) { TitleBlock(anime, detail, genres = false, compact = true) }
+        }
     }
 }
 
 @Composable
 private fun WideHeader(anime: Anime, detail: AnimeDetail?, actions: @Composable () -> Unit) {
-    val colors = AniMixTheme.colors
     // The blurred mood comes from the shared ambient backdrop, so the header stays open and light.
     Box(Modifier.fillMaxWidth().height(460.dp)) {
         Row(
@@ -193,12 +232,11 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, actions: @Composable 
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TitleBlock(anime: Anime, detail: AnimeDetail?) {
+private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = true, compact: Boolean = false) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
-    Txt(anime.title, type.display, maxLines = 3)
+    Txt(anime.title, if (compact) type.title else type.display, maxLines = 3)
     if (anime.originalTitle != anime.title) {
         Spacer(Modifier.height(4.dp))
         Txt(anime.originalTitle, type.caption, maxLines = 1)
@@ -229,18 +267,26 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?) {
         }
         Txt(meta, type.caption, maxLines = 2)
     }
-    if (anime.genres.isNotEmpty()) {
+    if (genres) {
         Spacer(Modifier.height(12.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            anime.genres.take(6).forEach { genre ->
-                Txt(
-                    genre,
-                    type.micro,
-                    color = colors.textPrimary,
-                    modifier = Modifier.clip(AniMixTheme.shapes.pill).background(colors.surfaceRaised)
-                        .border(1.dp, colors.outline, AniMixTheme.shapes.pill).padding(horizontal = 10.dp, vertical = 5.dp),
-                )
-            }
+        Genres(anime)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Genres(anime: Anime) {
+    val colors = AniMixTheme.colors
+    if (anime.genres.isEmpty()) return
+    FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        anime.genres.take(6).forEach { genre ->
+            Txt(
+                genre,
+                AniMixTheme.type.micro,
+                color = colors.textPrimary,
+                modifier = Modifier.clip(AniMixTheme.shapes.pill).background(colors.surfaceRaised)
+                    .border(1.dp, colors.outline, AniMixTheme.shapes.pill).padding(horizontal = 10.dp, vertical = 5.dp),
+            )
         }
     }
 }
@@ -249,29 +295,47 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?) {
 private fun WatchActions(
     entry: LibraryEntry?,
     onWatch: () -> Unit,
-    onFavorite: () -> Unit,
-    onStatus: (ListStatus?) -> Unit,
+    onLists: () -> Unit,
+    onDownload: () -> Unit,
+    onRate: () -> Unit,
+    notice: String?,
 ) {
-    val favorite = entry?.favorite == true
+    val colors = AniMixTheme.colors
+    val listed = entry?.favorite == true || entry?.status != null
     Row(verticalAlignment = Alignment.CenterVertically) {
         PrimaryButton("Смотреть", onWatch, icon = AniMixIcons.Play, modifier = Modifier.weight(1f, fill = false).widthIn(min = 200.dp))
         Spacer(Modifier.width(10.dp))
-        IconCircle(if (favorite) AniMixIcons.HeartFilled else AniMixIcons.Heart, onClick = onFavorite, size = 50.dp, active = favorite)
+        IconCircle(AniMixIcons.Bookmark, onClick = onLists, size = 50.dp, active = listed)
         Spacer(Modifier.width(10.dp))
-        IconCircle(AniMixIcons.Download, onClick = {}, size = 50.dp)
+        IconCircle(AniMixIcons.Download, onClick = onDownload, size = 50.dp)
     }
     Spacer(Modifier.height(14.dp))
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(ListStatus.entries.toList()) { status ->
-            val selected = entry?.status == status
-            Chip(
-                status.label,
-                selected = selected,
-                // Tapping the current status again takes the anime off the list.
-                onClick = { onStatus(if (selected) null else status) },
-                icon = if (selected) AniMixIcons.Check else null,
-            )
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Bubble(
+            text = entry?.score?.let { "Ваша оценка · $it" } ?: "Оценить тайтл",
+            icon = AniMixIcons.Star,
+            active = entry?.score != null,
+            onClick = onRate,
+        )
+        val lists = listOfNotNull("Избранное".takeIf { entry?.favorite == true }, entry?.status?.label)
+        if (lists.isNotEmpty()) Bubble(lists.joinToString(" · "), AniMixIcons.Bookmark, active = true, onClick = onLists)
+    }
+    if (notice != null) Txt(notice, AniMixTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(top = 10.dp))
+}
+
+/** A small rounded pill for personal state on the anime page. */
+@Composable
+private fun Bubble(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, active: Boolean, onClick: () -> Unit) {
+    val colors = AniMixTheme.colors
+    Row(
+        Modifier.clip(AniMixTheme.shapes.pill).background(if (active) colors.accentSoft else colors.chip)
+            .border(1.dp, if (active) colors.accent.copy(alpha = 0.4f) else colors.outline, AniMixTheme.shapes.pill)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(14.dp), tint = if (active) colors.accent else colors.star)
+        Spacer(Modifier.width(6.dp))
+        Txt(text, AniMixTheme.type.label, color = if (active) colors.accentText else colors.textPrimary, maxLines = 1)
     }
 }
 

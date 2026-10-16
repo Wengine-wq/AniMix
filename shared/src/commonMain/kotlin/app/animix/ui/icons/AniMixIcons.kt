@@ -78,6 +78,9 @@ object AniMixIcons {
     val SkipAhead = outline("SkipAhead", "M5 6.5l6 5.5-6 5.5M12.5 6.5l6 5.5-6 5.5")
     val Fill = outline("Fill", "M3 8V4h4M21 8V4h-4M3 16v4h4M21 16v4h-4M7 8h10v8H7z")
     val Fit = outline("Fit", "M3 8V4h4M21 8V4h-4M3 16v4h4M21 16v4h-4M9.5 10h5v4h-5z")
+    val Wifi = outline("Wifi", "M2.5 8.8a14 14 0 0 1 19 0M5.5 12.2a9.5 9.5 0 0 1 13 0M8.7 15.5a5 5 0 0 1 6.6 0M12 19h.01")
+    val Flame = outline("Flame", "M12 3c.8 3.4 4.6 5.3 4.6 9.7a4.6 4.6 0 0 1-9.2 0c0-2.1 1-3.7 2.2-4.8.2 1.7.9 2.7 2 3.2-.1-3 .4-5.6.4-8.1z")
+    val Palette = outline("Palette", "M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.6 0-.9-.6-1.3-.6-2.1 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3zM7.5 12.5h.01M9.5 8h.01M14.5 8h.01")
     val Star = filled(
         "Star",
         "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z",

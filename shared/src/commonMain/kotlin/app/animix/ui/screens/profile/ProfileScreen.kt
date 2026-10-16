@@ -31,7 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
-import app.animix.data.library.ListStatus
+import app.animix.data.library.stats
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -63,46 +64,46 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     val type = AniMixTheme.type
     val library by graph.library.state.collectAsState()
     val achievements by graph.achievements.progress.collectAsState()
+    val stats = remember(library) { library.stats() }
     var editing by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding) {
-        Txt("Профиль", type.title, modifier = Modifier.padding(top = 12.dp))
-        Spacer(Modifier.height(20.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(72.dp).clip(CircleShape).background(colors.accentGradient),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(AniMixIcons.User, null, Modifier.size(32.dp), tint = colors.onAccent)
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(64.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+                Txt(library.profile.name.take(1).uppercase(), type.title, color = colors.onAccent)
             }
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 if (editing) {
-                    NameField(library.profile.name) { name ->
-                        graph.library.renameProfile(name)
-                        editing = false
-                    }
+                    NameField(library.profile.name) { name -> graph.library.renameProfile(name); editing = false }
                 } else {
                     Txt(library.profile.name, type.heading, modifier = Modifier.clickable { editing = true })
                 }
-                Spacer(Modifier.height(2.dp))
-                Txt("Локальный профиль · списки хранятся на этом устройстве", type.caption)
+                Txt("Локальный профиль · нажмите на имя, чтобы сменить", type.micro)
             }
+            IconCircle(AniMixIcons.Sliders, onClick = { navigator.push(Route.Settings) })
         }
         Spacer(Modifier.height(20.dp))
+        StreakCard(stats.streak, stats.bestStreak)
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat(library.listed.toString(), "В списках", Modifier.weight(1f))
-            Stat(library.inStatus(ListStatus.Completed).size.toString(), "Просмотрено", Modifier.weight(1f))
-            Stat(achievements.count { it.unlocked }.toString(), "Достижения", Modifier.weight(1f))
+            Stat(hours(stats.totalMinutes), "Часов", Modifier.weight(1f))
+            Stat(stats.episodes.toString(), "Серий", Modifier.weight(1f))
+            Stat(stats.completed.toString(), "Тайтлов", Modifier.weight(1f))
+            Stat("${achievements.count { it.unlocked }}", "Наград", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(20.dp))
+        GroupTitle("Активность за две недели")
+        Panel { ActivityChart(stats.lastDays, Modifier.padding(16.dp)) }
+        if (stats.topGenres.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            GroupTitle("Любимые жанры")
+            Panel { GenreBars(stats.topGenres, Modifier.padding(16.dp)) }
         }
         Spacer(Modifier.height(20.dp))
         Panel {
-            NavRow("Мои списки", AniMixIcons.Bookmark, onClick = { navigator.push(Route.Lists) }, trailing = library.listed.takeIf { it > 0 }?.toString())
+            NavRow("Списки", AniMixIcons.Bookmark, onClick = { navigator.select(Tab.Lists) }, trailing = library.listed.takeIf { it > 0 }?.toString())
             Divider()
             NavRow("История просмотров", AniMixIcons.History, onClick = { navigator.push(Route.History) })
-            Divider()
-            NavRow("Избранное", AniMixIcons.Heart, onClick = { navigator.select(Tab.Favorites) }, trailing = library.favorites.size.takeIf { it > 0 }?.toString())
-            Divider()
-            NavRow("Загрузки", AniMixIcons.Download, onClick = { navigator.select(Tab.Downloads) })
             Divider()
             NavRow("Достижения", AniMixIcons.Trophy, onClick = { navigator.push(Route.Achievements) }, trailing = "${achievements.count { it.unlocked }} / ${achievements.size}")
         }
@@ -115,64 +116,197 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     }
 }
 
+private fun hours(minutes: Int): String = when {
+    minutes == 0 -> "0"
+    minutes < 600 -> "${minutes / 60},${(minutes % 60 * 10 / 60).coerceAtLeast(if (minutes < 60) 1 else 0)}"
+    else -> "${minutes / 60}"
+}
+
+private fun daysWord(n: Int): String = when {
+    n % 100 in 11..14 -> "дней"
+    n % 10 == 1 -> "день"
+    n % 10 in 2..4 -> "дня"
+    else -> "дней"
+}
+
+@Composable
+private fun StreakCard(streak: Int, best: Int) {
+    val colors = AniMixTheme.colors
+    Row(
+        Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.accentSoft)
+            .border(1.dp, colors.accent.copy(alpha = 0.35f), AniMixTheme.shapes.large).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+            Icon(AniMixIcons.Flame, null, Modifier.size(22.dp), tint = colors.onAccent)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt(if (streak > 0) "$streak ${daysWord(streak)} подряд" else "Стрик не начат", AniMixTheme.type.heading)
+            Txt(
+                if (streak > 0) "Лучший стрик: $best ${daysWord(best)}" else "Смотрите хотя бы минуту в день, чтобы начать",
+                AniMixTheme.type.caption,
+            )
+        }
+    }
+}
+
+/** Minutes per day as soft bars; today is the last, accented one. */
+@Composable
+private fun ActivityChart(minutes: List<Int>, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    val max = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().height(96.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
+            minutes.forEachIndexed { index, value ->
+                val today = index == minutes.lastIndex
+                Box(
+                    Modifier.weight(1f).fillMaxHeight((value.toFloat() / max).coerceAtLeast(0.04f))
+                        .clip(AniMixTheme.shapes.small)
+                        .background(if (today) colors.accent else if (value > 0) colors.accent.copy(alpha = 0.45f) else colors.outline),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row {
+            Txt("2 недели назад", AniMixTheme.type.micro, modifier = Modifier.weight(1f))
+            Txt(if (minutes.last() > 0) "Сегодня · ${minutes.last()} мин" else "Сегодня", AniMixTheme.type.micro)
+        }
+    }
+}
+
+@Composable
+private fun GenreBars(genres: List<Pair<String, Int>>, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    val max = genres.maxOf { it.second }.coerceAtLeast(1)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        genres.forEach { (genre, weight) ->
+            Column {
+                Txt(genre, AniMixTheme.type.label)
+                Spacer(Modifier.height(4.dp))
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)) {
+                    Box(Modifier.fillMaxWidth(weight.toFloat() / max).fillMaxHeight().clip(AniMixTheme.shapes.pill).background(colors.accentGradient))
+                }
+            }
+        }
+    }
+}
+
+/** Settings are grouped into categories; each opens its own page. */
+private enum class SettingsCategory(val title: String, val icon: ImageVector) {
+    Appearance("Внешний вид", AniMixIcons.Palette),
+    Playback("Воспроизведение", AniMixIcons.Play),
+    Lists("Списки", AniMixIcons.Bookmark),
+    Downloads("Загрузки", AniMixIcons.Download),
+    Network("Соединение", AniMixIcons.Wifi),
+    Data("Данные", AniMixIcons.Refresh),
+}
+
 @Composable
 fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
     val settings by graph.settings.state.collectAsState()
-    val scope = rememberCoroutineScope()
-    val type = AniMixTheme.type
     ScreenColumn(contentPadding) {
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconCircle(AniMixIcons.Back, onClick = { navigator.back() })
             Spacer(Modifier.width(12.dp))
-            Txt("Настройки", type.title)
+            Txt("Настройки", AniMixTheme.type.title)
         }
         Spacer(Modifier.height(24.dp))
-        GroupTitle("Внешний вид")
         Panel {
-            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemeMode.entries.forEach { mode ->
-                    val icon = when (mode) {
-                        ThemeMode.System -> AniMixIcons.Monitor
-                        ThemeMode.Dusk -> AniMixIcons.Moon
-                        ThemeMode.Dawn -> AniMixIcons.Sun
-                    }
-                    ThemeOption(mode.label, icon, settings.themeMode == mode, Modifier.weight(1f)) {
-                        graph.settings.update { it.copy(themeMode = mode) }
-                        graph.achievements.themeChosen(mode.name)
+            SettingsCategory.entries.forEachIndexed { index, category ->
+                val summary = when (category) {
+                    SettingsCategory.Appearance -> settings.themeMode.label
+                    SettingsCategory.Playback -> if (settings.autoNextEpisode) "Автопереход вкл." else "Автопереход выкл."
+                    SettingsCategory.Lists -> if (settings.favoritesLast) "Избранное в конце" else "Избранное первым"
+                    SettingsCategory.Downloads -> settings.downloadQuality ?: "Не выбрано"
+                    SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
+                    SettingsCategory.Data -> null
+                }
+                NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)
+                if (index < SettingsCategory.entries.lastIndex) Divider()
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Txt("AniMix 3.0 New Horizons", AniMixTheme.type.caption, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+}
+
+@Composable
+fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues, id: String) {
+    val settings by graph.settings.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val category = SettingsCategory.entries.firstOrNull { it.name == id } ?: SettingsCategory.Appearance
+    var cacheCleared by remember { mutableStateOf(false) }
+    ScreenColumn(contentPadding) {
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconCircle(AniMixIcons.Back, onClick = { navigator.back() })
+            Spacer(Modifier.width(12.dp))
+            Txt(category.title, AniMixTheme.type.title)
+        }
+        Spacer(Modifier.height(24.dp))
+        when (category) {
+            SettingsCategory.Appearance -> Panel {
+                Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        val icon = when (mode) {
+                            ThemeMode.System -> AniMixIcons.Monitor
+                            ThemeMode.Dusk -> AniMixIcons.Moon
+                            ThemeMode.Dawn -> AniMixIcons.Sun
+                        }
+                        ThemeOption(mode.label, icon, settings.themeMode == mode, Modifier.weight(1f)) {
+                            graph.settings.update { it.copy(themeMode = mode) }
+                            graph.achievements.themeChosen(mode.name)
+                        }
                     }
                 }
             }
-        }
-        Spacer(Modifier.height(20.dp))
-        GroupTitle("Воспроизведение")
-        Panel {
-            ToggleRow("Автопереход к следующей серии", settings.autoNextEpisode, { v -> graph.settings.update { it.copy(autoNextEpisode = v) }; if (v) graph.achievements.settingEnabled("autoNextEpisode") }, AniMixIcons.Play)
-            Divider()
-            ToggleRow("Пропускать опенинги", settings.skipOpenings, { v -> graph.settings.update { it.copy(skipOpenings = v) }; if (v) graph.achievements.settingEnabled("skipOpenings") }, AniMixIcons.Clock)
-            Divider()
-            ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
-        }
-        Spacer(Modifier.height(20.dp))
-        GroupTitle("Загрузки")
-        Panel {
-            Column(Modifier.padding(12.dp)) {
-                app.animix.ui.screens.downloads.DownloadQualityOptions(settings.downloadQuality) { quality ->
-                    graph.settings.update { it.copy(downloadQuality = quality) }
+            SettingsCategory.Playback -> Panel {
+                ToggleRow("Автопереход к следующей серии", settings.autoNextEpisode, { v -> graph.settings.update { it.copy(autoNextEpisode = v, autoNextAsked = true) }; if (v) graph.achievements.settingEnabled("autoNextEpisode") }, AniMixIcons.Play)
+                Divider()
+                ToggleRow("Пропускать опенинги", settings.skipOpenings, { v -> graph.settings.update { it.copy(skipOpenings = v) }; if (v) graph.achievements.settingEnabled("skipOpenings") }, AniMixIcons.Clock)
+                Divider()
+                ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
+                Divider()
+                ToggleRow("Без рамок на весь экран", settings.fillScreen, { v -> graph.settings.update { it.copy(fillScreen = v) } }, AniMixIcons.Fill, subtitle = "Заполняет экран, обрезая лишь узкие полосы по краям")
+            }
+            SettingsCategory.Lists -> Panel {
+                ToggleRow("Избранное в конце списков", settings.favoritesLast, { v -> graph.settings.update { it.copy(favoritesLast = v) } }, AniMixIcons.Heart, subtitle = "По умолчанию «Избранное» идёт первым")
+            }
+            SettingsCategory.Downloads -> Panel {
+                Column(Modifier.padding(12.dp)) {
+                    app.animix.ui.screens.downloads.DownloadQualityOptions(settings.downloadQuality) { quality ->
+                        graph.settings.update { it.copy(downloadQuality = quality) }
+                    }
+                    Txt(
+                        if (settings.downloadQuality == null) "Спросим при первой загрузке" else "Если серии нет в этом качестве, скачаем ближайшее ниже",
+                        AniMixTheme.type.micro,
+                        modifier = Modifier.padding(start = 4.dp, top = 10.dp),
+                    )
                 }
+            }
+            SettingsCategory.Network -> {
+                Panel {
+                    ToggleRow(
+                        "Умное соединение", settings.smartConnection, { v -> graph.settings.update { it.copy(smartConnection = v) } }, AniMixIcons.Wifi,
+                        subtitle = "Заранее готовит следующую серию и список серий, качает части видео параллельно",
+                    )
+                    Divider()
+                    ToggleRow(
+                        "Экономия трафика", settings.trafficSaver, { v -> graph.settings.update { it.copy(trafficSaver = v) } }, AniMixIcons.Download,
+                        subtitle = "В мобильной сети видео стартует не выше 720p, загрузки идут в два потока",
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 Txt(
-                    if (settings.downloadQuality == null) "Спросим при первой загрузке" else "Если серии нет в этом качестве, скачаем ближайшее ниже",
-                    type.micro,
-                    modifier = Modifier.padding(start = 4.dp, top = 10.dp),
+                    if (app.animix.data.isNetworkMetered()) "Сейчас: мобильная или лимитная сеть" else "Сейчас: безлимитная сеть",
+                    AniMixTheme.type.micro,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
             }
+            SettingsCategory.Data -> Panel {
+                NavRow(if (cacheCleared) "Кэш каталога очищен" else "Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache(); cacheCleared = true } })
+            }
         }
-        Spacer(Modifier.height(20.dp))
-        GroupTitle("Данные")
-        Panel {
-            NavRow("Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache() } })
-        }
-        Spacer(Modifier.height(24.dp))
-        Txt("AniMix 3.0 New Horizons", type.caption, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 

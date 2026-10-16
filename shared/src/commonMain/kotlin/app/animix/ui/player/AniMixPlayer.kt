@@ -103,6 +103,11 @@ fun AniMixPlayer(
     onQualityChange: (String) -> Unit = {},
     onAutoNextChoice: (Boolean) -> Unit = {},
     onFillScreenChange: (Boolean) -> Unit = {},
+    onWatchTime: (seconds: Int) -> Unit = {},
+    /** Highest quality to start at (traffic saving on mobile data); the viewer can still pick more. */
+    maxStartQuality: Int? = null,
+    /** Called once, about five minutes before the end: time to get the next episode ready. */
+    onApproachingEnd: () -> Unit = {},
     fullscreen: Boolean = false,
     onFullscreenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -117,7 +122,7 @@ fun AniMixPlayer(
     }
     val state by player.state.collectAsState()
     val qualities = stream.qualities.keys.toList()
-    var quality by remember { mutableStateOf(settings.preferredQuality?.takeIf { it in stream.qualities } ?: qualities.first()) }
+    var quality by remember { mutableStateOf(startQuality(qualities, settings.preferredQuality, maxStartQuality)) }
     val available = quality.takeIf { it in stream.qualities } ?: qualities.first()
     var reload by remember { mutableIntStateOf(0) }
     var plan by remember { mutableStateOf(SkipPlan(episode.opening, episode.ending)) }
@@ -217,6 +222,15 @@ fun AniMixPlayer(
         if (controlsVisible && state.playing) { delay(3_000); controlsVisible = false }
     }
     LaunchedEffect(seekFeedback) { if (seekFeedback != null) { delay(700); seekFeedback = null } }
+    val approachingEndCallback by rememberUpdatedState(onApproachingEnd)
+    LaunchedEffect(state.durationMs > 0 && state.durationMs - state.positionMs < 300_000) {
+        if (state.durationMs > 0 && state.ready && state.durationMs - state.positionMs < 300_000) approachingEndCallback()
+    }
+    val watchTimeCallback by rememberUpdatedState(onWatchTime)
+    LaunchedEffect(state.playing) {
+        // Feeds the daily statistics (streak, activity chart) in 30-second steps of real playback.
+        if (state.playing) while (true) { delay(30_000); watchTimeCallback(30) }
+    }
 
     val activeSkip = when {
         skipTarget(state.positionMs, plan.opening) != null -> "Пропустить опенинг" to skipTarget(state.positionMs, plan.opening)!!
@@ -669,4 +683,16 @@ private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boole
             NativeVideoSurface(player, Modifier.fillMaxSize())
         }
     }
+}
+
+private fun lines(label: String): Int? = Regex("[0-9]+").find(label)?.value?.toIntOrNull()
+
+/** The remembered quality when allowed, else the best one under the cap (lists are sorted best first). */
+internal fun startQuality(qualities: List<String>, preferred: String?, cap: Int?): String {
+    fun allowed(label: String) = cap == null || (lines(label)?.let { it <= cap } ?: false)
+    preferred?.takeIf { it in qualities && allowed(it) }?.let { return it }
+    if (cap == null) return qualities.first()
+    return qualities.filter { lines(it) != null && lines(it)!! <= cap }.maxByOrNull { lines(it)!! }
+        ?: qualities.filter { lines(it) != null }.minByOrNull { lines(it)!! }
+        ?: qualities.first()
 }

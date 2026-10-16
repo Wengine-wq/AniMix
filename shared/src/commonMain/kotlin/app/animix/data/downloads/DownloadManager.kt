@@ -43,8 +43,9 @@ class DownloadManager(
     assembler: MediaAssembler = createMediaAssembler(),
     /** Pauses between attempts after a network drop (screen off, Wi-Fi switching): about four minutes in all. */
     private val retryDelaysMs: List<Long> = listOf(3_000, 8_000, 15_000, 30_000, 60_000, 120_000),
+    parallelism: () -> Int = { 3 },
 ) {
-    private val pipeline = HlsDownload(http, files, assembler)
+    private val pipeline = HlsDownload(http, files, assembler, parallelism)
     private val mutable = MutableStateFlow<List<DownloadItem>>(emptyList())
     val state = mutable.asStateFlow()
     private val mutableNotice = MutableStateFlow<String?>(null)

@@ -115,8 +115,6 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     val scope = rememberCoroutineScope()
     val downloads by graph.downloads.state.collectAsState()
     var downloadMessage by remember { mutableStateOf<String?>(null) }
-    var selecting by remember(anime.key) { mutableStateOf(false) }
-    var picked by remember(anime.key) { mutableStateOf(emptySet<String>()) }
     var askQuality by remember { mutableStateOf<Pair<Dubbing, List<Episode>>?>(null) }
     val askPermission = rememberDownloadPermissionRequest()
     fun startDownload(dubbing: Dubbing, episodes: List<Episode>, quality: String) {
@@ -156,6 +154,11 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     val selectedDubbing = dubbings.firstOrNull { it.key == selectedKey } ?: dubbings.firstOrNull()
     val selectedEpisode = selectedDubbing?.episodes?.firstOrNull { it.number == episodeNumber }
     val suggested = if (selectedEpisode == null) resumeEpisode(selectedDubbing?.episodes.orEmpty(), entry) else null
+    // Умное соединение: the offered episode is resolved ahead, so «Продолжить» starts at once.
+    androidx.compose.runtime.LaunchedEffect(suggested?.iframeUrl, selectedDubbing?.isKodik) {
+        val url = suggested?.iframeUrl
+        if (url != null && selectedDubbing?.isKodik == true && graph.connection.prefetch) graph.scope.launch { runCatching { graph.kodik.resolve(url) } }
+    }
     val stream = rememberLoad(selectedDubbing?.key to selectedEpisode?.iframeUrl) { force ->
         if (selectedEpisode == null || !selectedDubbing.isKodik) awaitCancellation()
         graph.kodik.resolve(selectedEpisode.iframeUrl, forceRefresh = force)
@@ -232,24 +235,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                     if (selected != null) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Column(Modifier.padding(top = 20.dp, bottom = 4.dp)) {
-                                if (!selecting) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Txt("Серии · ${selected.episodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-                                        if (selected.isKodik) QuietChip("Скачать", AniMixIcons.Download) { picked = emptySet(); selecting = true }
-                                    }
-                                } else {
-                                    DownloadPicker(
-                                        dubbing = selected,
-                                        quality = settings.downloadQuality,
-                                        picked = picked.size,
-                                        onAll = { picked = if (picked.size == selected.episodes.size) emptySet() else selected.episodes.map { it.number }.toSet() },
-                                        onCancel = { selecting = false },
-                                        onDownload = {
-                                            requestDownload(selected, selected.episodes.filter { it.number in picked })
-                                            selecting = false
-                                        },
-                                    )
-                                }
+                                Txt("Серии · ${selected.episodes.size}", AniMixTheme.type.heading)
                                 downloadMessage?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 6.dp)) }
                             }
                         }
@@ -257,14 +243,11 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                         items(selected.episodes, key = { "${selected.key}:${it.number}" }) { episode ->
                             EpisodeCell(
                                 episode,
-                                selected = if (selecting) episode.number in picked else episode.number == episodeNumber,
+                                selected = episode.number == episodeNumber,
                                 watched = episode.isWatched(entry),
                                 progress = watchProgress(entry, episode),
                                 saved = episode.number in saved,
-                            ) {
-                                if (selecting) picked = if (episode.number in picked) picked - episode.number else picked + episode.number
-                                else episodeNumber = episode.number
-                            }
+                            ) { episodeNumber = episode.number }
                         }
                     }
                 }
@@ -320,6 +303,12 @@ private fun PlayerArea(
                 onFullscreenChange = { fullscreen = it },
                 onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
+                onWatchTime = graph.library::addWatchTime,
+                maxStartQuality = graph.connection.playbackCap(),
+                onApproachingEnd = {
+                    // Умное соединение: resolve the next episode now, so autoplay starts without waiting.
+                    if (graph.connection.prefetch && next != null) graph.scope.launch { runCatching { graph.kodik.resolve(next.iframeUrl) } }
+                },
             )
         }
       }
@@ -372,55 +361,6 @@ private fun PlayerArea(
                 }
                 is Load.Ready -> Unit
             }
-        }
-    }
-}
-
-/** A small outlined chip for secondary actions next to a section title. */
-@Composable
-private fun QuietChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, accent: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    val colors = AniMixTheme.colors
-    Row(
-        Modifier.clip(AniMixTheme.shapes.pill)
-            .then(if (accent && enabled) Modifier.background(colors.accentGradient) else Modifier.background(colors.chip).rim(AniMixTheme.shapes.pill, accent = false))
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val content = when {
-            accent && enabled -> colors.onAccent
-            !enabled -> colors.textMuted
-            else -> colors.textPrimary
-        }
-        if (icon != null) {
-            Icon(icon, null, Modifier.size(16.dp), tint = if (accent || !enabled) content else colors.accent)
-            Spacer(Modifier.width(6.dp))
-        }
-        Txt(text, AniMixTheme.type.label, color = content, maxLines = 1)
-    }
-}
-
-/** Picking episodes to download: tap numbers, or take the whole season of the chosen dubbing. */
-@Composable
-private fun DownloadPicker(
-    dubbing: Dubbing,
-    quality: String?,
-    picked: Int,
-    onAll: () -> Unit,
-    onCancel: () -> Unit,
-    onDownload: () -> Unit,
-) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Txt(if (picked == 0) "Выберите серии" else "Выбрано: $picked", AniMixTheme.type.heading, maxLines = 1)
-                Txt(listOfNotNull(dubbing.studio, quality).joinToString(" · "), AniMixTheme.type.caption, maxLines = 1)
-            }
-            QuietChip("Отмена", null, onClick = onCancel)
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            QuietChip(if (picked == dubbing.episodes.size) "Снять выбор" else "Весь сезон · ${dubbing.episodes.size}", AniMixIcons.Check, onClick = onAll)
-            QuietChip(if (picked > 0) "Скачать $picked" else "Скачать", AniMixIcons.Download, accent = true, enabled = picked > 0, onClick = onDownload)
         }
     }
 }

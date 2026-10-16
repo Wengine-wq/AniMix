@@ -80,8 +80,8 @@ import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
 import app.animix.ui.screens.downloads.DownloadsScreen
 import app.animix.ui.screens.downloads.OfflineWatchScreen
-import app.animix.ui.screens.profile.FavoritesScreen
 import app.animix.ui.screens.profile.ListsScreen
+import app.animix.ui.screens.profile.SettingsSectionScreen
 import app.animix.ui.screens.profile.AchievementsScreen
 import app.animix.ui.screens.profile.HistoryScreen
 import app.animix.ui.screens.profile.SupportScreen
@@ -208,7 +208,8 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Catalog -> CatalogScreen(graph, navigator, padding, title = route.title, preset = route.preset, showBack = true)
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
-                    route == Route.Lists -> ListsScreen(graph, navigator, padding)
+                    route is Route.SettingsSection -> SettingsSectionScreen(graph, navigator, padding, route.id)
+                    route == Route.Lists -> ListsScreen(graph, navigator, padding, showBack = true)
                     route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)
                     route == Route.History -> HistoryScreen(graph, navigator, padding)
                     route == Route.Support -> SupportScreen(graph, navigator, padding)
@@ -218,7 +219,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)
-                        Tab.Favorites -> FavoritesScreen(graph, navigator, padding)
+                        Tab.Lists -> ListsScreen(graph, navigator, padding)
                         Tab.Downloads -> DownloadsScreen(graph, navigator, padding)
                         Tab.Profile -> ProfileScreen(graph, navigator, padding)
                     }

@@ -30,3 +30,6 @@ actual object Platform {
 }
 
 actual fun createHttpEngine(): HttpClientEngine = OkHttp.create()
+
+actual fun localDayIndex(millis: Long): Long =
+    Math.floorDiv(millis + java.util.TimeZone.getDefault().getOffset(millis), 86_400_000L)

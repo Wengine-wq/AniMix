@@ -43,37 +43,48 @@ import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 
+/**
+ * «Списки» tab: «Избранное» and every status in one place. Settings can move
+ * «Избранное» from the first chip to the last.
+ */
 @Composable
-fun FavoritesScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
+fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues, showBack: Boolean = false) {
     val library by graph.library.state.collectAsState()
+    val settings by graph.settings.state.collectAsState()
+    val categories = buildList<ListStatus?> {
+        if (!settings.favoritesLast) add(null)
+        addAll(ListStatus.entries)
+        if (settings.favoritesLast) add(null)
+    }
+    // null stands for «Избранное».
+    var selectedName by rememberSaveable { mutableStateOf<String?>(null) }
+    var chosen by rememberSaveable { mutableStateOf(false) }
+    val status: ListStatus? = if (chosen) ListStatus.entries.firstOrNull { it.name == selectedName } else categories.first()
+    val entries = if (status == null) library.favorites else library.inStatus(status)
     LibraryGrid(
-        title = "Избранное",
-        entries = library.favorites,
+        title = "Списки",
+        entries = entries,
         navigator = navigator,
         contentPadding = contentPadding,
-        empty = { EmptyLibrary(AniMixIcons.Heart, "Здесь пока пусто", "Нажмите на сердечко на странице аниме") },
-    )
-}
-
-@Composable
-fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues, initial: ListStatus = ListStatus.Watching) {
-    val library by graph.library.state.collectAsState()
-    var status by rememberSaveable { mutableStateOf(initial) }
-    LibraryGrid(
-        title = "Мои списки",
-        entries = library.inStatus(status),
-        navigator = navigator,
-        contentPadding = contentPadding,
-        showBack = true,
+        showBack = showBack,
         header = {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ListStatus.entries.toList()) { item ->
-                    val count = library.entries.values.count { it.status == item }
-                    Chip(if (count > 0) "${item.label} · $count" else item.label, selected = item == status, onClick = { status = item })
+                items(categories) { item ->
+                    val count = if (item == null) library.favorites.size else library.entries.values.count { it.status == item }
+                    val label = item?.label ?: "Избранное"
+                    Chip(
+                        if (count > 0) "$label · $count" else label,
+                        selected = item == status,
+                        onClick = { chosen = true; selectedName = item?.name },
+                        icon = if (item == null) AniMixIcons.Heart else null,
+                    )
                 }
             }
         },
-        empty = { EmptyLibrary(AniMixIcons.Bookmark, "В списке «${status.label}» пусто", "Добавляйте аниме в списки со страницы аниме") },
+        empty = {
+            if (status == null) EmptyLibrary(AniMixIcons.Heart, "В избранном пусто", "Откройте аниме и нажмите «Списки»")
+            else EmptyLibrary(AniMixIcons.Bookmark, "В списке «${status.label}» пусто", "Откройте аниме и нажмите «Списки»")
+        },
     )
 }
 

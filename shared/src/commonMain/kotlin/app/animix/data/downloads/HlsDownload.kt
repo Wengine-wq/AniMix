@@ -15,6 +15,11 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.io.buffered
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readString
@@ -79,7 +84,13 @@ internal object HlsManifest {
 }
 
 /** Persist each resource independently; Range resumes a partially transferred resource. */
-class HlsDownload(private val http: HttpClient, private val files: OfflineFiles, private val assembler: MediaAssembler) {
+class HlsDownload(
+    private val http: HttpClient,
+    private val files: OfflineFiles,
+    private val assembler: MediaAssembler,
+    /** Parts fetched at once; set by «Умное соединение». */
+    private val parallelism: () -> Int = { 3 },
+) {
     private suspend fun manifest(url: String, headers: Map<String, String>): Pair<String, String> =
         http.prepareGet(url) { expectSuccess = false; headers { headers.forEach { (k, v) -> set(k, v) }; set(HttpHeaders.Accept, "*/*") } }.execute { response ->
             if (response.status.value in setOf(401, 403)) throw SourceExpired()
@@ -139,12 +150,27 @@ class HlsDownload(private val http: HttpClient, private val files: OfflineFiles,
         files.write("work/$id/plan.txt", fingerprint)
         plan.manifests.forEach { (name, content) -> files.write("work/$id/$name", content) }
         var downloaded = 0L
-        plan.resources.forEachIndexed { index, item ->
-            currentCoroutineContext().ensureActive()
-            val path = "work/$id/${item.filename}"
-            transfer(item.url, stream.headers, path) { bytes -> progress(index, plan.resources.size, downloaded + bytes, false) }
-            downloaded += files.size(path)
-            progress(index + 1, plan.resources.size, downloaded, false)
+        var finished = 0
+        val counters = Mutex()
+        val queue = Channel<HlsResource>(Channel.UNLIMITED)
+        plan.resources.forEach { queue.trySend(it) }
+        queue.close()
+        // Several parts at once: each one is its own resumable file, so order does not matter.
+        coroutineScope {
+            repeat(parallelism().coerceIn(1, 8)) {
+                launch {
+                    for (item in queue) {
+                        val path = "work/$id/${item.filename}"
+                        transfer(item.url, stream.headers, path) { }
+                        val size = files.size(path)
+                        counters.withLock {
+                            downloaded += size
+                            finished++
+                            progress(finished, plan.resources.size, downloaded, false)
+                        }
+                    }
+                }
+            }
         }
         val assembling = "$id.assembling.mp4"
         files.delete(assembling)
