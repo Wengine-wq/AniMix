@@ -48,7 +48,9 @@ import kotlinx.coroutines.delay
 import app.animix.ui.components.accentGlow
 import app.animix.ui.components.highlight
 import app.animix.ui.components.rim
-import app.animix.data.library.ListStatus
+import app.animix.data.library.ContinueItem
+import app.animix.data.library.continueWatching
+import app.animix.data.library.tasteGenres
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import app.animix.data.shikimori.CatalogOrder
@@ -91,7 +93,10 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     var heroImage by remember { mutableStateOf<String?>(null) }
     Ambient(heroImage)
     val library by graph.library.state.collectAsState()
-    val watching = library.inStatus(ListStatus.Watching).map { it.anime }
+    val continueItems = remember(library) { library.continueWatching() }
+    // Recomputed only when the taste changes, not on every saved position.
+    val taste = remember(library) { library.tasteGenres().take(3).joinToString { it.first } }
+    val picks = rememberLoad(taste) { if (taste.isEmpty()) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
 
     LazyColumn(
         state = rememberLazyListState(),
@@ -119,8 +124,11 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
                     )
                 }
-                if (watching.isNotEmpty()) {
-                    item { Shelf("Продолжить просмотр", watching, open) { navigator.push(Route.Lists) } }
+                item {
+                    ContinueShelf(continueItems, onOpen = { navigator.push(Route.Watch(it.entry.anime, episode = it.episode)) }) { navigator.push(Route.History) }
+                }
+                (picks.value as? Load.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { recommended ->
+                    item { Shelf("Подобрано для вас", recommended, open, onMore = null) }
                 }
                 item { Shelf("Сейчас на экранах", data.ongoing.drop(5), open) {
                     navigator.push(Route.Catalog(CatalogQuery(status = "ongoing"), "Сейчас на экранах"))
@@ -281,11 +289,47 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
     }
 }
 
+/** «Продолжить просмотр»: wide cards with the episode to open and how far the title is watched. */
 @Composable
-private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, onMore: () -> Unit) {
+private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> Unit, onMore: () -> Unit) {
+    if (items.isEmpty()) return
+    val colors = AniMixTheme.colors
+    Column(Modifier.padding(bottom = 32.dp)) {
+        SectionHeader("Продолжить просмотр", Modifier.padding(horizontal = 20.dp), action = "История", onAction = onMore)
+        Spacer(Modifier.height(12.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.entry.anime.key }) { item ->
+                Row(
+                    Modifier.width(300.dp).height(112.dp).clip(AniMixTheme.shapes.large).background(colors.surface)
+                        .rim(AniMixTheme.shapes.large, accent = false).clickable { onOpen(item) }.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RemoteImage(item.entry.anime.posterUrl, Modifier.fillMaxHeight().aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Txt(item.entry.anime.title, AniMixTheme.type.bodyStrong, maxLines = 2)
+                        Spacer(Modifier.height(4.dp))
+                        Txt(if (item.episodeStarted) "Серия ${item.episode} · продолжить" else "Серия ${item.episode} · дальше по списку", AniMixTheme.type.micro, maxLines = 1)
+                        Spacer(Modifier.height(10.dp))
+                        Box(Modifier.fillMaxWidth().height(4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)) {
+                            Box(Modifier.fillMaxWidth(item.titleProgress.coerceAtLeast(0.03f)).fillMaxHeight().background(colors.accentGradient))
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+                        Icon(AniMixIcons.Play, null, Modifier.size(15.dp), tint = colors.onAccent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, onMore: (() -> Unit)?) {
     if (items.isEmpty()) return
     Column(Modifier.padding(bottom = 32.dp)) {
-        SectionHeader(title, Modifier.padding(horizontal = 20.dp), action = "Все", onAction = onMore)
+        SectionHeader(title, Modifier.padding(horizontal = 20.dp), action = if (onMore != null) "Все" else null, onAction = onMore)
         Spacer(Modifier.height(12.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp),
