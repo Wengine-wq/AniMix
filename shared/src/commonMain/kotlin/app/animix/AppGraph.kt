@@ -6,6 +6,7 @@ import app.animix.core.Platform
 import app.animix.data.AnimeRepository
 import app.animix.data.cache.ResponseCache
 import app.animix.data.library.Library
+import app.animix.data.achievements.Achievements
 import app.animix.data.createHttpClient
 import app.animix.data.playback.KodikResolver
 import app.animix.data.downloads.DownloadManager
@@ -28,6 +29,9 @@ class AppGraph {
 
     /** The local profile and lists, stored on this device. */
     val library = Library(DiskStore(Platform.dataDir), scope)
+
+    /** Achievements, earned from the local library, settings and in-app events. */
+    val achievements = Achievements(DiskStore(Platform.dataDir), scope, library, settings)
 
     private val apiCache = ResponseCache(DiskStore("${Platform.cacheDir}/api"))
 

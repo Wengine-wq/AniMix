@@ -19,7 +19,9 @@ actual object Platform {
             "macOS" -> File(System.getProperty("user.home"), "Library/Application Support")
             else -> System.getenv("XDG_DATA_HOME")?.let(::File) ?: File(System.getProperty("user.home"), ".local/share")
         } ?: File(System.getProperty("user.home"))
-        File(base, "AniMix3").apply { mkdirs() }
+        // ANIMIX_HOME points a separate copy (tests, off-screen snapshots) at its own data,
+        // so it never touches the user's lists and settings.
+        (System.getenv("ANIMIX_HOME")?.takeIf { it.isNotBlank() }?.let(::File) ?: File(base, "AniMix3")).apply { mkdirs() }
     }
 
     actual val dataDir: String get() = File(appDir, "data").apply { mkdirs() }.absolutePath

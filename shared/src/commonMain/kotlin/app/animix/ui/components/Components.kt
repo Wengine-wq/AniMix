@@ -54,7 +54,13 @@ import app.animix.model.Anime
 import app.animix.model.AnimeKind
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
-import coil3.compose.SubcomposeAsyncImage
+import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 
 @Composable
 fun Txt(
@@ -87,15 +93,21 @@ fun RemoteImage(
     placeholder: Boolean = true,
 ) {
     val colors = AniMixTheme.colors
+    var state by remember(url) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    // Fade in on every load, including memory-cache hits, so posters never pop in.
+    val alpha by animateFloatAsState(
+        if (state is AsyncImagePainter.State.Success) 1f else 0f,
+        animationSpec = tween(if (state is AsyncImagePainter.State.Success) 260 else 0),
+    )
     Box(modifier.clip(shape).then(if (placeholder) Modifier.background(colors.surfaceRaised) else Modifier)) {
+        if (placeholder && state is AsyncImagePainter.State.Loading) Shimmer(Modifier.fillMaxSize(), RectangleShape)
         if (url != null) {
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = url,
                 contentDescription = null,
                 contentScale = contentScale,
-                modifier = Modifier.fillMaxSize(),
-                loading = { if (placeholder) Shimmer(Modifier.fillMaxSize()) },
-                error = { if (placeholder) Box(Modifier.fillMaxSize().background(colors.surfaceRaised)) },
+                onState = { state = it },
+                modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha },
             )
         }
     }

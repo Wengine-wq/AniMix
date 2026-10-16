@@ -48,6 +48,18 @@ sealed interface Route {
         override val key get() = "reviews:${anime.key}"
     }
 
+    data object History : Route {
+        override val key get() = "history"
+    }
+
+    data object Support : Route {
+        override val key get() = "support"
+    }
+
+    data object Achievements : Route {
+        override val key get() = "achievements"
+    }
+
     data object Lists : Route {
         override val key get() = "lists"
     }
@@ -104,6 +116,9 @@ class Navigator {
             "search" -> push(Route.Search(path.drop(1).joinToString("/").decodeUrlComponent()))
             "settings" -> { tab = Tab.Profile; push(Route.Settings) }
             "lists" -> { tab = Tab.Profile; push(Route.Lists) }
+            "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
+            "history" -> { tab = Tab.Profile; push(Route.History) }
+            "support" -> { tab = Tab.Profile; push(Route.Support) }
             else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false
         }
         return true

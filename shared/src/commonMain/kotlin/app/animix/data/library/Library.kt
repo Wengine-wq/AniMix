@@ -63,6 +63,8 @@ data class LibraryData(
  * The local profile and lists, kept on this device in one JSON file.
  * Accounts come later; entries already carry Shikimori-compatible statuses.
  */
+data class StatusChange(val animeKey: String, val from: ListStatus?, val to: ListStatus?)
+
 class Library(private val store: DiskStore, private val scope: CoroutineScope) {
 
     private val _state = MutableStateFlow(LibraryData())
@@ -76,7 +78,14 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         if (loaded == null) save()
     }
 
-    fun setStatus(anime: Anime, status: ListStatus?) = change(anime) { it.copy(status = status) }
+    /** Every list status change as it happens, so listeners never miss a quick In-between step. */
+    val statusChanges = kotlinx.coroutines.flow.MutableSharedFlow<StatusChange>(extraBufferCapacity = 64)
+
+    fun setStatus(anime: Anime, status: ListStatus?) {
+        val before = _state.value.entries[anime.key]?.status
+        change(anime) { it.copy(status = status) }
+        if (before != status) statusChanges.tryEmit(StatusChange(anime.key, before, status))
+    }
 
     fun toggleFavorite(anime: Anime) = change(anime) { it.copy(favorite = !it.favorite) }
 

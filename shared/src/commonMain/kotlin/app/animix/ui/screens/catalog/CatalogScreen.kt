@@ -3,6 +3,16 @@ package app.animix.ui.screens.catalog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import app.animix.ui.components.Load
+import app.animix.ui.components.Shimmer
+import app.animix.ui.components.rememberLoad
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,6 +74,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+/** Shikimori season filter values: recent years one by one, then decades. */
+private val seasonFilters: List<Pair<String, String>> = run {
+    val year = kotlin.time.Clock.System.now().toString().take(4).toInt()
+    (year downTo year - 5).map { it.toString() to it.toString() } +
+        listOf("2010-е" to "2010_2019", "2000-е" to "2000_2009", "1990-е" to "199x", "Раньше" to "ancient")
+}
+
 private val kindFilters = listOf(
     "Все" to emptyList(),
     "Сериалы" to listOf("tv"),
@@ -77,6 +94,7 @@ private val kindFilters = listOf(
  * The catalog grid. Used for the Catalog tab, for "see all" lists from Home
  * (with a [preset]) and for search ([searchMode]).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CatalogScreen(
     graph: AppGraph,
@@ -90,8 +108,15 @@ fun CatalogScreen(
 ) {
     var kinds by remember(preset) { mutableStateOf(preset.kinds) }
     var order by remember(preset) { mutableStateOf(preset.order) }
+    var genres by remember(preset) { mutableStateOf(preset.genreIds) }
+    var season by remember(preset) { mutableStateOf(preset.season) }
+    var moreFilters by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(initialSearch) }
-    val query = preset.copy(kinds = kinds, order = order, search = search.trim().ifEmpty { null }, page = 1)
+    val query = preset.copy(
+        kinds = kinds, order = order, genreIds = genres, season = season,
+        search = search.trim().ifEmpty { null }, page = 1,
+    )
+    val genreList = rememberLoad(Unit) { graph.shikimori.genres() }
     val paging = remember(query) { CatalogPaging(graph, query) }
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState()
@@ -144,7 +169,54 @@ fun CatalogScreen(
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(CatalogOrder.entries.toList()) { item ->
-                            Chip(item.label, selected = order == item, onClick = { order = item }, icon = if (order == item) AniMixIcons.Filter else null)
+                            Chip(item.label, selected = order == item, onClick = { order = item })
+                        }
+                        item {
+                            val active = genres.size + (if (season != null) 1 else 0)
+                            Chip(
+                                if (active > 0) "Фильтры · $active" else "Жанры и год",
+                                selected = moreFilters || active > 0,
+                                onClick = { moreFilters = !moreFilters },
+                                icon = AniMixIcons.Filter,
+                            )
+                        }
+                    }
+                    AnimatedVisibility(moreFilters, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                        Column(Modifier.padding(top = 14.dp)) {
+                            Txt("Год", AniMixTheme.type.label, color = AniMixTheme.colors.textSecondary)
+                            Spacer(Modifier.height(8.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { Chip("Любой", selected = season == null, onClick = { season = null }) }
+                                items(seasonFilters) { (label, value) ->
+                                    Chip(label, selected = season == value, onClick = { season = if (season == value) null else value })
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Txt("Жанры", AniMixTheme.type.label, color = AniMixTheme.colors.textSecondary, modifier = Modifier.weight(1f))
+                                if (genres.isNotEmpty()) {
+                                    Txt(
+                                        "Сбросить",
+                                        AniMixTheme.type.label,
+                                        color = AniMixTheme.colors.accent,
+                                        modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable { genres = emptyList() }.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            when (val state = genreList.value) {
+                                is Load.Ready -> FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    state.value.filterNot { it.isDemographic }.forEach { genre ->
+                                        val on = genre.id in genres
+                                        Chip(genre.title, selected = on, onClick = { genres = if (on) genres - genre.id else genres + genre.id })
+                                    }
+                                }
+                                is Load.Failed -> Txt(state.error.userMessage(), AniMixTheme.type.caption)
+                                Load.Loading -> Shimmer(Modifier.fillMaxWidth().height(36.dp), AniMixTheme.shapes.pill)
+                            }
                         }
                     }
                 }
@@ -153,7 +225,11 @@ fun CatalogScreen(
         }
 
         items(paging.items, key = { it.key }) { anime ->
-            AnimeCard(anime, onClick = { navigator.push(Route.Detail(anime)) })
+            AnimeCard(anime, onClick = {
+                if (query.search != null) graph.achievements.openedFromSearch(anime.key)
+                if (query.kinds.isNotEmpty()) graph.achievements.openedFromFilter(anime.key)
+                navigator.push(Route.Detail(anime))
+            })
         }
 
         when {

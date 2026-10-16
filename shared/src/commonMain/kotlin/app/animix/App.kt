@@ -82,6 +82,10 @@ import app.animix.ui.screens.downloads.DownloadsScreen
 import app.animix.ui.screens.downloads.OfflineWatchScreen
 import app.animix.ui.screens.profile.FavoritesScreen
 import app.animix.ui.screens.profile.ListsScreen
+import app.animix.ui.screens.profile.AchievementsScreen
+import app.animix.ui.screens.profile.HistoryScreen
+import app.animix.ui.screens.profile.SupportScreen
+import app.animix.ui.screens.profile.AchievementToastHost
 import app.animix.ui.screens.profile.ProfileScreen
 import app.animix.ui.screens.profile.SettingsScreen
 import app.animix.ui.theme.AniMixTheme
@@ -100,6 +104,7 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     LaunchedEffect(Unit) {
         graph.settings.load()
         graph.library.load()
+        graph.achievements.load()
         graph.downloads.load()
     }
     LaunchedEffect(startLink) { startLink?.let(navigator::openLink) }
@@ -169,6 +174,7 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
                     .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.85f), Color.Transparent))),
             )
             BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            AchievementToastHost(graph, Modifier.align(Alignment.TopCenter))
         }
     }
 }
@@ -203,6 +209,9 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
                     route == Route.Lists -> ListsScreen(graph, navigator, padding)
+                    route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)
+                    route == Route.History -> HistoryScreen(graph, navigator, padding)
+                    route == Route.Support -> SupportScreen(graph, navigator, padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding)
                     route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)

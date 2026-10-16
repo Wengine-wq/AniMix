@@ -62,6 +62,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
     val library by graph.library.state.collectAsState()
+    val achievements by graph.achievements.progress.collectAsState()
     var editing by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding) {
         Txt("Профиль", type.title, modifier = Modifier.padding(top = 12.dp))
@@ -91,25 +92,25 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Stat(library.listed.toString(), "В списках", Modifier.weight(1f))
             Stat(library.inStatus(ListStatus.Completed).size.toString(), "Просмотрено", Modifier.weight(1f))
-            Stat(library.favorites.size.toString(), "Избранное", Modifier.weight(1f))
+            Stat(achievements.count { it.unlocked }.toString(), "Достижения", Modifier.weight(1f))
         }
         Spacer(Modifier.height(20.dp))
         Panel {
             NavRow("Мои списки", AniMixIcons.Bookmark, onClick = { navigator.push(Route.Lists) }, trailing = library.listed.takeIf { it > 0 }?.toString())
             Divider()
-            NavRow("История просмотров", AniMixIcons.History, onClick = {})
+            NavRow("История просмотров", AniMixIcons.History, onClick = { navigator.push(Route.History) })
             Divider()
             NavRow("Избранное", AniMixIcons.Heart, onClick = { navigator.select(Tab.Favorites) }, trailing = library.favorites.size.takeIf { it > 0 }?.toString())
             Divider()
             NavRow("Загрузки", AniMixIcons.Download, onClick = { navigator.select(Tab.Downloads) })
             Divider()
-            NavRow("Достижения", AniMixIcons.Trophy, onClick = {})
+            NavRow("Достижения", AniMixIcons.Trophy, onClick = { navigator.push(Route.Achievements) }, trailing = "${achievements.count { it.unlocked }} / ${achievements.size}")
         }
         Spacer(Modifier.height(14.dp))
         Panel {
             NavRow("Настройки", AniMixIcons.Sliders, onClick = { navigator.push(Route.Settings) })
             Divider()
-            NavRow("Поддержка", AniMixIcons.Help, onClick = {})
+            NavRow("Поддержка", AniMixIcons.Help, onClick = { navigator.push(Route.Support) })
         }
     }
 }
@@ -137,6 +138,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     }
                     ThemeOption(mode.label, icon, settings.themeMode == mode, Modifier.weight(1f)) {
                         graph.settings.update { it.copy(themeMode = mode) }
+                        graph.achievements.themeChosen(mode.name)
                     }
                 }
             }
@@ -144,11 +146,11 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
         Spacer(Modifier.height(20.dp))
         GroupTitle("Воспроизведение")
         Panel {
-            ToggleRow("Автопереход к следующей серии", settings.autoNextEpisode, { v -> graph.settings.update { it.copy(autoNextEpisode = v) } }, AniMixIcons.Play)
+            ToggleRow("Автопереход к следующей серии", settings.autoNextEpisode, { v -> graph.settings.update { it.copy(autoNextEpisode = v) }; if (v) graph.achievements.settingEnabled("autoNextEpisode") }, AniMixIcons.Play)
             Divider()
-            ToggleRow("Пропускать опенинги", settings.skipOpenings, { v -> graph.settings.update { it.copy(skipOpenings = v) } }, AniMixIcons.Clock)
+            ToggleRow("Пропускать опенинги", settings.skipOpenings, { v -> graph.settings.update { it.copy(skipOpenings = v) }; if (v) graph.achievements.settingEnabled("skipOpenings") }, AniMixIcons.Clock)
             Divider()
-            ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) } }, AniMixIcons.Clock)
+            ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
         }
         Spacer(Modifier.height(20.dp))
         GroupTitle("Данные")
