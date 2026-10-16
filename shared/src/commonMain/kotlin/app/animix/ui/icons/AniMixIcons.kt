@@ -76,6 +76,8 @@ object AniMixIcons {
     val Volume = outline("Volume", "M4 9.5h3.5L12 5.5v13l-4.5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11")
     val Muted = outline("Muted", "M4 9.5h3.5L12 5.5v13l-4.5-4H4zM16.5 9.5l5 5M21.5 9.5l-5 5")
     val SkipAhead = outline("SkipAhead", "M5 6.5l6 5.5-6 5.5M12.5 6.5l6 5.5-6 5.5")
+    val Fill = outline("Fill", "M3 8V4h4M21 8V4h-4M3 16v4h4M21 16v4h-4M7 8h10v8H7z")
+    val Fit = outline("Fit", "M3 8V4h4M21 8V4h-4M3 16v4h4M21 16v4h-4M9.5 10h5v4h-5z")
     val Star = filled(
         "Star",
         "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z",

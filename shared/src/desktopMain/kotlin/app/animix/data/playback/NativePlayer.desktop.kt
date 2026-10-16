@@ -123,6 +123,7 @@ internal class DesktopNativePlayer : NativePlayer {
             object : BufferFormatCallback {
                 override fun getBufferFormat(sourceWidth: Int, sourceHeight: Int): BufferFormat {
                     frames.format(sourceWidth, sourceHeight)
+                    mutable.update { it.copy(videoWidth = sourceWidth, videoHeight = sourceHeight) }
                     return RV32BufferFormat(sourceWidth, sourceHeight)
                 }
                 override fun newFormatSize(bufferWidth: Int, bufferHeight: Int, displayWidth: Int, displayHeight: Int) = Unit

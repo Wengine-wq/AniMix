@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
@@ -100,6 +101,8 @@ fun AniMixPlayer(
     onRefresh: (() -> Unit)? = null,
     onDownload: ((String) -> Unit)? = null,
     onQualityChange: (String) -> Unit = {},
+    onAutoNextChoice: (Boolean) -> Unit = {},
+    onFillScreenChange: (Boolean) -> Unit = {},
     fullscreen: Boolean = false,
     onFullscreenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -122,12 +125,11 @@ fun AniMixPlayer(
     var endingSkipped by remember { mutableStateOf(false) }
     var completed by remember { mutableStateOf(false) }
     var finishedEarly by remember { mutableStateOf(false) }
-    var nextCancelled by remember { mutableStateOf(false) }
-    var countdown by remember { mutableStateOf<Int?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
     var activity by remember { mutableIntStateOf(0) }
     var seekFeedback by remember { mutableStateOf<Int?>(null) }
     var lastVolume by remember { mutableFloatStateOf(1f) }
+    var fill by remember { mutableStateOf(settings.fillScreen) }
 
     val watchedFrom = watchedFromMs(state.durationMs, plan.ending)
     val savedPosition: (Long) -> Long = { position -> if (watchedFrom != null && position >= watchedFrom) 0 else position }
@@ -197,18 +199,19 @@ fun AniMixPlayer(
         show()
     }
     fun pickQuality(label: String) { quality = label; onQualityChange(label) }
+    fun toggleFill() { fill = !fill; onFillScreenChange(fill); show() }
 
     LaunchedEffect(state.positionMs / 250, state.playing, plan, settings.skipOpenings, settings.skipEndings) {
         if (!state.playing) return@LaunchedEffect
         if (settings.skipOpenings && !openingSkipped) skipTarget(state.positionMs, plan.opening)?.let { openingSkipped = true; jump(it); return@LaunchedEffect }
         if (settings.skipEndings && !endingSkipped) skipTarget(state.positionMs, plan.ending)?.let { endingSkipped = true; jump(it) }
     }
-    LaunchedEffect(atEnd, settings.autoNextEpisode, nextCancelled) {
-        countdown = null
-        if (!atEnd || onNext == null || !settings.autoNextEpisode || nextCancelled) return@LaunchedEffect
-        for (seconds in 5 downTo 1) { countdown = seconds; delay(1_000) }
-        countdown = null
-        nextCallback?.invoke()
+    LaunchedEffect(atEnd, settings.autoNextEpisode, settings.autoNextAsked) {
+        // Asked once; after that the next episode just starts, without a countdown to watch.
+        if (atEnd && onNext != null && settings.autoNextAsked && settings.autoNextEpisode) {
+            delay(400)
+            nextCallback?.invoke()
+        }
     }
     LaunchedEffect(controlsVisible, state.playing, activity) {
         if (controlsVisible && state.playing) { delay(3_000); controlsVisible = false }
@@ -239,6 +242,7 @@ fun AniMixPlayer(
                         Key.DirectionDown -> { player.setVolume(state.volume - 0.1f); show() }
                         Key.M -> toggleMute()
                         Key.F -> onFullscreenChange(!fullscreen)
+                        Key.Z -> if (fullscreen) toggleFill() else return@onPreviewKeyEvent false
                         Key.Escape -> if (fullscreen) onFullscreenChange(false) else return@onPreviewKeyEvent false
                         Key.N -> nextCallback?.invoke() ?: return@onPreviewKeyEvent false
                         Key.S -> activeSkip?.let { (_, target) -> jump(target) } ?: return@onPreviewKeyEvent false
@@ -277,7 +281,7 @@ fun AniMixPlayer(
                     )
                 },
         ) {
-            NativeVideoSurface(player, Modifier.fillMaxSize())
+            VideoArea(player, state, zoomed = fill && fullscreen)
             PlayerOverlay(
                 visible = controlsVisible || !state.playing || state.error != null,
                 state = state,
@@ -295,6 +299,8 @@ fun AniMixPlayer(
                 onQuality = { pickQuality(it); show() },
                 onDownload = onDownload?.let { download -> { download(available) } },
                 onFullscreen = { onFullscreenChange(!fullscreen) },
+                fill = fill,
+                onFill = ::toggleFill,
                 onMute = ::toggleMute,
                 onVolume = { player.setVolume(it); show() },
                 onNext = { nextCallback?.invoke() },
@@ -317,11 +323,12 @@ fun AniMixPlayer(
             }
             if (atEnd && state.error == null) {
                 EndCard(
-                    countdown = countdown,
                     nextLabel = nextLabel,
                     hasNext = onNext != null,
+                    ask = !settings.autoNextAsked,
+                    auto = settings.autoNextAsked && settings.autoNextEpisode,
                     onNext = { nextCallback?.invoke() },
-                    onCancel = { nextCancelled = true },
+                    onChoice = { yes -> onAutoNextChoice(yes); if (yes) nextCallback?.invoke() },
                     onReplay = { finishedEarly = false; openingSkipped = false; endingSkipped = false; player.seekTo(0); player.play() },
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -370,6 +377,8 @@ private fun PlayerOverlay(
     onQuality: (String) -> Unit,
     onDownload: (() -> Unit)?,
     onFullscreen: () -> Unit,
+    fill: Boolean,
+    onFill: () -> Unit,
     onMute: () -> Unit,
     onVolume: (Float) -> Unit,
     onNext: () -> Unit,
@@ -419,6 +428,7 @@ private fun PlayerOverlay(
                     OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute, size = 38)
                     if (isDesktop) VolumeBar(state.volume, onVolume)
                     if (hasNext) OverlayIcon(AniMixIcons.Next, onNext, size = 38)
+                    if (fullscreen) OverlayIcon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, onFill, size = 38)
                     OverlayIcon(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen, size = 38)
                 }
             }
@@ -559,41 +569,60 @@ private fun OverlayCard(modifier: Modifier, content: @Composable ColumnScope.() 
 
 @Composable
 private fun EndCard(
-    countdown: Int?,
     nextLabel: String?,
     hasNext: Boolean,
+    ask: Boolean,
+    auto: Boolean,
     onNext: () -> Unit,
-    onCancel: () -> Unit,
+    onChoice: (Boolean) -> Unit,
     onReplay: () -> Unit,
     modifier: Modifier,
 ) {
     OverlayCard(modifier) {
         when {
-            hasNext && countdown != null -> {
-                Txt("${nextLabel ?: "Следующая серия"} через $countdown с", AniMixTheme.type.bodyStrong, color = Color.White, maxLines = 2)
+            hasNext && ask -> {
+                Txt("Включать следующую серию сама?", AniMixTheme.type.bodyStrong, color = Color.White, align = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(4.dp))
+                Txt("Изменить можно в настройках", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.7f))
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AccentPill("Смотреть сейчас", AniMixIcons.Next, onNext)
-                    Spacer(Modifier.width(8.dp))
-                    GlassChip("Отмена", onCancel)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CardButton("Да, включать", primary = true, modifier = Modifier.weight(1f)) { onChoice(true) }
+                    CardButton("Нет", primary = false, modifier = Modifier.weight(1f)) { onChoice(false) }
                 }
+            }
+            hasNext && auto -> {
+                CircularProgressIndicator(Modifier.size(22.dp), color = AniMixTheme.colors.accent, strokeWidth = 2.dp)
+                Spacer(Modifier.height(10.dp))
+                Txt("Открываем ${nextLabel?.lowercase() ?: "следующую серию"}", AniMixTheme.type.caption, color = Color.White)
             }
             hasNext -> {
                 Txt("Серия закончилась", AniMixTheme.type.bodyStrong, color = Color.White)
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AccentPill(nextLabel ?: "Следующая серия", AniMixIcons.Next, onNext)
-                    Spacer(Modifier.width(8.dp))
-                    GlassChip("Сначала", onReplay)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CardButton(nextLabel ?: "Следующая", primary = true, modifier = Modifier.weight(1f), onClick = onNext)
+                    CardButton("Сначала", primary = false, modifier = Modifier.weight(1f), onClick = onReplay)
                 }
             }
             else -> {
                 Txt("Это последняя серия", AniMixTheme.type.bodyStrong, color = Color.White)
                 Spacer(Modifier.height(14.dp))
-                AccentPill("Посмотреть снова", AniMixIcons.SeekBack, onReplay)
+                CardButton("Посмотреть снова", primary = true, modifier = Modifier.fillMaxWidth(), onClick = onReplay)
             }
         }
     }
+}
+
+/** Equal-sized card actions: the primary one in the accent gradient, the other as quiet glass. */
+@Composable
+private fun CardButton(text: String, primary: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val colors = AniMixTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier.height(42.dp).pressScale(interaction).clip(AniMixTheme.shapes.pill)
+            .then(if (primary) Modifier.background(colors.accentGradient) else Modifier.background(Color.White.copy(alpha = 0.14f)))
+            .clickable(interaction, indication = null, onClick = onClick).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) { Txt(text, AniMixTheme.type.label, color = if (primary) colors.onAccent else Color.White, maxLines = 1) }
 }
 
 @Composable
@@ -614,6 +643,30 @@ private fun ErrorCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 otherQualities.take(3).forEach { label -> GlassChip(label) { onQuality(label) } }
             }
+        }
+    }
+}
+
+/** Zoom that fills the screen, capped so no more than a sliver of the picture is cut off. */
+internal fun fillZoom(containerAspect: Float, videoAspect: Float): Float {
+    if (containerAspect <= 0f || videoAspect <= 0f) return 1f
+    return maxOf(containerAspect / videoAspect, videoAspect / containerAspect).coerceIn(1f, MaxFillZoom)
+}
+
+private const val MaxFillZoom = 1.3f
+
+/** The native surface, fitted, or zoomed to fill in borderless mode. */
+@Composable
+private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boolean) {
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+        val videoAspect = if (state.videoWidth > 0 && state.videoHeight > 0) state.videoWidth.toFloat() / state.videoHeight else 0f
+        val containerAspect = if (maxHeight.value > 0) maxWidth.value / maxHeight.value else 0f
+        val zoom = if (zoomed) fillZoom(containerAspect, videoAspect) else 1f
+        if (zoom > 1.001f) {
+            val (width, height) = if (containerAspect > videoAspect) maxHeight * videoAspect to maxHeight else maxWidth to maxWidth / videoAspect
+            NativeVideoSurface(player, Modifier.requiredSize(width * zoom, height * zoom))
+        } else {
+            NativeVideoSurface(player, Modifier.fillMaxSize())
         }
     }
 }

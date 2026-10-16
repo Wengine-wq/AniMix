@@ -73,6 +73,8 @@ internal class AndroidNativePlayer : NativePlayer {
             positionMs = engine.currentPosition.coerceAtLeast(0),
             durationMs = engine.duration.takeUnless { value -> value == C.TIME_UNSET }?.coerceAtLeast(0) ?: 0,
             volume = engine.volume,
+            videoWidth = engine.videoSize.let { size -> (size.width * size.pixelWidthHeightRatio).toInt() },
+            videoHeight = engine.videoSize.height,
         ) }
     }
     override fun load(url: String, headers: Map<String, String>, startPositionMs: Long, playWhenReady: Boolean) {
@@ -117,7 +119,12 @@ internal class AndroidNativePlayer : NativePlayer {
         // Landscape and edge-to-edge while the player is big; the previous mode returns afterwards.
         val previous = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        onDispose { if (activity != null && previous != null) activity.requestedOrientation = previous }
+        onDispose {
+            if (activity == null || previous == null) return@onDispose
+            // "Unspecified" would keep a phone held sideways in landscape after leaving the player.
+            val phone = activity.resources.configuration.smallestScreenWidthDp < 600
+            activity.requestedOrientation = if (phone && previous == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT else previous
+        }
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window

@@ -21,9 +21,13 @@ data class Settings(
     val skipOpenings: Boolean = true,
     val skipEndings: Boolean = false,
     val autoNextEpisode: Boolean = true,
+    /** Whether the viewer has answered the auto-next question at the end of an episode. */
+    val autoNextAsked: Boolean = false,
     val preferredDubbing: String? = null,
     /** The quality picked last in the player, used for the next episode too. */
     val preferredQuality: String? = null,
+    /** Fullscreen video zoomed to fill the screen, cropping at most a little of the edges. */
+    val fillScreen: Boolean = false,
     /** Quality for downloads; asked on the first download, changeable in settings. */
     val downloadQuality: String? = null,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */

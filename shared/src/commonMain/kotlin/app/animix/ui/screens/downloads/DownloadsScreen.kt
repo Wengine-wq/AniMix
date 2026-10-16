@@ -112,6 +112,8 @@ import kotlinx.coroutines.launch
                     onNext = next?.let { { currentId = it.id } },
                     fullscreen = fullscreen,
                     onFullscreenChange = { fullscreen = it },
+                    onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
+                    onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                 )
             }
         }

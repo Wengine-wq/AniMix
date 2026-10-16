@@ -13,6 +13,9 @@ data class PlayerSnapshot(
     val durationMs: Long = 0,
     val volume: Float = 1f,
     val error: String? = null,
+    /** Decoded picture size, 0 until the first frame. */
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
 )
 
 interface NativePlayer {

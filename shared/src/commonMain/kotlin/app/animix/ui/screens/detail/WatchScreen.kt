@@ -259,7 +259,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                                 episode,
                                 selected = if (selecting) episode.number in picked else episode.number == episodeNumber,
                                 watched = episode.isWatched(entry),
-                                started = (entry?.episodePositions?.get(episode.number) ?: 0) > 0,
+                                progress = watchProgress(entry, episode),
                                 saved = episode.number in saved,
                             ) {
                                 if (selecting) picked = if (episode.number in picked) picked - episode.number else picked + episode.number
@@ -318,6 +318,8 @@ private fun PlayerArea(
                 onQualityChange = { quality -> graph.settings.update { it.copy(preferredQuality = quality) } },
                 fullscreen = fullscreen,
                 onFullscreenChange = { fullscreen = it },
+                onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
+                onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
             )
         }
       }
@@ -471,9 +473,9 @@ private fun DubbingList(dubbings: List<Dubbing>, selected: Dubbing?, onSelect: (
     }
 }
 
-/** An episode number; watched ones are dimmed with a check, started ones carry a thin accent line. */
+/** An episode number; watched ones are dimmed with a check, started ones show how far they got. */
 @Composable
-private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, started: Boolean, saved: Boolean, onClick: () -> Unit) {
+private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, progress: Float?, saved: Boolean, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip)
@@ -498,8 +500,17 @@ private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, s
         if (saved) {
             Icon(AniMixIcons.Download, "Скачано", Modifier.align(Alignment.TopStart).padding(5.dp).size(11.dp), tint = colors.textMuted)
         }
-        if (started && !watched) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).width(16.dp).height(2.dp).clip(AniMixTheme.shapes.pill).background(colors.accent))
+        if (progress != null && !watched) {
+            Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 10.dp).padding(bottom = 6.dp).fillMaxWidth().height(2.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(colors.accent))
+            }
         }
     }
+}
+
+/** How far into [episode] the viewer got, 0..1; null when it was not started. Unknown lengths show a short line. */
+internal fun watchProgress(entry: LibraryEntry?, episode: Episode): Float? {
+    val position = entry?.episodePositions?.get(episode.number)?.takeIf { it > 0 } ?: return null
+    val duration = episode.durationSeconds?.takeIf { it > 0 } ?: return 0.25f
+    return (position / 1000f / duration).coerceIn(0.05f, 1f)
 }
