@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+fail() { printf '\nPlayback guard: %s\n' "$1" >&2; exit 1; }
+mode=${1:-index}
+protected_paths() {
+    git "$@" -- .githooks gradle/libs.versions.toml shared/build.gradle.kts desktopApp/build.gradle.kts androidApp/build.gradle.kts \
+        desktopApp/src/main/kotlin/app/animix/desktop/Main.kt shared/src/androidMain/AndroidManifest.xml \
+        shared/src/commonMain/kotlin/app/animix/data/library/Library.kt \
+        shared/src/commonMain/kotlin/app/animix/AppGraph.kt \
+        shared/src/commonMain/kotlin/app/animix/App.kt \
+        shared/src/commonMain/kotlin/app/animix/data/playback \
+        shared/src/commonMain/kotlin/app/animix/data/downloads \
+        shared/src/commonMain/kotlin/app/animix/ui/player \
+        shared/src/commonMain/kotlin/app/animix/ui/screens/detail/WatchScreen.kt \
+        shared/src/commonMain/kotlin/app/animix/ui/screens/downloads \
+        shared/src/commonMain/kotlin/app/animix/ui/navigation/Navigator.kt \
+        shared/src/androidMain/kotlin/app/animix/data/playback \
+        shared/src/androidMain/kotlin/app/animix/data/downloads \
+        shared/src/desktopMain/kotlin/app/animix/data/playback \
+        shared/src/desktopMain/kotlin/app/animix/data/downloads \
+        shared/src/commonTest/kotlin/app/animix/HlsDownloadTest.kt \
+        shared/src/commonTest/kotlin/app/animix/PlayerSkipTest.kt \
+        shared/src/desktopTest androidApp/src/androidTest scripts/setup-git-guards.ps1 scripts/generate-media-fixture.ps1
+}
+if [ "$mode" = index ] || [ "$mode" = clean ]; then
+    if [ "$mode" = clean ]; then dirty=$(protected_paths diff --name-only HEAD); else dirty=$(protected_paths diff --name-only); fi
+    [ -z "$dirty" ] || fail "Playback/download changes are excluded from this operation. Stage and commit the complete module first: $dirty"
+    untracked=$(protected_paths ls-files --others --exclude-standard)
+    [ -z "$untracked" ] || fail "Required playback/download files are still untracked: $untracked"
+fi
+[ "$mode" != clean ] || exit 0
+if [ "$mode" = index ]; then tree=$(git write-tree); else tree=${2:?commit revision required}; fi
+git cat-file -e "$tree:.githooks/playback-required.txt" 2>/dev/null || fail "The playback file manifest is missing from the commit."
+while IFS= read -r path || [ -n "$path" ]; do
+    case "$path" in ''|'#'*) continue ;; esac
+    git cat-file -e "$tree:$path" 2>/dev/null || fail "Missing from the staged/committed tree: $path"
+done < "$root/.githooks/playback-required.txt"
+git show "$tree:shared/src/commonMain/kotlin/app/animix/AppGraph.kt" | grep -q 'KodikResolver' || fail "KodikResolver is disconnected from AppGraph."
+git show "$tree:shared/src/commonMain/kotlin/app/animix/ui/screens/detail/WatchScreen.kt" | grep -q 'AniMixPlayer' || fail "The native player is disconnected from WatchScreen."
+git show "$tree:shared/src/commonMain/kotlin/app/animix/AppGraph.kt" | grep -q 'DownloadManager' || fail "DownloadManager is disconnected from AppGraph."
+git show "$tree:shared/src/commonMain/kotlin/app/animix/App.kt" | grep -q 'graph.downloads.load()' || fail "The persistent download queue is not initialized."
+git show "$tree:shared/src/commonMain/kotlin/app/animix/App.kt" | grep -q 'Route.Offline' || fail "Offline playback is disconnected from navigation."
+git show "$tree:shared/src/androidMain/AndroidManifest.xml" | grep -q 'OfflineDownloadService' || fail "Android background downloads are disconnected."

@@ -49,10 +49,15 @@ kotlin {
             implementation(libs.ktor.client.mock)
         }
         androidMain.dependencies {
+            implementation(libs.media3.exoplayer)
+            implementation(libs.media3.hls)
+            implementation(libs.media3.ui)
+            implementation(libs.media3.transformer)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.coroutines.android)
         }
         getByName("desktopMain").dependencies {
+            implementation(libs.vlcj)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.coroutines.swing)
         }
@@ -63,4 +68,9 @@ compose.resources {
     publicResClass = true
     packageOfResClass = "app.animix.resources"
     generateResClass = always
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(":desktopApp:prepareWindowsVlc")
+    systemProperty("animix.vlc.dir", project(":desktopApp").layout.buildDirectory.dir("native-resources/windows/vlc").get().asFile.absolutePath)
 }

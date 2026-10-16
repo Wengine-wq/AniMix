@@ -7,6 +7,8 @@ import androidx.compose.animation.core.spring
 import kotlinx.coroutines.awaitCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +31,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,10 +45,15 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import app.animix.Ambient
 import app.animix.AppGraph
 import app.animix.data.yummy.WatchSourceNotFound
+import app.animix.data.playback.ResolvedStream
+import app.animix.ui.player.AniMixPlayer
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import app.animix.model.Anime
 import app.animix.model.Dubbing
 import app.animix.model.Episode
@@ -82,9 +90,18 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
         graph.yummy.watchSource(anime, force)
     }
     val settings by graph.settings.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var downloadMessage by remember { mutableStateOf<String?>(null) }
     val remembered = settings.dubbingByAnime[anime.key]
     var selectedKey by rememberSaveable(anime.key) { mutableStateOf(remembered) }
     var episodeNumber by rememberSaveable(anime.key) { mutableStateOf<String?>(null) }
+    val dubbings = (source.value as? Load.Ready)?.value?.dubbings.orEmpty()
+    val selectedDubbing = dubbings.firstOrNull { it.key == selectedKey } ?: dubbings.firstOrNull()
+    val selectedEpisode = selectedDubbing?.episodes?.firstOrNull { it.number == episodeNumber }
+    val stream = rememberLoad(selectedDubbing?.key to selectedEpisode?.iframeUrl) { force ->
+        if (selectedEpisode == null || !selectedDubbing.isKodik) awaitCancellation()
+        graph.kodik.resolve(selectedEpisode.iframeUrl, forceRefresh = force)
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val columns = if (maxWidth >= 900.dp) 10 else if (maxWidth >= 600.dp) 8 else 5
@@ -111,7 +128,13 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                     }
                     Spacer(Modifier.height(16.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        PlayerArea(anime, episodeNumber, Modifier.widthIn(max = 860.dp))
+                        PlayerArea(graph, anime, selectedEpisode, selectedDubbing, stream.value, stream::refresh,
+                            onNext = selectedDubbing?.episodes?.let { episodes ->
+                                val index = episodes.indexOfFirst { it.number == episodeNumber }
+                                episodes.getOrNull(index + 1)?.takeIf { index >= 0 }?.let { next -> { episodeNumber = next.number } }
+                            },
+                            modifier = Modifier.widthIn(max = 860.dp),
+                        )
                     }
                     Spacer(Modifier.height(24.dp))
                 }
@@ -137,6 +160,20 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                             selectedKey = dubbing.key
                             graph.settings.update { it.copy(dubbingByAnime = it.dubbingByAnime + (anime.key to dubbing.key)) }
                         }
+                        if (selected?.isKodik == true) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                listOf("720p", "1080p").forEach { quality ->
+                                    TextButton(onClick = { scope.launch {
+                                        try {
+                                            graph.downloads.enqueueSeason(anime, selected, quality)
+                                            downloadMessage = "Сезон добавлен в очередь · ${selected.studio} · $quality"
+                                        } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+                                        catch (_: Exception) { downloadMessage = "Не удалось добавить сезон в очередь" }
+                                    } }) { Txt("Скачать сезон · $quality", AniMixTheme.type.label, color = AniMixTheme.colors.accent) }
+                                }
+                            }
+                            downloadMessage?.let { Txt(it, AniMixTheme.type.caption) }
+                        }
                     }
                     if (selected != null) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -156,24 +193,76 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     }
 }
 
-/** 16:9 area where the player goes; until then it shows the art and what is selected. */
+/** Provider resolution stays behind the native player and the AniMix controls. */
 @Composable
-private fun PlayerArea(anime: Anime, episodeNumber: String?, modifier: Modifier = Modifier) {
+private fun PlayerArea(
+    graph: AppGraph,
+    anime: Anime,
+    episode: Episode?,
+    dubbing: Dubbing?,
+    stream: Load<ResolvedStream>,
+    onRetry: () -> Unit,
+    onNext: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     val colors = AniMixTheme.colors
+    val uriHandler = LocalUriHandler.current
+    val settings by graph.settings.state.collectAsState()
+    val library by graph.library.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var downloadNotice by remember { mutableStateOf<String?>(null) }
+    if (episode != null && dubbing?.isKodik == true && stream is Load.Ready) {
+      Column(modifier.fillMaxWidth()) {
+        androidx.compose.runtime.key(dubbing.key, episode.number) {
+            AniMixPlayer(
+                stream.value, episode, settings,
+                initialPositionMs = library.entry(anime)?.episodePositions?.get(episode.number) ?: 0L,
+                onProgress = { graph.library.saveEpisodePosition(anime, episode.number, it) },
+                onCompleted = {
+                    graph.library.saveEpisodePosition(anime, episode.number, 0)
+                    episode.number.toIntOrNull()?.let { number -> graph.library.setEpisodesWatched(anime, maxOf(number, library.entry(anime)?.episodesWatched ?: 0)) }
+                },
+                onNext = onNext,
+                onRefresh = onRetry,
+                onDownload = { quality -> scope.launch {
+                    try { graph.downloads.enqueueEpisode(anime, dubbing, episode, quality); downloadNotice = "Серия добавлена в загрузки" }
+                    catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+                    catch (_: Exception) { downloadNotice = "Не удалось добавить серию в очередь" }
+                } },
+            )
+        }
+        downloadNotice?.let { Txt(it, AniMixTheme.type.caption) }
+      }
+        return
+    }
     Box(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(AniMixTheme.shapes.large).rim(AniMixTheme.shapes.large, accent = false)) {
         RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(30.dp), shape = RectangleShape)
         Box(Modifier.fillMaxSize().background(Color(0x80000000)))
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(56.dp).clip(CircleShape).background(colors.accentGradient),
-                contentAlignment = Alignment.Center,
-            ) { Icon(AniMixIcons.Play, null, Modifier.size(22.dp), tint = colors.onAccent) }
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                if (episodeNumber == null) "Выберите озвучку и серию" else "Плеер подключается на следующем шаге",
-                AniMixTheme.type.caption,
-                color = Color(0xE6FFFFFF),
-            )
+            if (episode == null) {
+                Box(
+                    Modifier.size(56.dp).clip(CircleShape).background(colors.accentGradient),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(AniMixIcons.Play, null, Modifier.size(22.dp), tint = colors.onAccent) }
+                Spacer(Modifier.height(10.dp))
+                Txt("Выберите озвучку и серию", AniMixTheme.type.caption, color = Color.White)
+            } else if (dubbing?.isKodik != true) {
+                Txt("Этот источник можно открыть в браузере", AniMixTheme.type.caption, color = Color.White)
+                TextButton(onClick = { uriHandler.openUri(episode.iframeUrl) }) {
+                    Txt("Открыть источник", AniMixTheme.type.label, color = colors.accent)
+                }
+            } else when (stream) {
+                Load.Loading -> {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(30.dp), color = colors.accent)
+                    Spacer(Modifier.height(12.dp))
+                    Txt("Получаем видео…", AniMixTheme.type.caption, color = Color.White)
+                }
+                is Load.Failed -> {
+                    Txt(stream.error.userMessage(), AniMixTheme.type.caption, color = Color.White, modifier = Modifier.padding(horizontal = 16.dp))
+                    TextButton(onClick = onRetry) { Txt("Повторить", AniMixTheme.type.label, color = colors.accent) }
+                }
+                is Load.Ready -> Unit
+            }
         }
     }
 }

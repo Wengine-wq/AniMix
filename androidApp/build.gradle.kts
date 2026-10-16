@@ -14,6 +14,7 @@ android {
         targetSdk = 36
         versionCode = 3000
         versionName = "3.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -27,6 +28,7 @@ android {
     }
 
     buildFeatures { compose = true }
+    sourceSets.getByName("androidTest").assets.srcDir(rootProject.layout.buildDirectory.dir("test-media").get().asFile)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -44,4 +46,8 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.kotlinx.coroutines.android)
+    androidTestImplementation(libs.ktor.client.mock)
 }

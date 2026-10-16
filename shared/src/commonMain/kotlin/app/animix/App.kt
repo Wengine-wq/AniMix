@@ -78,7 +78,8 @@ import app.animix.ui.screens.detail.ReviewsScreen
 import app.animix.ui.screens.detail.WatchScreen
 import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
-import app.animix.ui.screens.profile.DownloadsScreen
+import app.animix.ui.screens.downloads.DownloadsScreen
+import app.animix.ui.screens.downloads.OfflineWatchScreen
 import app.animix.ui.screens.profile.FavoritesScreen
 import app.animix.ui.screens.profile.ListsScreen
 import app.animix.ui.screens.profile.ProfileScreen
@@ -99,6 +100,7 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     LaunchedEffect(Unit) {
         graph.settings.load()
         graph.library.load()
+        graph.downloads.load()
     }
     LaunchedEffect(startLink) { startLink?.let(navigator::openLink) }
 
@@ -203,11 +205,12 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Lists -> ListsScreen(graph, navigator, padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding)
+                    route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)
                         Tab.Favorites -> FavoritesScreen(graph, navigator, padding)
-                        Tab.Downloads -> DownloadsScreen(padding)
+                        Tab.Downloads -> DownloadsScreen(graph, navigator, padding)
                         Tab.Profile -> ProfileScreen(graph, navigator, padding)
                     }
                 }

@@ -31,9 +31,10 @@ data class LibraryEntry(
     val favorite: Boolean = false,
     val episodesWatched: Int = 0,
     val score: Int? = null,
+    val episodePositions: Map<String, Long> = emptyMap(),
     val updatedAt: Long = 0,
 ) {
-    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null
+    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty()
 }
 
 @Serializable
@@ -78,6 +79,10 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     fun setStatus(anime: Anime, status: ListStatus?) = change(anime) { it.copy(status = status) }
 
     fun toggleFavorite(anime: Anime) = change(anime) { it.copy(favorite = !it.favorite) }
+
+    fun saveEpisodePosition(anime: Anime, episode: String, positionMs: Long) = change(anime) {
+        it.copy(episodePositions = if (positionMs <= 0) it.episodePositions - episode else it.episodePositions + (episode to positionMs))
+    }
 
     fun setEpisodesWatched(anime: Anime, episodes: Int) = change(anime) {
         val watched = episodes.coerceAtLeast(0)

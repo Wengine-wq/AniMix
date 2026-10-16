@@ -33,7 +33,7 @@ fun main(args: Array<String>) {
             javaClass.getResourceAsStream("/animix_icon.png")?.use { ImageIO.read(it) }?.let { BitmapPainter(it.toComposeImageBitmap()) }
         }
         val exit: () -> Unit = {
-            runBlocking { graph.library.flush() } // never lose the last list change
+            runBlocking { graph.downloads.shutdown(); graph.library.flush() }
             exitApplication()
         }
         Window(onCloseRequest = exit, state = state, title = "AniMix", icon = icon) {

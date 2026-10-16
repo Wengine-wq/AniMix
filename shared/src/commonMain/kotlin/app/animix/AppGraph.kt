@@ -7,6 +7,9 @@ import app.animix.data.AnimeRepository
 import app.animix.data.cache.ResponseCache
 import app.animix.data.library.Library
 import app.animix.data.createHttpClient
+import app.animix.data.playback.KodikResolver
+import app.animix.data.downloads.DownloadManager
+import app.animix.data.downloads.OfflineFiles
 import app.animix.data.shikimori.ShikimoriApi
 import app.animix.data.shikimori.ShikimoriRepository
 import app.animix.data.yummy.YummyApi
@@ -35,5 +38,12 @@ class AppGraph {
     /** The combined catalog screens use: Shikimori plus YummyAnime-only titles. */
     val anime = AnimeRepository(shikimori, yummy)
 
-    suspend fun clearCache() = apiCache.clear()
+    /** Short-lived direct streams; independent of the catalog's stale/offline cache. */
+    val kodik = KodikResolver(http)
+    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"))
+
+    suspend fun clearCache() {
+        apiCache.clear()
+        kodik.clear()
+    }
 }

@@ -40,6 +40,10 @@ sealed interface Route {
         override val key get() = "watch:${anime.key}"
     }
 
+    data class Offline(val downloadId: String) : Route {
+        override val key get() = "offline:$downloadId"
+    }
+
     data class Reviews(val anime: Anime) : Route {
         override val key get() = "reviews:${anime.key}"
     }
