@@ -1,5 +1,14 @@
 package app.animix.ui.screens.catalog
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import app.animix.ui.components.AniMixSheet
+import app.animix.ui.components.PrimaryButton
+import app.animix.ui.components.SecondaryButton
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -158,57 +167,58 @@ fun CatalogScreen(
                     Txt(if (searchMode) "Поиск" else title, AniMixTheme.type.title, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(16.dp))
-                SearchField(search, onChange = { search = it }, autoFocus = searchMode && initialSearch.isEmpty())
-                if (!searchMode) {
-                    Spacer(Modifier.height(14.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(kindFilters) { (label, value) ->
-                            Chip(label, selected = kinds == value, onClick = { kinds = value })
+                val active = (if (kinds.isNotEmpty()) 1 else 0) + (if (order != preset.order) 1 else 0) + genres.size + (if (season != null) 1 else 0)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { SearchField(search, onChange = { search = it }, autoFocus = searchMode && initialSearch.isEmpty()) }
+                    if (!searchMode) {
+                        Spacer(Modifier.width(10.dp))
+                        Box {
+                            IconCircle(AniMixIcons.Filter, onClick = { moreFilters = true }, size = 48.dp, active = active > 0)
+                            if (active > 0) {
+                                Box(
+                                    Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(AniMixTheme.colors.accent),
+                                    contentAlignment = Alignment.Center,
+                                ) { Txt("$active", AniMixTheme.type.micro, color = AniMixTheme.colors.onAccent) }
+                            }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                }
+                if (!searchMode && active > 0) {
+                    // What is applied right now; a tap on a chip removes that filter.
+                    Spacer(Modifier.height(12.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(CatalogOrder.entries.toList()) { item ->
-                            Chip(item.label, selected = order == item, onClick = { order = item })
+                        kindFilters.firstOrNull { it.second == kinds && kinds.isNotEmpty() }?.let { (label, _) ->
+                            item { Chip(label, selected = true, onClick = { kinds = emptyList() }, icon = AniMixIcons.Close) }
                         }
-                        item {
-                            val active = genres.size + (if (season != null) 1 else 0)
-                            Chip(
-                                if (active > 0) "Фильтры · $active" else "Жанры и год",
-                                selected = moreFilters || active > 0,
-                                onClick = { moreFilters = !moreFilters },
-                                icon = AniMixIcons.Filter,
-                            )
+                        if (order != preset.order) item { Chip(order.label, selected = true, onClick = { order = preset.order }, icon = AniMixIcons.Close) }
+                        seasonFilters.firstOrNull { it.second == season }?.let { (label, _) ->
+                            item { Chip(label, selected = true, onClick = { season = null }, icon = AniMixIcons.Close) }
                         }
+                        val names = (genreList.value as? Load.Ready)?.value.orEmpty().associate { it.id to it.title }
+                        items(genres) { id -> Chip(names[id] ?: "Жанр", selected = true, onClick = { genres = genres - id }, icon = AniMixIcons.Close) }
                     }
-                    AnimatedVisibility(moreFilters, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                        Column(Modifier.padding(top = 14.dp)) {
-                            Txt("Год", AniMixTheme.type.label, color = AniMixTheme.colors.textSecondary)
-                            Spacer(Modifier.height(8.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                item { Chip("Любой", selected = season == null, onClick = { season = null }) }
-                                items(seasonFilters) { (label, value) ->
+                }
+                if (moreFilters) {
+                    AniMixSheet(onDismiss = { moreFilters = false }, title = "Фильтры") {
+                        Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
+                            FilterTitle("Тип")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                kindFilters.forEach { (label, value) -> Chip(label, selected = kinds == value, onClick = { kinds = value }) }
+                            }
+                            FilterTitle("Сортировка")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CatalogOrder.entries.forEach { item -> Chip(item.label, selected = order == item, onClick = { order = item }) }
+                            }
+                            FilterTitle("Год")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Chip("Любой", selected = season == null, onClick = { season = null })
+                                seasonFilters.forEach { (label, value) ->
                                     Chip(label, selected = season == value, onClick = { season = if (season == value) null else value })
                                 }
                             }
-                            Spacer(Modifier.height(14.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Txt("Жанры", AniMixTheme.type.label, color = AniMixTheme.colors.textSecondary, modifier = Modifier.weight(1f))
-                                if (genres.isNotEmpty()) {
-                                    Txt(
-                                        "Сбросить",
-                                        AniMixTheme.type.label,
-                                        color = AniMixTheme.colors.accent,
-                                        modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable { genres = emptyList() }.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
+                            FilterTitle("Жанры")
                             when (val state = genreList.value) {
-                                is Load.Ready -> FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
+                                is Load.Ready -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     state.value.filterNot { it.isDemographic }.forEach { genre ->
                                         val on = genre.id in genres
                                         Chip(genre.title, selected = on, onClick = { genres = if (on) genres - genre.id else genres + genre.id })
@@ -217,6 +227,11 @@ fun CatalogScreen(
                                 is Load.Failed -> Txt(state.error.userMessage(), AniMixTheme.type.caption)
                                 Load.Loading -> Shimmer(Modifier.fillMaxWidth().height(36.dp), AniMixTheme.shapes.pill)
                             }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SecondaryButton("Сбросить", onClick = { kinds = emptyList(); order = preset.order; genres = emptyList(); season = null }, modifier = Modifier.weight(1f), icon = AniMixIcons.Refresh)
+                            PrimaryButton("Показать", onClick = { moreFilters = false }, modifier = Modifier.weight(1f), icon = AniMixIcons.Check)
                         }
                     }
                 }
@@ -331,4 +346,9 @@ private class CatalogPaging(private val graph: AppGraph, private val query: Cata
             loading = false
         }
     }
+}
+
+@Composable
+private fun FilterTitle(text: String) {
+    Txt(text, AniMixTheme.type.label, color = AniMixTheme.colors.textSecondary, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
 }

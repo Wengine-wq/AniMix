@@ -167,13 +167,6 @@ private fun HomeTopBar(onSearch: () -> Unit) {
     ) {
         AniMixWordmark(Modifier.weight(1f))
         IconCircle(AniMixIcons.Search, onSearch)
-        Spacer(Modifier.width(10.dp))
-        Box(
-            Modifier.size(42.dp).clip(CircleShape).background(colors.accentGradient),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(AniMixIcons.User, null, Modifier.size(20.dp), tint = colors.onAccent)
-        }
     }
 }
 

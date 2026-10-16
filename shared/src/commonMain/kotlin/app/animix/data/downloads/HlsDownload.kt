@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.buffered
@@ -157,9 +158,10 @@ class HlsDownload(
         queue.close()
         // Several parts at once: each one is its own resumable file, so order does not matter.
         coroutineScope {
+            val workers = this
             repeat(parallelism().coerceIn(1, 8)) {
                 launch {
-                    for (item in queue) {
+                    try { for (item in queue) {
                         val path = "work/$id/${item.filename}"
                         transfer(item.url, stream.headers, path) { }
                         val size = files.size(path)
@@ -168,6 +170,10 @@ class HlsDownload(
                             finished++
                             progress(finished, plan.resources.size, downloaded, false)
                         }
+                    } } catch (cancel: kotlinx.coroutines.CancellationException) {
+                        // A pause raised inside one worker stops the whole episode, not just that worker.
+                        workers.cancel(cancel)
+                        throw cancel
                     }
                 }
             }
