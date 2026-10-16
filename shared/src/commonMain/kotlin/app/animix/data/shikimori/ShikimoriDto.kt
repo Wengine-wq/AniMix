@@ -93,6 +93,7 @@ internal class AnimeDto(
     val genres: List<GenreDto>? = null,
     // Detail-only fields.
     val description: String? = null,
+    val descriptionHtml: String? = null,
     val duration: Int? = null,
     val rating: String? = null,
     val nextEpisodeAt: String? = null,

@@ -1,5 +1,6 @@
 package app.animix.model
 
+import app.animix.core.RichText
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -11,7 +12,7 @@ data class Review(
     val id: String,
     val author: String,
     val avatarUrl: String?,
-    val text: String,
+    val body: RichText,
     /** Reviewer's score out of 10, when the source has one. */
     val score: Double?,
     /** "dd.MM.yyyy". */

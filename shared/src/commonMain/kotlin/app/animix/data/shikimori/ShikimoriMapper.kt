@@ -8,7 +8,8 @@ import app.animix.model.Genre
 import app.animix.model.Review
 import app.animix.model.ReviewSource
 import app.animix.core.formatIsoDate
-import app.animix.core.htmlToText
+import app.animix.core.RichText
+import app.animix.core.RichTextParser
 
 internal fun AnimeDto.toAnime(): Anime = Anime(
     id = id.toIntOrNull() ?: 0,
@@ -29,7 +30,8 @@ internal fun AnimeDto.toAnime(): Anime = Anime(
 
 internal fun AnimeDto.toDetail(): AnimeDetail = AnimeDetail(
     anime = toAnime(),
-    description = description?.let(::stripBbCode).orEmpty(),
+    description = descriptionHtml?.takeIf { it.isNotBlank() }?.let(RichTextParser::parseHtml)
+        ?: description?.let(RichTextParser::parseBbCode) ?: RichText.Empty,
     durationMinutes = duration?.takeIf { it > 0 },
     rating = rating?.takeIf { it != "none" }?.let(::ratingLabel),
     studios = studios.orEmpty().map { it.name },
@@ -62,7 +64,7 @@ internal fun CommentDto.toReview(): Review = Review(
     id = "s$id",
     author = user?.nickname.orEmpty(),
     avatarUrl = (user?.image?.get("x80") ?: user?.image?.get("x48") ?: user?.avatar)?.let(::absoluteShikimori),
-    text = html_body?.let(::htmlToText)?.ifBlank { null } ?: stripBbCode(body),
+    body = html_body?.let(RichTextParser::parseHtml)?.takeUnless { it.isBlank } ?: RichTextParser.parseBbCode(body),
     score = null,
     date = formatIsoDate(created_at),
     likes = null,

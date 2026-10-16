@@ -42,7 +42,8 @@ class ResponseCache(
         if (!forceRefresh) {
             val cached = lock.withLock { memory[key] } ?: readDisk(key)?.also { remember(key, it) }
             if (cached != null && now - cached.savedAt <= ttl.inWholeMilliseconds) {
-                return AppJson.decodeFromJsonElement(serializer, cached.value)
+                // A stored entry from an older app version may no longer fit the model: just reload it.
+                runCatching { AppJson.decodeFromJsonElement(serializer, cached.value) }.onSuccess { return it }
             }
         }
 
@@ -63,8 +64,11 @@ class ResponseCache(
         } catch (error: Throwable) {
             val stale = lock.withLock { memory[key] } ?: readDisk(key)
             if (stale != null && nowMillis() - stale.savedAt <= staleLimit.inWholeMilliseconds) {
-                deferred.complete(stale.value)
-                return AppJson.decodeFromJsonElement(serializer, stale.value)
+                val value = runCatching { AppJson.decodeFromJsonElement(serializer, stale.value) }.getOrNull()
+                if (value != null) {
+                    deferred.complete(stale.value)
+                    return value
+                }
             }
             deferred.completeExceptionally(error)
             throw error

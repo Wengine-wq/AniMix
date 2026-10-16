@@ -30,7 +30,7 @@ class ShikimoriRepository internal constructor(
 
     suspend fun discussion(topicId: Int, page: Int = 1): List<Review> =
         cache.get("comments:$topicId:$page", ttl = 10.minutes, ListSerializer(Review.serializer())) {
-            api.comments(topicId, page, limit = 20).filter { !it.is_offtopic }.map { it.toReview() }.filter { it.text.isNotBlank() }
+            api.comments(topicId, page, limit = 20).filter { !it.is_offtopic }.map { it.toReview() }.filterNot { it.body.isBlank }
         }
 
     suspend fun genres(): List<Genre> =

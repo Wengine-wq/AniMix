@@ -82,7 +82,7 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
 
         private const val DETAIL_QUERY =
             "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
-                "description duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
+                "description descriptionHtml duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
                 "related { relationKind relationText anime { $CARD_FIELDS } } topic { id commentsCount } } }"
 
         private const val GENRES_QUERY = "{ genres(entryType: Anime) { id russian name kind } }"

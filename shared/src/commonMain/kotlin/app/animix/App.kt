@@ -75,6 +75,7 @@ import app.animix.ui.navigation.Tab
 import app.animix.ui.screens.catalog.CatalogScreen
 import app.animix.ui.screens.detail.DetailScreen
 import app.animix.ui.screens.detail.ReviewsScreen
+import app.animix.ui.screens.detail.WatchScreen
 import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
 import app.animix.ui.screens.profile.DownloadsScreen
@@ -201,6 +202,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
                     route == Route.Lists -> ListsScreen(graph, navigator, padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
+                    route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)

@@ -47,7 +47,7 @@ class YummyRepository internal constructor(
     suspend fun reviews(anime: Anime): List<Review> {
         val id = if (anime.source == AnimeSource.Yummy) anime.id else findRelease(anime).anime_id
         return cache.get("yummy:reviews:$id", ttl = 30.minutes, ListSerializer(Review.serializer())) {
-            api.reviews(id).map { it.toReview() }.filter { it.text.isNotBlank() }
+            api.reviews(id).map { it.toReview() }.filterNot { it.body.isBlank }
         }
     }
 

@@ -1,6 +1,5 @@
 package app.animix.data.yummy
 
-import app.animix.data.shikimori.stripBbCode
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
 import app.animix.model.AnimeKind
@@ -9,7 +8,8 @@ import app.animix.model.AnimeStatus
 import app.animix.model.Review
 import app.animix.model.ReviewSource
 import app.animix.core.formatDate
-import app.animix.core.htmlToText
+import app.animix.core.RichText
+import app.animix.core.RichTextParser
 
 private fun String.absolute(): String = if (startsWith("//")) "https:$this" else this
 
@@ -35,7 +35,7 @@ internal fun YummyReview.toReview(): Review = Review(
     id = "y$review_id",
     author = author?.nickname ?: nickname.orEmpty(),
     avatarUrl = (author?.avatars?.small ?: avatar?.small)?.absolute(),
-    text = htmlToText(text_html ?: text_preview.orEmpty()),
+    body = RichTextParser.parseHtml(text_html ?: text_preview.orEmpty()),
     score = rating?.average?.takeIf { it > 0 },
     date = formatDate(create_date),
     likes = likes?.likes,
@@ -46,7 +46,7 @@ internal fun YummyRelease.toDetail(): AnimeDetail {
     val count = episodes?.count?.takeIf { it > 0 }
     return AnimeDetail(
         anime = toAnime(),
-        description = description?.let(::stripBbCode).orEmpty(),
+        description = description?.let(RichTextParser::parseBbCode) ?: RichText.Empty,
         // YummyAnime reports the running time of the whole release, in seconds.
         durationMinutes = if (duration != null && count != null) (duration / count / 60).takeIf { it in 1..240 } else null,
         rating = min_age?.title,

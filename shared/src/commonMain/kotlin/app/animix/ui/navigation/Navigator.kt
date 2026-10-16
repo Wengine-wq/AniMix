@@ -36,6 +36,10 @@ sealed interface Route {
         override val key get() = "search"
     }
 
+    data class Watch(val anime: Anime) : Route {
+        override val key get() = "watch:${anime.key}"
+    }
+
     data class Reviews(val anime: Anime) : Route {
         override val key get() = "reviews:${anime.key}"
     }
@@ -84,6 +88,10 @@ class Navigator {
             "yummy" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false
                 push(Route.Detail(Anime.placeholder(id, AnimeSource.Yummy)))
+            }
+            "watch" -> {
+                val id = path.getOrNull(1)?.toIntOrNull() ?: return false
+                push(Route.Watch(Anime.placeholder(id)))
             }
             "reviews" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false

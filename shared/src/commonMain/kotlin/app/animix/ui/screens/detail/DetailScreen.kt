@@ -52,6 +52,8 @@ import app.animix.model.AnimeSource
 import app.animix.model.Dubbing
 import app.animix.model.WatchSource
 import app.animix.ui.components.AnimeCard
+import app.animix.ui.components.Expandable
+import app.animix.ui.components.RichTextView
 import app.animix.ui.components.Chip
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
@@ -75,10 +77,6 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     val ready = (detail.value as? Load.Ready)?.value
     // A deep link only knows the id; show the full entry once it has loaded.
     val anime = ready?.anime ?: opened
-    val source = rememberLoad(anime.key to anime.title.isNotEmpty()) { force ->
-        if (anime.title.isEmpty()) awaitCancellation()
-        graph.yummy.watchSource(anime, force)
-    }
 
     val similar = rememberLoad(anime.key to anime.title.isNotEmpty()) {
         if (anime.title.isEmpty()) awaitCancellation()
@@ -90,7 +88,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     val actions: @Composable () -> Unit = {
         WatchActions(
             entry = entry,
-            onWatch = {},
+            onWatch = { navigator.push(Route.Watch(anime)) },
             onFavorite = { graph.library.toggleFavorite(anime) },
             onStatus = { graph.library.setStatus(anime, it) },
         )
@@ -131,8 +129,6 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                         }
                     }
                 }
-                Spacer(Modifier.height(28.dp))
-                WatchSection(source.value, onRetry = source::refresh)
                 ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
                     AnimeShelf("Связанное", related, navigator)
                 }
@@ -282,13 +278,8 @@ private fun WatchActions(
 @Composable
 private fun Description(detail: AnimeDetail) {
     val type = AniMixTheme.type
-    var expanded by remember { mutableStateOf(false) }
-    if (detail.description.isNotBlank()) {
-        Column(Modifier.animateContentSize().clickable { expanded = !expanded }) {
-            Txt(detail.description, type.body, color = AniMixTheme.colors.textSecondary, maxLines = if (expanded) Int.MAX_VALUE else 5)
-            Spacer(Modifier.height(6.dp))
-            Txt(if (expanded) "Свернуть" else "Подробнее", type.label, color = AniMixTheme.colors.accent)
-        }
+    if (!detail.description.isBlank) {
+        Expandable(collapsedHeight = 112.dp) { RichTextView(detail.description) }
     }
     if (detail.studios.isNotEmpty()) {
         Spacer(Modifier.height(14.dp))
@@ -303,67 +294,3 @@ private fun DescriptionPlaceholder() {
     }
 }
 
-@Composable
-private fun WatchSection(state: Load<WatchSource>, onRetry: () -> Unit) {
-    val colors = AniMixTheme.colors
-    SectionHeader("Озвучки и серии")
-    Spacer(Modifier.height(12.dp))
-    when (state) {
-        Load.Loading -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            repeat(3) { Shimmer(Modifier.width(120.dp).height(36.dp), AniMixTheme.shapes.pill) }
-        }
-        is Load.Failed -> {
-            val text = if (state.error is WatchSourceNotFound) "Пока нет на YummyAnime" else state.error.userMessage()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Txt(text, AniMixTheme.type.caption, modifier = Modifier.weight(1f, fill = false))
-                if (state.error !is WatchSourceNotFound) {
-                    Spacer(Modifier.width(10.dp))
-                    Txt("Повторить", AniMixTheme.type.label, color = colors.accent, modifier = Modifier.clickable(onClick = onRetry))
-                }
-            }
-        }
-        is Load.Ready -> DubbingPicker(state.value.dubbings)
-    }
-}
-
-@Composable
-private fun DubbingPicker(dubbings: List<Dubbing>) {
-    if (dubbings.isEmpty()) {
-        Txt("Серий пока нет", AniMixTheme.type.caption)
-        return
-    }
-    val colors = AniMixTheme.colors
-    var selected by remember(dubbings) { mutableStateOf(dubbings.first()) }
-    // When one studio is served by several players, name the player to tell them apart.
-    val sharedStudios = dubbings.groupingBy { it.studio }.eachCount().filterValues { it > 1 }.keys
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(end = 20.dp)) {
-        items(dubbings, key = { it.key }) { dubbing ->
-            Chip(
-                buildString {
-                    append(dubbing.studio)
-                    if (dubbing.studio in sharedStudios) append(" (${dubbing.player})")
-                    append(" · ${dubbing.episodes.size}")
-                },
-                selected = dubbing.key == selected.key,
-                onClick = { selected = dubbing },
-                icon = AniMixIcons.Mic,
-            )
-        }
-    }
-    Spacer(Modifier.height(6.dp))
-    Txt("Плеер: ${selected.player}", AniMixTheme.type.micro)
-    Spacer(Modifier.height(14.dp))
-    @OptIn(ExperimentalLayoutApi::class)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        selected.episodes.forEach { episode ->
-            Box(
-                Modifier.size(width = 56.dp, height = 44.dp).clip(AniMixTheme.shapes.medium)
-                    .background(colors.surfaceRaised).border(1.dp, colors.outline, AniMixTheme.shapes.medium)
-                    .clickable { },
-                contentAlignment = Alignment.Center,
-            ) {
-                Txt(episode.number, AniMixTheme.type.bodyStrong)
-            }
-        }
-    }
-}

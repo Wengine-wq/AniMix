@@ -1,5 +1,6 @@
 package app.animix.model
 
+import app.animix.core.RichText
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -76,7 +77,7 @@ data class Anime(
 @Serializable
 data class AnimeDetail(
     val anime: Anime,
-    val description: String,
+    val description: RichText,
     val durationMinutes: Int?,
     val rating: String?,
     val studios: List<String>,

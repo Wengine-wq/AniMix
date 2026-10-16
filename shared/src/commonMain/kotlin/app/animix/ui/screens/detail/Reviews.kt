@@ -42,6 +42,8 @@ import app.animix.model.AnimeDetail
 import app.animix.model.Review
 import app.animix.model.ReviewSource
 import app.animix.ui.components.Chip
+import app.animix.ui.components.Expandable
+import app.animix.ui.components.RichTextView
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
 import app.animix.ui.components.MessageState
@@ -65,9 +67,8 @@ import kotlinx.coroutines.awaitCancellation
 fun ReviewCard(review: Review, modifier: Modifier = Modifier, collapsedLines: Int = 6) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
-    var expanded by remember(review.id) { mutableStateOf(false) }
     Panel(modifier) {
-        Column(Modifier.animateContentSize().clickable { expanded = !expanded }.padding(16.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(36.dp).clip(CircleShape).background(colors.surfaceRaised), contentAlignment = Alignment.Center) {
                     if (review.avatarUrl != null) {
@@ -93,7 +94,7 @@ fun ReviewCard(review: Review, modifier: Modifier = Modifier, collapsedLines: In
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Txt(review.text, type.body, color = colors.textSecondary, maxLines = if (expanded) Int.MAX_VALUE else collapsedLines)
+            Expandable(collapsedHeight = (collapsedLines * 21).dp, fadeColor = colors.surface) { RichTextView(review.body) }
             review.likes?.takeIf { it > 0 }?.let {
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
