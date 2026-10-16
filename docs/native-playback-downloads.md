@@ -27,6 +27,14 @@ opening skip is applied.
 
 ## Queue and files
 
+On the watch screen «Скачать» switches the episode grid into picking mode for the
+selected dubbing: tap episodes or take the whole season. The download quality is
+asked once (480p/720p/1080p), stored in settings and changeable there. On Android
+the foreground service holds a partial wake lock and a Wi-Fi lock while the queue
+runs and shows progress in its notification; network drops are retried for about
+four minutes with the saved parts kept, so turning the screen off does not fail
+the episode.
+
 - Download the selected episode at the current quality, or enqueue every
   available episode of the selected dubbing at 720p/1080p. Missing renditions
   fall back to the closest available lower quality (or the smallest rendition

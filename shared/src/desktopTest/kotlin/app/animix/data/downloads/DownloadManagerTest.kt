@@ -64,7 +64,7 @@ class DownloadManagerTest {
                 "https://cdn.test/${url.substringAfterLast('/')}/720.mp4?sig=secret"
             })
             val files = OfflineFiles(folder.absolutePath)
-            val manager = DownloadManager(scope, resolver, http, files, assembler)
+            val manager = DownloadManager(scope, resolver, http, files, assembler, retryDelaysMs = emptyList())
             manager.load(); manager.enqueueSeason(anime, dub)
             val done = awaitQueue(manager) { it.size == 3 && it.none { item -> item.active || item.status == DownloadStatus.Queued } }
             assertEquals(listOf(DownloadStatus.Failed, DownloadStatus.Completed, DownloadStatus.Completed), done.map { it.status })
@@ -75,6 +75,26 @@ class DownloadManagerTest {
             val recovered = DownloadManager(scope, resolver, http, files, assembler)
             recovered.load()
             assertNotNull(recovered.offlineUri(recovered.state.value[1]))
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin(); http.close(); folder.deleteRecursively() }
+    }
+
+    @Test fun aNetworkDropIsRetriedInsteadOfFailingTheEpisode() = runBlocking<Unit> {
+        val folder = Files.createTempDirectory("animix-queue-").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var drops = 2
+        val http = HttpClient(MockEngine { request ->
+            if (request.url.encodedPath.contains("720.mp4")) {
+                if (request.method != HttpMethod.Head && drops-- > 0) throw java.io.IOException("Screen off: socket closed")
+                respond(if (request.method == HttpMethod.Head) "" else "offline-video", headers = headersOf(HttpHeaders.ContentType, "video/mp4"))
+            } else respond("", HttpStatusCode.NotFound)
+        })
+        try {
+            val resolver = KodikResolver(http, capture { url -> "https://cdn.test/${url.substringAfterLast('/')}/720.mp4" })
+            val manager = DownloadManager(scope, resolver, http, OfflineFiles(folder.absolutePath), assembler, retryDelaysMs = listOf(10, 10, 10))
+            manager.load(); manager.enqueueEpisode(anime, dub, episodes.first(), "720p")
+            val done = awaitQueue(manager) { it.size == 1 && it.single().status in setOf(DownloadStatus.Completed, DownloadStatus.Failed) }
+            assertEquals(DownloadStatus.Completed, done.single().status, done.single().error)
+            assertTrue(drops < 0)
         } finally { scope.coroutineContext[Job]!!.cancelAndJoin(); http.close(); folder.deleteRecursively() }
     }
 

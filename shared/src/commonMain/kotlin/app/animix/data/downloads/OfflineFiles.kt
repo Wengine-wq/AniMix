@@ -43,3 +43,5 @@ interface MediaAssembler {
 expect fun createMediaAssembler(): MediaAssembler
 internal expect fun localMediaUri(path: String): String
 internal expect fun downloadActivity(active: Boolean, onTimeout: () -> Unit)
+/** Shows what the background queue is doing, e.g. in the Android notification. */
+internal expect fun downloadProgress(title: String, percent: Int?)

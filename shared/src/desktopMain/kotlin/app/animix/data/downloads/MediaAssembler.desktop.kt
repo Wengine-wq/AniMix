@@ -12,6 +12,7 @@ import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 actual fun createMediaAssembler(): MediaAssembler = DesktopMediaAssembler()
 internal actual fun localMediaUri(path: String): String = File(path).toPath().toUri().toASCIIString()
 internal actual fun downloadActivity(active: Boolean, onTimeout: () -> Unit) = Unit
+internal actual fun downloadProgress(title: String, percent: Int?) = Unit
 
 private class DesktopMediaAssembler : MediaAssembler {
     override suspend fun assemble(playlistPath: String, outputPath: String, durationMs: Long, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {

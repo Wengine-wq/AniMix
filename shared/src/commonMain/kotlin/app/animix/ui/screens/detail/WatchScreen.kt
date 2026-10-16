@@ -29,7 +29,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import app.animix.Ambient
 import app.animix.AppGraph
 import app.animix.data.library.LibraryEntry
+import app.animix.data.downloads.rememberDownloadPermissionRequest
+import app.animix.ui.screens.downloads.DownloadQualityDialog
 import app.animix.data.yummy.WatchSourceNotFound
 import app.animix.data.playback.ResolvedStream
 import app.animix.ui.player.AniMixPlayer
@@ -112,7 +113,42 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     val library by graph.library.state.collectAsState()
     val entry = library.entry(anime)
     val scope = rememberCoroutineScope()
+    val downloads by graph.downloads.state.collectAsState()
     var downloadMessage by remember { mutableStateOf<String?>(null) }
+    var selecting by remember(anime.key) { mutableStateOf(false) }
+    var picked by remember(anime.key) { mutableStateOf(emptySet<String>()) }
+    var askQuality by remember { mutableStateOf<Pair<Dubbing, List<Episode>>?>(null) }
+    val askPermission = rememberDownloadPermissionRequest()
+    fun startDownload(dubbing: Dubbing, episodes: List<Episode>, quality: String) {
+        askPermission()
+        scope.launch {
+            downloadMessage = try {
+                if (episodes.size == dubbing.episodes.size) graph.downloads.enqueueSeason(anime, dubbing, quality)
+                else graph.downloads.enqueueEpisodes(anime, dubbing, episodes, quality)
+                graph.skips.prefetch(anime, episodes)
+                if (episodes.size == 1) "Серия ${episodes.single().number} в загрузках · ${dubbing.studio} · $quality"
+                else "${episodes.size} ${episodesWord(episodes.size)} в загрузках · ${dubbing.studio} · $quality"
+            } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+            catch (_: Exception) { "Не удалось добавить в загрузки" }
+        }
+    }
+    /** The quality is asked once, on the first download, then taken from settings. */
+    fun requestDownload(dubbing: Dubbing, episodes: List<Episode>) {
+        if (episodes.isEmpty()) return
+        val quality = settings.downloadQuality
+        if (quality == null) askQuality = dubbing to episodes else startDownload(dubbing, episodes, quality)
+    }
+    askQuality?.let { (dubbing, episodes) ->
+        DownloadQualityDialog(
+            current = null,
+            onPick = { quality ->
+                askQuality = null
+                graph.settings.update { it.copy(downloadQuality = quality) }
+                startDownload(dubbing, episodes, quality)
+            },
+            onDismiss = { askQuality = null },
+        )
+    }
     val remembered = settings.dubbingByAnime[anime.key]
     var selectedKey by rememberSaveable(anime.key) { mutableStateOf(remembered) }
     var episodeNumber by rememberSaveable(anime.key) { mutableStateOf(openEpisode) }
@@ -162,6 +198,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                             onNext = { next -> episodeNumber = next.number },
                             suggested = suggested,
                             onPlay = { episode -> episodeNumber = episode.number },
+                            onDownload = { dubbing, episode -> requestDownload(dubbing, listOf(episode)) },
                             modifier = Modifier.widthIn(max = 860.dp),
                         )
                     }
@@ -195,29 +232,39 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                     if (selected != null) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Column(Modifier.padding(top = 20.dp, bottom = 4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Txt("Серии · ${selected.episodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-                                    if (selected.isKodik) SeasonDownload { quality ->
-                                        scope.launch {
-                                            try {
-                                                graph.downloads.enqueueSeason(anime, selected, quality)
-                                                graph.skips.prefetch(anime, selected.episodes)
-                                                downloadMessage = "Сезон добавлен в загрузки · ${selected.studio} · $quality"
-                                            } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
-                                            catch (_: Exception) { downloadMessage = "Не удалось добавить сезон в загрузки" }
-                                        }
+                                if (!selecting) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Txt("Серии · ${selected.episodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+                                        if (selected.isKodik) QuietChip("Скачать", AniMixIcons.Download) { picked = emptySet(); selecting = true }
                                     }
+                                } else {
+                                    DownloadPicker(
+                                        dubbing = selected,
+                                        quality = settings.downloadQuality,
+                                        picked = picked.size,
+                                        onAll = { picked = if (picked.size == selected.episodes.size) emptySet() else selected.episodes.map { it.number }.toSet() },
+                                        onCancel = { selecting = false },
+                                        onDownload = {
+                                            requestDownload(selected, selected.episodes.filter { it.number in picked })
+                                            selecting = false
+                                        },
+                                    )
                                 }
-                                downloadMessage?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 4.dp)) }
+                                downloadMessage?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 6.dp)) }
                             }
                         }
+                        val saved = downloads.filter { it.anime.key == anime.key && it.dubbingKey == selected.key && it.status == app.animix.data.downloads.DownloadStatus.Completed }.map { it.episode.number }.toSet()
                         items(selected.episodes, key = { "${selected.key}:${it.number}" }) { episode ->
                             EpisodeCell(
                                 episode,
-                                selected = episode.number == episodeNumber,
+                                selected = if (selecting) episode.number in picked else episode.number == episodeNumber,
                                 watched = episode.isWatched(entry),
                                 started = (entry?.episodePositions?.get(episode.number) ?: 0) > 0,
-                            ) { episodeNumber = episode.number }
+                                saved = episode.number in saved,
+                            ) {
+                                if (selecting) picked = if (episode.number in picked) picked - episode.number else picked + episode.number
+                                else episodeNumber = episode.number
+                            }
                         }
                     }
                 }
@@ -239,14 +286,13 @@ private fun PlayerArea(
     onNext: (Episode) -> Unit,
     suggested: Episode?,
     onPlay: (Episode) -> Unit,
+    onDownload: (Dubbing, Episode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = AniMixTheme.colors
     val uriHandler = LocalUriHandler.current
     val settings by graph.settings.state.collectAsState()
     val library by graph.library.state.collectAsState()
-    val scope = rememberCoroutineScope()
-    var downloadNotice by remember { mutableStateOf<String?>(null) }
     // Survives the switch to the next episode, so autoplay stays on the big screen.
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     if (episode != null && dubbing?.isKodik == true && stream is Load.Ready) {
@@ -268,21 +314,12 @@ private fun PlayerArea(
                 nextLabel = next?.let { "Серия ${it.number}" },
                 onNext = next?.let { { onNext(it) } },
                 onRefresh = onRetry,
-                onDownload = { quality -> scope.launch {
-                    try {
-                        graph.downloads.enqueueEpisode(anime, dubbing, episode, quality)
-                        graph.skips.prefetch(anime, listOf(episode))
-                        downloadNotice = "Серия ${episode.number} добавлена в загрузки"
-                    }
-                    catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
-                    catch (_: Exception) { downloadNotice = "Не удалось добавить серию в загрузки" }
-                } },
+                onDownload = { _ -> onDownload(dubbing, episode) },
                 onQualityChange = { quality -> graph.settings.update { it.copy(preferredQuality = quality) } },
                 fullscreen = fullscreen,
                 onFullscreenChange = { fullscreen = it },
             )
         }
-        downloadNotice?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 8.dp)) }
       }
         return
     }
@@ -337,29 +374,51 @@ private fun PlayerArea(
     }
 }
 
-/** One quiet button for the whole season, with the quality picked from a small menu. */
+/** A small outlined chip for secondary actions next to a section title. */
 @Composable
-private fun SeasonDownload(onPick: (String) -> Unit) {
+private fun QuietChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, accent: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
-    var open by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            Modifier.clip(AniMixTheme.shapes.pill).background(colors.chip).rim(AniMixTheme.shapes.pill, accent = false)
-                .clickable { open = true }.padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(AniMixIcons.Download, null, Modifier.size(16.dp), tint = colors.accent)
-            Spacer(Modifier.width(6.dp))
-            Txt("Скачать сезон", AniMixTheme.type.label, maxLines = 1)
+    Row(
+        Modifier.clip(AniMixTheme.shapes.pill)
+            .then(if (accent && enabled) Modifier.background(colors.accentGradient) else Modifier.background(colors.chip).rim(AniMixTheme.shapes.pill, accent = false))
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val content = when {
+            accent && enabled -> colors.onAccent
+            !enabled -> colors.textMuted
+            else -> colors.textPrimary
         }
-        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = colors.surfaceRaised, shape = AniMixTheme.shapes.medium) {
-            listOf("720p", "1080p").forEach { quality ->
-                Txt(
-                    quality,
-                    AniMixTheme.type.bodyStrong,
-                    modifier = Modifier.widthIn(min = 140.dp).clickable { open = false; onPick(quality) }.padding(horizontal = 16.dp, vertical = 11.dp),
-                )
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(16.dp), tint = if (accent || !enabled) content else colors.accent)
+            Spacer(Modifier.width(6.dp))
+        }
+        Txt(text, AniMixTheme.type.label, color = content, maxLines = 1)
+    }
+}
+
+/** Picking episodes to download: tap numbers, or take the whole season of the chosen dubbing. */
+@Composable
+private fun DownloadPicker(
+    dubbing: Dubbing,
+    quality: String?,
+    picked: Int,
+    onAll: () -> Unit,
+    onCancel: () -> Unit,
+    onDownload: () -> Unit,
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Txt(if (picked == 0) "Выберите серии" else "Выбрано: $picked", AniMixTheme.type.heading, maxLines = 1)
+                Txt(listOfNotNull(dubbing.studio, quality).joinToString(" · "), AniMixTheme.type.caption, maxLines = 1)
             }
+            QuietChip("Отмена", null, onClick = onCancel)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            QuietChip(if (picked == dubbing.episodes.size) "Снять выбор" else "Весь сезон · ${dubbing.episodes.size}", AniMixIcons.Check, onClick = onAll)
+            QuietChip(if (picked > 0) "Скачать $picked" else "Скачать", AniMixIcons.Download, accent = true, enabled = picked > 0, onClick = onDownload)
         }
     }
 }
@@ -414,7 +473,7 @@ private fun DubbingList(dubbings: List<Dubbing>, selected: Dubbing?, onSelect: (
 
 /** An episode number; watched ones are dimmed with a check, started ones carry a thin accent line. */
 @Composable
-private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, started: Boolean, onClick: () -> Unit) {
+private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, started: Boolean, saved: Boolean, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip)
@@ -435,6 +494,9 @@ private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, s
         )
         if (watched && !selected) {
             Icon(AniMixIcons.Check, "Просмотрено", Modifier.align(Alignment.TopEnd).padding(5.dp).size(11.dp), tint = colors.accent)
+        }
+        if (saved) {
+            Icon(AniMixIcons.Download, "Скачано", Modifier.align(Alignment.TopStart).padding(5.dp).size(11.dp), tint = colors.textMuted)
         }
         if (started && !watched) {
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).width(16.dp).height(2.dp).clip(AniMixTheme.shapes.pill).background(colors.accent))

@@ -41,6 +41,8 @@ class DownloadManager(
     http: HttpClient,
     val files: OfflineFiles,
     assembler: MediaAssembler = createMediaAssembler(),
+    /** Pauses between attempts after a network drop (screen off, Wi-Fi switching): about four minutes in all. */
+    private val retryDelaysMs: List<Long> = listOf(3_000, 8_000, 15_000, 30_000, 60_000, 120_000),
 ) {
     private val pipeline = HlsDownload(http, files, assembler)
     private val mutable = MutableStateFlow<List<DownloadItem>>(emptyList())
@@ -66,6 +68,9 @@ class DownloadManager(
                             status = if (event.muxing) DownloadStatus.Assembling else DownloadStatus.Downloading,
                             completedParts = event.done, totalParts = event.total, downloadedBytes = event.bytes,
                         )
+                    }
+                    mutable.value.firstOrNull { it.id == event.id }?.let { item ->
+                        downloadProgress(item.title, if (event.total > 0) (event.done * 100 / event.total).coerceIn(0, 100) else null)
                     }
                 } catch (cancel: CancellationException) { throw cancel }
                 catch (_: Exception) { mutableNotice.value = "Не удалось сохранить очередь. Проверьте свободное место."; activeJob?.cancel() }
@@ -126,6 +131,7 @@ class DownloadManager(
 
     suspend fun enqueueSeason(anime: Anime, dubbing: Dubbing, quality: String = "720p") = enqueue(anime, dubbing, dubbing.episodes, quality)
     suspend fun enqueueEpisode(anime: Anime, dubbing: Dubbing, episode: Episode, quality: String) = enqueue(anime, dubbing, listOf(episode), quality)
+    suspend fun enqueueEpisodes(anime: Anime, dubbing: Dubbing, episodes: List<Episode>, quality: String) = enqueue(anime, dubbing, episodes, quality)
 
     private suspend fun enqueue(anime: Anime, dubbing: Dubbing, episodes: List<Episode>, quality: String) = withContext(Dispatchers.IO) {
         ready.await()
@@ -186,6 +192,21 @@ class DownloadManager(
     }
     private fun persist() { files.write("queue.json", AppJson.encodeToString(mutable.value)); lastPersist = nowMillis() }
 
+    private suspend fun fetch(item: DownloadItem): String {
+        for (attempt in 0..2) {
+            try {
+                val source = resolver.resolve(item.episode.iframeUrl, forceRefresh = attempt > 0)
+                currentCoroutineContext().ensureActive()
+                return pipeline.download(source, item.id, item.quality) { done, total, bytes, muxing ->
+                    progressUpdates.trySend(Progress(item.id, done, total, bytes, muxing))
+                }
+            } catch (expired: SourceExpired) {
+                if (attempt == 2) throw IllegalStateException("Срок действия ссылки истёк. Повторите загрузку.")
+            }
+        }
+        error("unreachable")
+    }
+
     private suspend fun process(item: DownloadItem) {
         try {
             downloadActivity(true) { scope.launch { pauseAll() } }
@@ -193,17 +214,19 @@ class DownloadManager(
                 update(item.id, true) { it.copy(status = DownloadStatus.Completed, file = "${item.id}.mp4") }
                 return
             }
+            downloadProgress(item.title, null)
             var output: String? = null
-            for (attempt in 0..2) {
+            var failures = 0
+            while (output == null) {
                 try {
-                    val source = resolver.resolve(item.episode.iframeUrl, forceRefresh = attempt > 0)
+                    output = fetch(item)
+                } catch (error: Exception) {
+                    // Our own pause/cancel ends here; a timeout inside the resolver is just a failed attempt.
                     currentCoroutineContext().ensureActive()
-                    output = pipeline.download(source, item.id, item.quality) { done, total, bytes, muxing ->
-                        progressUpdates.trySend(Progress(item.id, done, total, bytes, muxing))
-                    }
-                    break
-                } catch (expired: SourceExpired) {
-                    if (attempt == 2) throw IllegalStateException("Срок действия ссылки истёк. Повторите загрузку.")
+                    if (error !is CancellationException && (error is IllegalArgumentException || error is IllegalStateException)) throw error
+                    // Network drops (screen off, Wi-Fi switching) are retried; parts already saved are kept.
+                    if (failures >= retryDelaysMs.size) throw error
+                    delay(retryDelaysMs[failures++])
                 }
             }
             currentCoroutineContext().ensureActive()
@@ -225,3 +248,6 @@ class DownloadManager(
         } finally { if (mutable.value.none { it.status == DownloadStatus.Queued }) downloadActivity(false) {} }
     }
 }
+
+
+private val DownloadItem.title: String get() = "${anime.title} · Серия ${episode.number}"

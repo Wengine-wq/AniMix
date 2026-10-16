@@ -153,6 +153,20 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
             ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
         }
         Spacer(Modifier.height(20.dp))
+        GroupTitle("Загрузки")
+        Panel {
+            Column(Modifier.padding(12.dp)) {
+                app.animix.ui.screens.downloads.DownloadQualityOptions(settings.downloadQuality) { quality ->
+                    graph.settings.update { it.copy(downloadQuality = quality) }
+                }
+                Txt(
+                    if (settings.downloadQuality == null) "Спросим при первой загрузке" else "Если серии нет в этом качестве, скачаем ближайшее ниже",
+                    type.micro,
+                    modifier = Modifier.padding(start = 4.dp, top = 10.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(20.dp))
         GroupTitle("Данные")
         Panel {
             NavRow("Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache() } })

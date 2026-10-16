@@ -24,6 +24,8 @@ data class Settings(
     val preferredDubbing: String? = null,
     /** The quality picked last in the player, used for the next episode too. */
     val preferredQuality: String? = null,
+    /** Quality for downloads; asked on the first download, changeable in settings. */
+    val downloadQuality: String? = null,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 )
