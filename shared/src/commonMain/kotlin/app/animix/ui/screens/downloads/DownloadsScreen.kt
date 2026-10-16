@@ -79,7 +79,10 @@ import kotlinx.coroutines.launch
     val downloads by graph.downloads.state.collectAsState()
     val settings by graph.settings.state.collectAsState()
     val library by graph.library.state.collectAsState()
-    val item = downloads.firstOrNull { it.id == id }
+    // The next downloaded episode plays on this screen, so fullscreen and autoplay carry over.
+    var currentId by androidx.compose.runtime.saveable.rememberSaveable(id) { mutableStateOf(id) }
+    var fullscreen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val item = downloads.firstOrNull { it.id == currentId }
     val uri = item?.let { graph.downloads.offlineUri(it) }
     Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -95,13 +98,20 @@ import kotlinx.coroutines.launch
             val stream = remember(uri) { ResolvedStream(mapOf(item.quality to uri), emptyMap()) }
             key(item.id) {
                 AniMixPlayer(stream, item.episode, settings,
+                    title = "Серия ${item.episode.number}",
+                    subtitle = listOf(item.anime.title, item.studio, "без интернета").joinToString(" · "),
+                    // Skip times stored when the episode was watched or queued work offline too.
+                    skips = { duration -> graph.skips.plan(item.anime, item.episode, duration) },
                     initialPositionMs = library.entry(item.anime)?.episodePositions?.get(item.episode.number) ?: 0,
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
                     onCompleted = {
                         graph.library.saveEpisodePosition(item.anime, item.episode.number, 0)
-                        item.episode.number.toIntOrNull()?.let { graph.library.setEpisodesWatched(item.anime, maxOf(it, library.entry(item.anime)?.episodesWatched ?: 0)) }
+                        item.episode.number.toDoubleOrNull()?.toInt()?.let { graph.library.setEpisodesWatched(item.anime, maxOf(it, graph.library.state.value.entry(item.anime)?.episodesWatched ?: 0)) }
                     },
-                    onNext = next?.let { { navigator.push(Route.Offline(it.id)) } },
+                    nextLabel = next?.let { "Серия ${it.episode.number}" },
+                    onNext = next?.let { { currentId = it.id } },
+                    fullscreen = fullscreen,
+                    onFullscreenChange = { fullscreen = it },
                 )
             }
         }

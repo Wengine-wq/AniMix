@@ -2,16 +2,28 @@
 
 `WatchScreen` resolves the selected Kodik episode and mounts `AniMixPlayer`.
 Android decodes with Media3 ExoPlayer; Windows uses the bundled libVLC runtime
-through vlcj. Both use the same Compose controls, dubbing and episode selection.
-Other embedded providers retain the existing browser fallback.
+through vlcj. On Windows libVLC renders into memory (`FrameSink`, RV32 frames)
+and Compose draws each frame, so both OSes show the same controls over the
+picture. Other embedded providers retain the existing browser fallback.
 
-The controls include play/pause, timeline seeking, ±10 seconds, sound/volume,
-quality selection, fullscreen, next episode and download. Quality changes retain
-the current position. Playback positions are stored per anime/episode in the
-library. Reaching the end marks the episode watched. Auto-next and automatic
-OP/ED skipping follow the existing settings; skip buttons use the actual
-`Episode.opening/ending` times from YummyAnime, and are absent when these are
-missing. No guessed fixed-duration opening skip is applied.
+The overlay has play/pause, a timeline with the opening and ending marked,
+±10 seconds (also a double tap on the left/right third), sound/volume, quality
+selection (remembered for the next episode), fullscreen, next episode and
+download. It hides after 3 seconds of playback. Windows keys: Space/K, ←/→ or
+J/L, ↑/↓ volume, M mute, F fullscreen, Esc, N next, S skip.
+
+Playback positions are stored per anime/episode in the library. From the
+ending (or the last 8 % when the ending is unknown) an episode counts as
+watched, its saved position is cleared, and opening it again starts from the
+beginning. The watch screen offers the episode in progress, else the first
+unwatched one. At the end, auto-next counts down 5 seconds and can be cancelled.
+
+OP/ED times come from YummyAnime first and AniSkip (`data/skips`, by the
+Shikimori/MAL id) second. AniSkip submissions are only used when their release
+length is within 15 s of the playing one. Every answer is stored in
+`skips.json` in the data folder, so downloaded episodes skip offline as well;
+episodes queued for download are fetched ahead. No guessed fixed-duration
+opening skip is applied.
 
 ## Queue and files
 
@@ -73,7 +85,7 @@ $env:ANIMIX_MEDIA_FIXTURE = "$PWD/build/test-media"
 
 Windows tests transfer HLS through a local server requiring the correct media
 headers, assemble a real MP4, stop the server, then verify decoded audio/video,
-rendered frames, pause, seek, surface recreation and end-of-media. Android tests
+frames handed to the Compose surface, pause, seek and end-of-media. Android tests
 assemble the same HLS fixture, delete the source parts, render the resulting MP4
 through the app's native surface, inspect decoded picture colors with PixelCopy,
 and exercise pause, seek and fullscreen. A connected Android device/emulator is

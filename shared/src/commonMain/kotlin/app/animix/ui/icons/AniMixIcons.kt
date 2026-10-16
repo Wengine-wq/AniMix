@@ -67,6 +67,15 @@ object AniMixIcons {
     )
     val Check = outline("Check", "M5 12.5l4.5 4.5L19 7.5")
     val Play = filled("Play", "M8 5.6v12.8a1.1 1.1 0 0 0 1.66.95l10.3-6.4a1.1 1.1 0 0 0 0-1.9L9.66 4.65A1.1 1.1 0 0 0 8 5.6z")
+    val Pause = filled("Pause", "M7.5 5h2.6a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H7.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM13.9 5h2.6a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2.6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z")
+    val Next = filled("Next", "M5.5 6.1v11.8a1 1 0 0 0 1.53.85L15.5 13.4v4.1a1.25 1.25 0 0 0 2.5 0v-11a1.25 1.25 0 0 0-2.5 0v4.1L7.03 5.25A1 1 0 0 0 5.5 6.1z")
+    val SeekBack = outline("SeekBack", "M4 12a8 8 0 1 0 2.34-5.66L4 8.5M4 4v4.5h4.5")
+    val SeekForward = outline("SeekForward", "M20 12a8 8 0 1 1-2.34-5.66L20 8.5M20 4v4.5h-4.5")
+    val Expand = outline("Expand", "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5")
+    val Collapse = outline("Collapse", "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5")
+    val Volume = outline("Volume", "M4 9.5h3.5L12 5.5v13l-4.5-4H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11")
+    val Muted = outline("Muted", "M4 9.5h3.5L12 5.5v13l-4.5-4H4zM16.5 9.5l5 5M21.5 9.5l-5 5")
+    val SkipAhead = outline("SkipAhead", "M5 6.5l6 5.5-6 5.5M12.5 6.5l6 5.5-6 5.5")
     val Star = filled(
         "Star",
         "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z",

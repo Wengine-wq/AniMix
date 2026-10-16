@@ -12,6 +12,7 @@ import app.animix.data.playback.KodikResolver
 import app.animix.data.downloads.DownloadManager
 import app.animix.data.downloads.OfflineFiles
 import app.animix.data.shikimori.ShikimoriApi
+import app.animix.data.skips.SkipTimes
 import app.animix.data.shikimori.ShikimoriRepository
 import app.animix.data.yummy.YummyApi
 import app.animix.data.yummy.YummyRepository
@@ -45,6 +46,9 @@ class AppGraph {
     /** Short-lived direct streams; independent of the catalog's stale/offline cache. */
     val kodik = KodikResolver(http)
     val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"))
+
+    /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
+    val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)
 
     suspend fun clearCache() {
         apiCache.clear()

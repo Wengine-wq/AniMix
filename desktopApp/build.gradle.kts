@@ -72,7 +72,7 @@ compose.desktop {
         mainClass = "app.animix.desktop.MainKt"
         nativeDistributions {
             appResourcesRootDir.set(layout.buildDirectory.dir("native-resources"))
-            modules("java.net.http")
+            modules("java.net.http", "jdk.unsupported")
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "AniMix"
             packageVersion = "3.0.0"

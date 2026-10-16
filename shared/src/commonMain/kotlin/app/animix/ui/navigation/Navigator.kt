@@ -36,7 +36,8 @@ sealed interface Route {
         override val key get() = "search"
     }
 
-    data class Watch(val anime: Anime) : Route {
+    /** [episode] opens that episode right away (links and history); otherwise the screen offers where the viewer stopped. */
+    data class Watch(val anime: Anime, val episode: String? = null) : Route {
         override val key get() = "watch:${anime.key}"
     }
 
@@ -107,7 +108,7 @@ class Navigator {
             }
             "watch" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false
-                push(Route.Watch(Anime.placeholder(id)))
+                push(Route.Watch(Anime.placeholder(id), episode = path.getOrNull(2)?.ifBlank { null }))
             }
             "reviews" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false

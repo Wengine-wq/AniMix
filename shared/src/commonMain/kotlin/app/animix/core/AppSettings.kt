@@ -22,6 +22,8 @@ data class Settings(
     val skipEndings: Boolean = false,
     val autoNextEpisode: Boolean = true,
     val preferredDubbing: String? = null,
+    /** The quality picked last in the player, used for the next episode too. */
+    val preferredQuality: String? = null,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 )
