@@ -21,6 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import app.animix.ui.theme.AniMixTheme
+import app.animix.ui.theme.LocalUiPerformance
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 /** The AniMix bottom sheet: one look for filters, lists, rating and downloads. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,16 +38,8 @@ fun AniMixSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = AniMixTheme.colors
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetMaxWidth = 640.dp,
-        containerColor = colors.surfaceRaised,
-        scrimColor = colors.scrim,
-        dragHandle = {
-            Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(width = 36.dp, height = 4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline))
-        },
-    ) {
+    val shape = AniMixTheme.shapes.sheet
+    val body: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).navigationBarsPadding()) {
             if (title != null) {
                 Txt(title, AniMixTheme.type.heading)
@@ -50,6 +48,33 @@ fun AniMixSheet(
             }
             content()
         }
+    }
+    if (!LocalUiPerformance.current.animations) {
+        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(colors.scrim).clickable(onClick = onDismiss)
+                .statusBarsPadding().imePadding(), contentAlignment = Alignment.BottomCenter) {
+                Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().clip(shape).background(colors.surfaceRaised)
+                    .clickable(remember { MutableInteractionSource() }, indication = null) {}) {
+                    Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp, bottom = 6.dp)
+                        .size(width = 36.dp, height = 4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline))
+                    body()
+                }
+            }
+        }
+        return
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetMaxWidth = 640.dp,
+        containerColor = colors.surfaceRaised,
+        shape = shape,
+        scrimColor = colors.scrim,
+        dragHandle = {
+            Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(width = 36.dp, height = 4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline))
+        },
+    ) {
+        body()
     }
 }
 

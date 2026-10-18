@@ -1,9 +1,5 @@
 package app.animix.ui.screens.detail
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import kotlinx.coroutines.awaitCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import app.animix.Ambient
 import app.animix.AppGraph
 import app.animix.data.library.LibraryEntry
+import app.animix.data.library.isEpisodeWatched
 import app.animix.data.downloads.rememberDownloadPermissionRequest
 import app.animix.ui.screens.downloads.DownloadQualityDialog
 import app.animix.data.yummy.WatchSourceNotFound
@@ -61,7 +58,9 @@ import app.animix.model.Episode
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
 import app.animix.ui.components.MessageState
-import app.animix.ui.components.Panel
+import app.animix.ui.components.SelectionList
+import app.animix.ui.components.SelectionOption
+import app.animix.ui.components.EpisodeCardSurface
 import app.animix.ui.components.RemoteImage
 import app.animix.ui.components.Shimmer
 import app.animix.ui.components.Txt
@@ -73,14 +72,14 @@ import app.animix.ui.components.userMessage
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.theme.AniMixTheme
+import app.animix.ui.theme.LocalUiPerformance
 
 /** The episode to offer first: the one in progress, else the first unwatched, else the last one. */
 internal fun resumeEpisode(episodes: List<Episode>, entry: LibraryEntry?): Episode? {
     if (episodes.isEmpty()) return null
     val positions = entry?.episodePositions.orEmpty()
     episodes.lastOrNull { (positions[it.number] ?: 0) > 0 }?.let { return it }
-    val watched = entry?.episodesWatched ?: 0
-    return episodes.firstOrNull { it.sortKey > watched } ?: episodes.last()
+    return episodes.firstOrNull { entry?.isEpisodeWatched(it.number) != true } ?: episodes.last()
 }
 
 /** The same episode in another dubbing, or the closest one it has. */
@@ -91,7 +90,7 @@ internal fun closestEpisode(episodes: List<Episode>, number: String?): Episode? 
     return episodes.minByOrNull { kotlin.math.abs(it.sortKey - wanted) }
 }
 
-private fun Episode.isWatched(entry: LibraryEntry?): Boolean = entry != null && sortKey <= entry.episodesWatched
+private fun Episode.isWatched(entry: LibraryEntry?): Boolean = entry?.isEpisodeWatched(number) == true
 
 /**
  * «Смотреть»: the player area, the dubbing choice and the episode list,
@@ -290,9 +289,6 @@ private fun PlayerArea(
                 onProgress = { graph.library.saveEpisodePosition(anime, episode.number, it) },
                 onCompleted = {
                     graph.library.saveEpisodePosition(anime, episode.number, 0)
-                    episode.number.toDoubleOrNull()?.toInt()?.let { number ->
-                        graph.library.setEpisodesWatched(anime, maxOf(number, graph.library.state.value.entry(anime)?.episodesWatched ?: 0))
-                    }
                 },
                 nextLabel = next?.let { "Серия ${it.number}" },
                 onNext = next?.let { { onNext(it) } },
@@ -303,7 +299,8 @@ private fun PlayerArea(
                 onFullscreenChange = { fullscreen = it },
                 onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
-                onWatchTime = graph.library::addWatchTime,
+                onPlayback = { update -> graph.library.recordPlayback(anime, episode.number, update.credit,
+                    update.durationMs, update.opening, update.ending, update.reachedEnd) },
                 maxStartQuality = graph.connection.playbackCap(),
                 onApproachingEnd = {
                     // Умное соединение: resolve the next episode now, so autoplay starts without waiting.
@@ -315,7 +312,7 @@ private fun PlayerArea(
         return
     }
     Box(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(AniMixTheme.shapes.large).rim(AniMixTheme.shapes.large, accent = false)) {
-        RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(30.dp), shape = RectangleShape)
+        if (!LocalUiPerformance.current.batterySaver) RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(30.dp), shape = RectangleShape)
         Box(Modifier.fillMaxSize().background(Color(0x80000000)))
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
             if (episode == null) {
@@ -346,7 +343,7 @@ private fun PlayerArea(
                 )
             } else when (stream) {
                 Load.Loading -> {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(30.dp), color = colors.accent)
+                    app.animix.ui.components.LoadingIndicator(Modifier.size(30.dp), color = colors.accent)
                     Spacer(Modifier.height(12.dp))
                     Txt("Получаем видео…", AniMixTheme.type.caption, color = Color.White)
                 }
@@ -368,66 +365,23 @@ private fun PlayerArea(
 /** The dubbing choice as a calm list: studio, player and how many episodes it has. */
 @Composable
 private fun DubbingList(dubbings: List<Dubbing>, selected: Dubbing?, onSelect: (Dubbing) -> Unit) {
-    val colors = AniMixTheme.colors
     if (dubbings.isEmpty()) {
         Txt("Серий пока нет", AniMixTheme.type.caption)
         return
     }
-    var open by remember { mutableStateOf(false) }
-    val shown = if (open || selected == null) dubbings else listOf(selected)
-    Column {
-    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Txt("Озвучка", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-        if (dubbings.size > 1) {
-            Txt(
-                if (open) "Свернуть" else "Сменить · ${dubbings.size}",
-                AniMixTheme.type.label,
-                color = colors.accent,
-                modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable { open = !open }.padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-    }
-    Panel(Modifier.animateContentSize(spring(stiffness = Spring.StiffnessMediumLow))) {
-        shown.forEachIndexed { index, dubbing ->
-            val isSelected = dubbing.key == selected?.key
-            val background by animateColorAsState(if (isSelected) colors.accentSoft else Color.Transparent)
-            Row(
-                Modifier.fillMaxWidth().background(background).clickable {
-                    onSelect(dubbing)
-                    open = false
-                }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(AniMixIcons.Mic, null, Modifier.size(18.dp), tint = if (isSelected) colors.accent else colors.textMuted)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Txt(dubbing.studio, AniMixTheme.type.bodyStrong, color = colors.textPrimary, maxLines = 1)
-                    Txt("${dubbing.player} · ${dubbing.episodes.size} ${episodesWord(dubbing.episodes.size)}", AniMixTheme.type.micro, maxLines = 1)
-                }
-                if (isSelected) Icon(AniMixIcons.Check, null, Modifier.size(18.dp), tint = colors.accent)
-            }
-            if (index < shown.lastIndex) Box(Modifier.fillMaxWidth().padding(start = 46.dp).height(1.dp).background(colors.outline.copy(alpha = 0.5f)))
-        }
-    }
-    }
+    SelectionList("Озвучка", dubbings.map { SelectionOption(it.key, it.studio, "${it.player} · ${it.episodes.size} ${episodesWord(it.episodes.size)}") },
+        selected?.key, AniMixIcons.Mic) { key -> dubbings.firstOrNull { it.key == key }?.let(onSelect) }
 }
 
 /** An episode number; watched ones are dimmed with a check, started ones show how far they got. */
 @Composable
 private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, progress: Float?, saved: Boolean, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
-    val interaction = remember { MutableInteractionSource() }
-    val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip)
-    Box(
-        Modifier.height(48.dp).pressScale(interaction).clip(AniMixTheme.shapes.medium).background(background)
-            .rim(AniMixTheme.shapes.medium, accent = selected)
-            .clickable(interaction, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    EpisodeCardSurface(selected, onClick, Modifier.height(48.dp)) {
         Txt(
             episode.number,
             AniMixTheme.type.bodyStrong,
+            modifier = Modifier.align(Alignment.Center),
             color = when {
                 selected -> colors.accentText
                 watched -> colors.textMuted

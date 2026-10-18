@@ -33,8 +33,9 @@ data class LibraryEntry(
     val score: Int? = null,
     val episodePositions: Map<String, Long> = emptyMap(),
     val updatedAt: Long = 0,
+    val viewing: Map<String, EpisodeViewing> = emptyMap(),
 ) {
-    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty()
+    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty() && viewing.isEmpty()
 }
 
 @Serializable
@@ -49,6 +50,7 @@ data class LibraryData(
     val entries: Map<String, LibraryEntry> = emptyMap(),
     /** Seconds watched per local day (see [app.animix.core.localDayIndex]), for streaks and the activity chart. */
     val watchDays: Map<Long, Int> = emptyMap(),
+    val watchRemainderMs: Int = 0,
 ) {
     fun entry(anime: Anime): LibraryEntry? = entries[anime.key]
 
@@ -109,6 +111,38 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     }
 
     fun setScore(anime: Anime, score: Int?) = change(anime) { it.copy(score = score?.coerceIn(1, 10)) }
+
+    fun recordPlayback(anime: Anime, number: String, credit: PlaybackCredit, durationMs: Long,
+        opening: app.animix.model.SkipRange?, ending: app.animix.model.SkipRange?, reachedEnd: Boolean) {
+        if (durationMs <= 0 || (credit.ranges.isEmpty() && !reachedEnd)) return
+        val now = nowMillis()
+        val key = viewingKey(number)
+        _state.update { data ->
+            val entry = data.entry(anime) ?: LibraryEntry(anime)
+            val before = entry.viewing[key] ?: EpisodeViewing()
+            var viewing = before.copy(durationMs = durationMs,
+                ranges = mergeViewedRanges(before.ranges + credit.ranges, durationMs),
+                opening = opening ?: before.opening, ending = ending ?: before.ending,
+                reachedEnd = before.reachedEnd || reachedEnd)
+            if (viewing.completedAt == null && viewing.qualifies()) viewing = viewing.copy(completedAt = now)
+            val all = entry.viewing + (key to viewing)
+            var watched = entry.episodesWatched
+            // Out-of-order playback never silently marks every preceding episode as watched.
+            while (all[(watched + 1).toString()]?.completedAt != null) watched++
+            val updated = entry.copy(anime = anime, viewing = all, episodesWatched = watched, updatedAt = now,
+                status = when {
+                    anime.episodes > 0 && watched >= anime.episodes -> ListStatus.Completed
+                    entry.status == null -> ListStatus.Watching
+                    else -> entry.status
+                })
+            val elapsed = (credit.elapsedMs.coerceAtLeast(0) + data.watchRemainderMs)
+            val seconds = (elapsed / 1000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val day = app.animix.core.localDayIndex(now)
+            data.copy(entries = data.entries + (anime.key to updated), watchRemainderMs = (elapsed % 1000).toInt(),
+                watchDays = if (seconds > 0) data.watchDays + (day to ((data.watchDays[day] ?: 0) + seconds)) else data.watchDays)
+        }
+        save()
+    }
 
     /** Adds playback time to today; called by the player while video is playing. */
     fun addWatchTime(seconds: Int) {

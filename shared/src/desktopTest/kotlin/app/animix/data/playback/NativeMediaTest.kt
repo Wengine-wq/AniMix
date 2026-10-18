@@ -71,6 +71,7 @@ class NativeMediaTest {
             Unit
         } finally {
             player?.release()
+            player?.awaitReleased()
             server.stop(0); http.close(); folder.deleteRecursively()
         }
     }

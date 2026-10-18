@@ -1,6 +1,6 @@
 package app.animix.ui.components
 
-import androidx.compose.animation.animateColorAsState
+import app.animix.ui.theme.animateMotionColorAsState as animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
@@ -45,6 +51,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,7 +64,11 @@ import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
-import androidx.compose.animation.core.animateFloatAsState
+import app.animix.ui.theme.animateMotionFloatAsState as animateFloatAsState
+import app.animix.ui.theme.LocalUiPerformance
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.RectangleShape
@@ -81,6 +93,22 @@ fun Txt(
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
     )
+}
+
+/** Keep long page titles readable on narrow screens and with larger system text. */
+@Composable
+fun PageHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconCircle(AniMixIcons.Back, onClick = onBack)
+        Spacer(Modifier.width(12.dp))
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val type = AniMixTheme.type
+            val measurer = rememberTextMeasurer()
+            val naturalWidth = measurer.measure(title, style = type.title, softWrap = false, maxLines = 1).size.width
+            val availableWidth = with(LocalDensity.current) { maxWidth.roundToPx() }
+            Txt(title, if (naturalWidth > availableWidth) type.heading else type.title)
+        }
+    }
 }
 
 /** Remote image with a quiet placeholder while it loads or when it fails. */
@@ -116,6 +144,10 @@ fun RemoteImage(
 @Composable
 fun Shimmer(modifier: Modifier = Modifier, shape: Shape = AniMixTheme.shapes.medium) {
     val colors = AniMixTheme.colors
+    if (!LocalUiPerformance.current.animations) {
+        Box(modifier.clip(shape).background(colors.surfaceRaised))
+        return
+    }
     val transition = rememberInfiniteTransition()
     val alpha by transition.animateFloat(
         initialValue = 0.45f,
@@ -123,6 +155,12 @@ fun Shimmer(modifier: Modifier = Modifier, shape: Shape = AniMixTheme.shapes.med
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
     )
     Box(modifier.clip(shape).background(colors.surfaceRaised.copy(alpha = alpha)))
+}
+
+@Composable
+fun LoadingIndicator(modifier: Modifier = Modifier, color: Color = AniMixTheme.colors.accent, strokeWidth: Dp = 3.dp) {
+    if (LocalUiPerformance.current.animations) CircularProgressIndicator(modifier, color = color, strokeWidth = strokeWidth)
+    else Box(modifier, contentAlignment = Alignment.Center) { Icon(AniMixIcons.Clock, "Загрузка", Modifier.fillMaxSize(), tint = color) }
 }
 
 fun Anime.metaLine(): String = buildList {
@@ -295,10 +333,11 @@ fun IconCircle(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    size: Dp = 42.dp,
+    size: Dp = 44.dp,
     glass: Boolean = false,
     tint: Color = Color.Unspecified,
     active: Boolean = false,
+    contentDescription: String? = null,
 ) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
@@ -321,7 +360,7 @@ fun IconCircle(
             active -> colors.accent
             else -> colors.textPrimary
         }
-        Icon(icon, null, Modifier.size(size * 0.48f), tint = iconTint)
+        Icon(icon, contentDescription, Modifier.size(if (size >= 50.dp) 24.dp else 20.dp), tint = iconTint)
     }
 }
 
@@ -343,6 +382,7 @@ fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
 /** Soft pink light around an accented control. */
 @Composable
 fun Modifier.accentGlow(shape: Shape, strength: Float = 0.22f): Modifier {
+    if (LocalUiPerformance.current.batterySaver) return this
     val colors = AniMixTheme.colors
     return dropShadow(
         shape,
@@ -353,7 +393,7 @@ fun Modifier.accentGlow(shape: Shape, strength: Float = 0.22f): Modifier {
 /** The glossy highlight on filled buttons: light catching the top edge. */
 @Composable
 fun Modifier.highlight(shape: Shape): Modifier =
-    innerShadow(shape, Shadow(radius = 4.dp, color = Color.White.copy(alpha = 0.22f), offset = DpOffset(0.dp, 1.dp)))
+    if (LocalUiPerformance.current.batterySaver) this else innerShadow(shape, Shadow(radius = 4.dp, color = Color.White.copy(alpha = 0.22f), offset = DpOffset(0.dp, 1.dp)))
 
 @Composable
 fun MessageState(
@@ -385,13 +425,12 @@ fun MessageState(
 }
 
 @Composable
-fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon: ImageVector? = null, subtitle: String? = null) {
+fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon: ImageVector? = null, subtitle: String? = null, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
     Row(
-        Modifier.fillMaxWidth().clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-        ) { onChange(!checked) }.padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().toggleable(checked, interactionSource = remember { MutableInteractionSource() },
+            indication = null, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -402,17 +441,14 @@ fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon
             Txt(title, AniMixTheme.type.bodyStrong)
             if (subtitle != null) Txt(subtitle, AniMixTheme.type.caption)
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onAccent,
-                checkedTrackColor = colors.accent,
-                uncheckedThumbColor = colors.textMuted,
-                uncheckedTrackColor = colors.surfaceRaised,
-                uncheckedBorderColor = colors.outline,
-            ),
-        )
+        Spacer(Modifier.width(12.dp))
+        val thumb by animateFloatAsState(if (checked) 1f else 0f)
+        val track by animateColorAsState(if (checked && enabled) colors.accent else colors.surfaceRaised)
+        Box(Modifier.size(width = 52.dp, height = 32.dp).clip(AniMixTheme.shapes.pill).background(track)
+            .border(1.dp, if (checked && enabled) track else colors.outline, AniMixTheme.shapes.pill), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.offset(x = (4 + 20 * thumb).dp).size(24.dp).clip(CircleShape)
+                .background(if (checked && enabled) colors.onAccent else colors.textMuted))
+        }
     }
 }
 
@@ -434,7 +470,17 @@ fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: Stri
     }
 }
 
-/** Rounded panel that groups rows, as in the settings concept. */
+/** Shared, quiet progress track for profile XP and other determinate values. */
+@Composable
+fun ProgressLine(progress: Float, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    val value by animateFloatAsState(progress.coerceIn(0f, 1f))
+    Box(modifier.fillMaxWidth().height(4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)
+        .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f) }) {
+        Box(Modifier.fillMaxWidth(value.coerceIn(0f, 1f)).fillMaxHeight().background(colors.accent))
+    }
+}
+
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val colors = AniMixTheme.colors

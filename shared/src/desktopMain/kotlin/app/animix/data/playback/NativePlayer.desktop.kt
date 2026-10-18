@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.*
+import kotlin.math.abs
 
 actual fun createNativePlayer(): NativePlayer = DesktopNativePlayer()
 
@@ -114,9 +116,17 @@ internal class DesktopNativePlayer : NativePlayer {
     internal val frames = FrameSink()
     private val mutable = MutableStateFlow(PlayerSnapshot())
     override val state = mutable.asStateFlow()
+    private val commands = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val closed = CompletableDeferred<Unit>()
+    @Volatile
     private var initialPosition = 0L
+    @Volatile
     private var startPaused = false
+    @Volatile
     private var released = false
+    @Volatile private var seekTarget: Long? = null
+    @Volatile private var seekStarted = 0L
+    @Volatile private var requestedPlay = false
 
     init {
         engine.videoSurface().set(factory.videoSurfaces().newVideoSurface(
@@ -140,7 +150,7 @@ internal class DesktopNativePlayer : NativePlayer {
         ))
         engine.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun playing(mediaPlayer: MediaPlayer) {
-                mutable.update { it.copy(playing = true, ready = true, buffering = false) }
+                mutable.update { it.copy(playing = true, playRequested = requestedPlay, ready = true, buffering = false) }
                 // LibVLC callbacks must not synchronously re-enter the player controls.
                 mediaPlayer.submit {
                     if (initialPosition > 0) { mediaPlayer.controls().setTime(initialPosition); initialPosition = 0 }
@@ -148,9 +158,14 @@ internal class DesktopNativePlayer : NativePlayer {
                 }
             }
             override fun paused(mediaPlayer: MediaPlayer) { mutable.update { it.copy(playing = false, buffering = false) } }
-            override fun finished(mediaPlayer: MediaPlayer) { mutable.update { it.copy(playing = false, buffering = false, ended = true, positionMs = it.durationMs) } }
+            override fun finished(mediaPlayer: MediaPlayer) { requestedPlay = false; mutable.update { it.copy(playing = false, playRequested = false, buffering = false, ended = true, positionMs = it.durationMs) } }
             override fun buffering(mediaPlayer: MediaPlayer, newCache: Float) { mutable.update { it.copy(buffering = newCache < 100f) } }
-            override fun timeChanged(mediaPlayer: MediaPlayer, newTime: Long) { mutable.update { it.copy(positionMs = newTime.coerceAtLeast(0)) } }
+            override fun timeChanged(mediaPlayer: MediaPlayer, newTime: Long) {
+                val target = seekTarget
+                if (target != null && abs(newTime - target) > 1_500 && System.nanoTime() - seekStarted < 3_000_000_000L) return
+                seekTarget = null
+                mutable.update { it.copy(positionMs = newTime.coerceAtLeast(0), seeking = false) }
+            }
             override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) { mutable.update { it.copy(durationMs = newLength.coerceAtLeast(0)) } }
             override fun error(mediaPlayer: MediaPlayer) { mutable.update { it.copy(playing = false, buffering = false, error = "Не удалось воспроизвести видео. Обновите ссылку или выберите другое качество.") } }
         })
@@ -159,23 +174,60 @@ internal class DesktopNativePlayer : NativePlayer {
         if (released) return
         initialPosition = startPositionMs.coerceAtLeast(0)
         startPaused = !playWhenReady
-        mutable.value = PlayerSnapshot(buffering = true, positionMs = initialPosition, volume = state.value.volume)
+        requestedPlay = playWhenReady
+        mutable.value = PlayerSnapshot(buffering = true, playRequested = playWhenReady, positionMs = initialPosition, volume = state.value.volume)
         val options = buildList {
             headers.entries.firstOrNull { it.key.equals("Referer", true) }?.let { add(":http-referrer=${it.value}") }
             headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { add(":http-user-agent=${it.value}") }
         }
-        if (!engine.media().play(url, *options.toTypedArray())) mutable.update { it.copy(buffering = false, error = "Не удалось открыть видео.") }
+        seekTarget = null
+        commands.launch {
+            if (released) return@launch
+            val started = runCatching { engine.media().play(url, *options.toTypedArray()) }.getOrDefault(false)
+            if (!started) mutable.update { it.copy(playing = false, playRequested = false, buffering = false, error = "Не удалось открыть видео.") }
+        }
     }
-    override fun play() { if (state.value.ended) seekTo(0); engine.controls().play() }
-    override fun pause() = engine.controls().setPause(true)
+    override fun play() {
+        if (released) return
+        requestedPlay = true
+        if (state.value.ended) seekTo(0)
+        mutable.update { it.copy(playing = true, playRequested = true, ended = false) }
+        commands.launch { if (!released) engine.controls().play() }
+    }
+    override fun pause() {
+        if (released) return
+        requestedPlay = false
+        mutable.update { it.copy(playing = false, playRequested = false) }
+        commands.launch { if (!released) engine.controls().setPause(true) }
+    }
     override fun seekTo(positionMs: Long) {
         val target = positionMs.coerceAtLeast(0)
+        if (released) return
         initialPosition = 0
-        mutable.update { it.copy(ended = false, positionMs = target) }
-        engine.controls().setTime(target)
+        seekTarget = target
+        seekStarted = System.nanoTime()
+        mutable.update { it.copy(ended = false, positionMs = target, seeking = true) }
+        commands.launch { if (!released) engine.controls().setTime(target) }
     }
-    override fun setVolume(volume: Float) { val value = volume.coerceIn(0f, 1f); engine.audio().setVolume((value * 100).toInt()); mutable.update { it.copy(volume = value) } }
-    override fun release() { if (!released) { released = true; engine.controls().stop(); engine.release(); factory.release(); frames.clear() } }
+    override fun setVolume(volume: Float) {
+        if (released) return
+        val value = volume.coerceIn(0f, 1f)
+        mutable.update { it.copy(volume = value) }
+        commands.launch { if (!released) engine.audio().setVolume((value * 100).toInt()) }
+    }
+    override fun release() {
+        if (released) return
+        released = true
+        commands.launch {
+            try {
+                try { engine.controls().stop() } finally {
+                    try { engine.release() } finally { factory.release(); frames.clear() }
+                }
+            }
+            finally { closed.complete(Unit); commands.cancel() }
+        }
+    }
+    internal suspend fun awaitReleased() = closed.await()
 }
 
 private val videoSampling = FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)

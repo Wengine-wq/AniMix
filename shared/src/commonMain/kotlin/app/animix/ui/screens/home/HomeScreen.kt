@@ -44,6 +44,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import app.animix.ui.components.PageIndicator
+import app.animix.ui.theme.AniMixMotion
+import app.animix.ui.theme.LocalUiPerformance
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import app.animix.ui.components.accentGlow
 import app.animix.ui.components.highlight
@@ -160,7 +167,6 @@ fun AniMixWordmark(modifier: Modifier = Modifier) {
 
 @Composable
 private fun HomeTopBar(onSearch: () -> Unit) {
-    val colors = AniMixTheme.colors
     Row(
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -173,14 +179,17 @@ private fun HomeTopBar(onSearch: () -> Unit) {
 @Composable
 private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (Anime) -> Unit) {
     if (items.isEmpty()) return
-    val colors = AniMixTheme.colors
     val pager = rememberPagerState { items.size }
+    val performance = LocalUiPerformance.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(pager.currentPage, items) { onShown(items[pager.currentPage]) }
     // Advance on its own, but pause while the user is swiping.
-    LaunchedEffect(pager, items.size) {
+    LaunchedEffect(pager, items.size, performance.animations) {
+        if (!performance.animations) return@LaunchedEffect
         while (items.size > 1) {
             delay(6_000)
-            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size)
+            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size,
+                animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing))
         }
     }
     Column {
@@ -196,27 +205,17 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (
                 items[page],
                 onClick = { onOpen(items[page]) },
                 modifier = Modifier.graphicsLayer {
-                    val scale = 1f - 0.05f * offset
+                    val scale = if (performance.animations) 1f - 0.05f * offset else 1f
                     scaleX = scale
                     scaleY = scale
-                    alpha = 1f - 0.35f * offset
+                    alpha = if (performance.animations) 1f - 0.35f * offset else 1f
                 },
             )
         }
-        if (items.size > 1) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                repeat(items.size) { index ->
-                    val selected = index == pager.currentPage
-                    Box(
-                        Modifier.padding(horizontal = 3.dp).height(6.dp).width(if (selected) 18.dp else 6.dp)
-                            .clip(CircleShape).background(if (selected) colors.accent else colors.outline),
-                    )
-                }
-            }
-        }
+        PageIndicator(items.size, pager.currentPage + pager.currentPageOffsetFraction,
+            onSelect = { index -> scope.launch { if (performance.animations) pager.animateScrollToPage(index,
+                animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) else pager.scrollToPage(index) } },
+            modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -231,7 +230,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
         Box(
             Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(onClick = onClick),
         ) {
-            RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
+            if (!LocalUiPerformance.current.batterySaver) RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.horizontalGradient(0f to Color(0x99000000), 0.6f to Color(0x4D000000), 1f to Color(0x1A000000)),

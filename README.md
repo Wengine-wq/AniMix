@@ -23,6 +23,8 @@ Inside `shared/src/commonMain/kotlin/app/animix`:
 
 ## Build
 
+UI changes follow the [AniMix interface guidelines](docs/interface-guidelines.md): shared shapes, spacing, components, motion and navigation behavior.
+
 Requires JDK 21 (a portable one lives in `D:\DevTools\jdk-21.0.12.1+1`).
 
 ```

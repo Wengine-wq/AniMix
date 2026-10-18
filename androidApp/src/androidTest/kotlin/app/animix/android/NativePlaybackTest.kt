@@ -63,6 +63,9 @@ class NativePlaybackTest {
             root.listFiles()!!.filter { it != output }.forEach { it.deleteRecursively() }
             scenario = ActivityScenario.launch(MainActivity::class.java)
             scenario.onActivity { activity ->
+                // A locked test device otherwise decodes into a hidden, invalid SurfaceView.
+                activity.setShowWhenLocked(true)
+                activity.setTurnScreenOn(true)
                 player = createNativePlayer().also { it.setVolume(0f) }
                 activity.setContent { NativeVideoSurface(player!!, Modifier.fillMaxSize()) }
                 player!!.load(android.net.Uri.fromFile(output).toString(), emptyMap())

@@ -1,7 +1,11 @@
 package app.animix
 
-import androidx.compose.animation.animateColorAsState
+import app.animix.ui.theme.animateMotionColorAsState as animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import app.animix.ui.theme.animateMotionFloatAsState as animateFloatAsState
+import app.animix.ui.theme.LocalUiPerformance
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,10 +28,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +47,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -61,12 +64,13 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.unit.dp
 import app.animix.core.Platform
 import app.animix.ui.components.Txt
-import app.animix.ui.components.accentGlow
-import app.animix.ui.components.rim
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import app.animix.ui.navigation.Navigator
@@ -76,9 +80,9 @@ import app.animix.ui.screens.catalog.CatalogScreen
 import app.animix.ui.screens.detail.DetailScreen
 import app.animix.ui.screens.detail.ReviewsScreen
 import app.animix.ui.screens.detail.WatchScreen
-import app.animix.ui.screens.home.AniMixWordmark
 import app.animix.ui.screens.home.HomeScreen
 import app.animix.ui.screens.downloads.DownloadsScreen
+import app.animix.ui.screens.downloads.TitleDownloadsScreen
 import app.animix.ui.screens.downloads.OfflineWatchScreen
 import app.animix.ui.screens.profile.ListsScreen
 import app.animix.ui.screens.profile.SettingsSectionScreen
@@ -89,6 +93,7 @@ import app.animix.ui.screens.profile.AchievementToastHost
 import app.animix.ui.screens.profile.ProfileScreen
 import app.animix.ui.screens.profile.SettingsScreen
 import app.animix.ui.theme.AniMixTheme
+import app.animix.ui.theme.AniMixMotion
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
@@ -119,11 +124,11 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
                     .maxSizeBytes(300L * 1024 * 1024)
                     .build()
             }
-            .crossfade(true)
+            .crossfade(false)
             .build()
     }
 
-    AniMixTheme(settings.themeMode) {
+    AniMixTheme(settings.themeMode, settings.animationsEnabled, settings.batterySaver) {
         AppShell(graph, navigator, onExit)
     }
 }
@@ -164,7 +169,7 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
         Box(Modifier.fillMaxSize().background(colors.background)) {
             val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            Box(Modifier.fillMaxSize().hazeSource(haze)) {
+            Box(Modifier.fillMaxSize().then(if (LocalUiPerformance.current.batterySaver) Modifier else Modifier.hazeSource(haze))) {
                 AmbientBackdrop(ambient.imageUrl)
                 Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + BottomBarSpace))
             }
@@ -189,12 +194,14 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
     val routes = remember { HashMap<String, Route?>() }
     routes[screenKey] = navigator.current
     val ambient = LocalAmbient.current
+    val motion = LocalUiPerformance.current.animations
     SideEffect { ambient.currentKey = screenKey }
     AnimatedContent(
         targetState = screenKey,
         transitionSpec = {
-            val enter = tween<Float>(320, easing = FastOutSlowInEasing)
-            (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(180))
+            val enter = tween<Float>(AniMixMotion.Page, easing = FastOutSlowInEasing)
+            if (motion) (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(AniMixMotion.Fast))
+            else EnterTransition.None togetherWith ExitTransition.None
         },
         modifier = Modifier.fillMaxSize(),
     ) { key ->
@@ -216,6 +223,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding, route.episode)
                     route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)
+                    route is Route.Downloads -> TitleDownloadsScreen(graph, navigator, route.anime, padding)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)
@@ -235,7 +243,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
     val shape = AniMixTheme.shapes.extraLarge
-    Row(
+    BoxWithConstraints(
         modifier
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .widthIn(max = 440.dp)
@@ -243,24 +251,28 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
             .dropShadow(shape, Shadow(radius = 24.dp, color = Color.Black.copy(alpha = if (colors.isDark) 0.35f else 0.08f), offset = DpOffset(0.dp, 8.dp)))
             .glass(shape)
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        Tab.entries.forEach { tab ->
-            val selected = navigator.tab == tab
-            val interaction = remember { MutableInteractionSource() }
-            val pill by animateColorAsState(if (selected) colors.accentSoft else Color.Transparent, tween(250))
-            val tint by animateColorAsState(if (selected) colors.accent else colors.textMuted, tween(250))
-            Box(
-                Modifier.weight(1f).height(48.dp)
-                    .pressScale(interaction, pressed = 0.9f)
-                    .clickable(interaction, indication = null) { navigator.select(tab) },
-                contentAlignment = Alignment.Center,
-            ) {
+        val slot = maxWidth / Tab.entries.size
+        val position by animateFloatAsState(navigator.tab.ordinal.toFloat(), AniMixMotion.selectionSpring())
+        Box(Modifier.offset(x = slot * position + (slot - 52.dp) / 2, y = 4.dp)
+            .size(width = 52.dp, height = 40.dp).clip(AniMixTheme.shapes.pill).background(colors.accentSoft))
+        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Tab.entries.forEach { tab ->
+                val selected = navigator.tab == tab
+                val interaction = remember { MutableInteractionSource() }
+                val focus by animateFloatAsState(if (selected) 1f else 0f, AniMixMotion.selectionSpring())
+                val tint by animateColorAsState(if (selected) colors.accent else colors.textMuted, tween(AniMixMotion.Standard))
                 Box(
-                    Modifier.size(width = 52.dp, height = 40.dp).clip(AniMixTheme.shapes.pill).background(pill),
+                    Modifier.weight(1f).height(48.dp)
+                        .pressScale(interaction, pressed = 0.9f)
+                        .selectable(selected, interaction, indication = null, role = Role.Tab) { navigator.select(tab) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(tab.icon, tab.label, Modifier.size(22.dp), tint = tint)
+                    Icon(tab.icon, tab.label, Modifier.size(22.dp).graphicsLayer {
+                        scaleX = 1f + 0.08f * focus
+                        scaleY = scaleX
+                        translationY = -1.5.dp.toPx() * focus
+                    }, tint = tint)
                 }
             }
         }

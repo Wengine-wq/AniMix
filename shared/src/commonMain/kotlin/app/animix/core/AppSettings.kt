@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Serializable
 enum class ThemeMode(val label: String) {
@@ -29,6 +31,8 @@ data class Settings(
     val smartConnection: Boolean = true,
     /** Экономия трафика on metered (mobile) networks: playback up to 720p, fewer parallel downloads. */
     val trafficSaver: Boolean = true,
+    val animationsEnabled: Boolean = true,
+    val batterySaver: Boolean = false,
     val preferredDubbing: String? = null,
     /** The quality picked last in the player, used for the next episode too. */
     val preferredQuality: String? = null,
@@ -38,13 +42,16 @@ data class Settings(
     val downloadQuality: String? = null,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
-)
+) {
+    val animationsAllowed: Boolean get() = animationsEnabled && !batterySaver
+}
 
 /** User preferences, loaded once at start and saved on every change. */
 class AppSettings(private val store: DiskStore, private val scope: CoroutineScope) {
 
     private val _state = MutableStateFlow(Settings())
     val state: StateFlow<Settings> = _state.asStateFlow()
+    private val writeLock = Mutex()
 
     suspend fun load() {
         val text = store.read(FILE) ?: return
@@ -54,9 +61,10 @@ class AppSettings(private val store: DiskStore, private val scope: CoroutineScop
 
     fun update(transform: (Settings) -> Settings) {
         _state.update(transform)
-        val snapshot = _state.value
-        scope.launch { store.write(FILE, AppJson.encodeToString(Settings.serializer(), snapshot)) }
+        scope.launch { writeLock.withLock { store.write(FILE, AppJson.encodeToString(Settings.serializer(), _state.value)) } }
     }
+
+    suspend fun flush() = writeLock.withLock { store.write(FILE, AppJson.encodeToString(Settings.serializer(), _state.value)) }
 
     private companion object {
         const val FILE = "settings.json"

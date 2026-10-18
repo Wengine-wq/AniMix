@@ -7,6 +7,9 @@ import app.animix.core.nowMillis
 import app.animix.data.library.Library
 import app.animix.data.library.LibraryData
 import app.animix.data.library.ListStatus
+import app.animix.data.library.hasVerifiedCompletion
+import app.animix.data.library.verifiedEpisodes
+import app.animix.core.localDayIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,7 +87,6 @@ class Achievements(
     private val _progress = MutableStateFlow<List<AchievementProgress>>(emptyList())
     private val _unlockedNow = MutableSharedFlow<Achievement>(extraBufferCapacity = 8)
     private val writeLock = Mutex()
-    private var previousLibrary: LibraryData? = null
     private var loaded = false
 
     val progress: StateFlow<List<AchievementProgress>> = _progress.asStateFlow()
@@ -95,6 +97,7 @@ class Achievements(
     val all: List<Achievement> get() = catalog
 
     suspend fun load() {
+        if (loaded) return
         store.read(FILE)?.let { text ->
             runCatching { AppJson.decodeFromString(AchievementState.serializer(), text) }.onSuccess { _state.value = it }
         }
@@ -129,16 +132,10 @@ class Achievements(
     /** A title was opened from a catalog filtered by type. */
     fun openedFromFilter(animeKey: String) = addToSet("filtered", animeKey)
 
-    /** Adds to a counter: "watch_seconds", "episode_downloads_completed", "reviews_published". */
+    /** Adds to a non-playback event counter, such as completed downloads or published reviews. */
     fun record(counter: String, amount: Long = 1) = _state.update {
         it.copy(counters = it.counters + (counter to ((it.counters[counter] ?: 0L) + amount)))
     }.also { save() }
-
-    /** One episode watched to the end today, for the streak and marathon achievements. */
-    fun episodeWatched(day: String) {
-        addToSet("days", day)
-        record("episodes_on:$day")
-    }
 
     // --- Internals ---------------------------------------------------------------------------
 
@@ -150,15 +147,12 @@ class Achievements(
 
     /** Remembers list history that the current library snapshot alone can't tell. */
     private fun observeLibrary(lib: LibraryData) {
-        val before = previousLibrary
-        previousLibrary = lib
         var state = _state.value
         val now = nowMillis()
         for ((key, entry) in lib.entries) {
-            val old = before?.entries?.get(key)
             if (entry.favorite) state = state.withSet("favorites_ever", key)
             if (entry.status == ListStatus.Planned) state = state.withSet("planned_ever", key)
-            if (entry.status == ListStatus.Completed) {
+            if (entry.hasVerifiedCompletion) {
                 if (key !in state.firstCompleted) state = state.copy(firstCompleted = state.firstCompleted + (key to now))
                 if (state.sets["planned_ever"]?.contains(key) == true) state = state.withSet("planned_completed", key)
             }
@@ -177,6 +171,8 @@ class Achievements(
         val state = _state.value
         val profileName = lib.profile.name.trim().replace(Regex("\\s+"), " ")
         val entries = lib.entries.values
+        val verifiedDays = entries.flatMap { it.viewing.values }.mapNotNull { it.completedAt }
+            .groupingBy { localDayIndex(it) }.eachCount()
         val unlocked = state.unlocked.toMutableMap()
         val fresh = mutableListOf<Achievement>()
 
@@ -185,28 +181,31 @@ class Achievements(
             val set = { name: String -> state.sets[name].orEmpty() }
             return when (t.metric) {
                 "anime_season_completed", "anime_release_completed" ->
-                    if (lib.entries["s${t.animeId}"]?.status == ListStatus.Completed) 1 else 0
-                "anime_episodes_watched" -> lib.entries["s${t.animeId}"]?.let { e ->
-                    if (e.status == ListStatus.Completed) maxOf(e.episodesWatched, e.anime.availableEpisodes) else e.episodesWatched
-                } ?: 0
-                "titles_completed" -> entries.count { it.status == ListStatus.Completed }
+                    if (lib.entries["s${t.animeId}"]?.hasVerifiedCompletion == true) 1 else 0
+                "anime_episodes_watched" -> lib.entries["s${t.animeId}"]?.verifiedEpisodes ?: 0
+                "titles_completed" -> entries.count { it.hasVerifiedCompletion }
                 "favorite_titles_added" -> set("favorites_ever").size
                 "favorite_titles_current" -> entries.count { it.favorite }
                 "planned_titles_current" -> entries.count { it.status == ListStatus.Planned }
                 "on_hold_titles_current" -> entries.count { it.status == ListStatus.OnHold }
                 "on_hold_to_watching_transitions" -> (state.counters["hold_to_watching"] ?: 0).toInt()
-                "unique_planned_titles_completed" -> set("planned_completed").size
-                "unique_titles_completed_in_month" -> state.firstCompleted.values.groupingBy(::monthOf).eachCount().values.maxOrNull() ?: 0
+                "unique_planned_titles_completed" -> set("planned_completed").count { lib.entries[it]?.hasVerifiedCompletion == true }
+                "unique_titles_completed_in_month" -> state.firstCompleted.filterKeys { lib.entries[it]?.hasVerifiedCompletion == true }
+                    .values.groupingBy(::monthOf).eachCount().values.maxOrNull() ?: 0
                 "custom_profile_name_saved" -> if (profileName.isNotEmpty() && profileName != "Гость") 1 else 0
                 "theme_selected" -> if (t.value in set("theme")) 1 else 0
                 "setting_enabled_by_user" -> if (t.value in set("setting")) 1 else 0
                 "filtered_catalog_titles_opened" -> set("filtered").size
                 "unique_titles_opened_from_search" -> set("search").size
-                "watch_seconds" -> (state.counters["watch_seconds"] ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                "watch_seconds" -> lib.watchDays.values.sumOf { it.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 "episode_downloads_completed" -> (state.counters["episode_downloads_completed"] ?: 0).toInt()
                 "reviews_published" -> (state.counters["reviews_published"] ?: 0).toInt()
-                "episodes_per_day" -> state.counters.filterKeys { it.startsWith("episodes_on:") }.values.maxOrNull()?.toInt() ?: 0
-                "daily_episode_streak" -> longestStreak(set("days"))
+                "episodes_per_day" -> verifiedDays.values.maxOrNull() ?: 0
+                "daily_episode_streak" -> {
+                    var run = 0; var best = 0; var previous: Long? = null
+                    for (day in verifiedDays.keys.sorted()) { run = if (previous != null && day == previous + 1) run + 1 else 1; best = maxOf(best, run); previous = day }
+                    best
+                }
                 "all_required_achievements_unlocked" -> t.required.count { it in unlocked }
                 else -> 0
             }

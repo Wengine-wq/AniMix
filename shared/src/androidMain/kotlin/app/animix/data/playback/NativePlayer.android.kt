@@ -67,9 +67,11 @@ internal class AndroidNativePlayer : NativePlayer {
         if (released) return
         mutable.update { it.copy(
             playing = engine.isPlaying,
+            playRequested = engine.playWhenReady && engine.playbackState != Player.STATE_ENDED,
             buffering = engine.playbackState == Player.STATE_BUFFERING,
             ready = engine.playbackState == Player.STATE_READY,
             ended = engine.playbackState == Player.STATE_ENDED,
+            seeking = false,
             positionMs = engine.currentPosition.coerceAtLeast(0),
             durationMs = engine.duration.takeUnless { value -> value == C.TIME_UNSET }?.coerceAtLeast(0) ?: 0,
             volume = engine.volume,
@@ -79,15 +81,19 @@ internal class AndroidNativePlayer : NativePlayer {
     }
     override fun load(url: String, headers: Map<String, String>, startPositionMs: Long, playWhenReady: Boolean) {
         http.setDefaultRequestProperties(headers)
-        mutable.value = PlayerSnapshot(buffering = true, positionMs = startPositionMs, volume = engine.volume)
+        mutable.value = PlayerSnapshot(buffering = true, playRequested = playWhenReady, positionMs = startPositionMs, volume = engine.volume)
         engine.setMediaItem(MediaItem.fromUri(url), startPositionMs.coerceAtLeast(0))
         engine.playWhenReady = playWhenReady
         engine.prepare()
     }
-    override fun play() { if (engine.playbackState == Player.STATE_ENDED) engine.seekTo(0); engine.play() }
-    override fun pause() = engine.pause()
-    override fun seekTo(positionMs: Long) = engine.seekTo(positionMs.coerceAtLeast(0))
-    override fun setVolume(volume: Float) { engine.volume = volume.coerceIn(0f, 1f) }
+    override fun play() { if (engine.playbackState == Player.STATE_ENDED) engine.seekTo(0); engine.play(); publish() }
+    override fun pause() { engine.pause(); publish() }
+    override fun seekTo(positionMs: Long) {
+        val target = positionMs.coerceIn(0, state.value.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE)
+        mutable.update { it.copy(positionMs = target, ended = false, seeking = true) }
+        engine.seekTo(target)
+    }
+    override fun setVolume(volume: Float) { engine.volume = volume.coerceIn(0f, 1f); publish() }
     override fun release() { if (!released) { released = true; scope.cancel(); engine.release() } }
 }
 

@@ -14,7 +14,7 @@ fun LibraryData.continueWatching(limit: Int = 12): List<ContinueItem> = entries.
     .mapNotNull { entry ->
         val total = entry.anime.availableEpisodes.takeIf { it > 0 } ?: entry.anime.episodes
         val inProgress = entry.episodePositions.keys.maxByOrNull { it.toDoubleOrNull() ?: 0.0 }
-        val progress = if (total > 0) (entry.episodesWatched.toFloat() / total).coerceIn(0f, 1f) else 0f
+        val progress = if (total > 0) (entry.watchedEpisodeCount.toFloat() / total).coerceIn(0f, 1f) else 0f
         when {
             inProgress != null -> ContinueItem(entry, inProgress, true, progress)
             entry.episodesWatched > 0 && total > 0 && progress < 0.9f && entry.episodesWatched < total ->
@@ -53,7 +53,7 @@ fun LibraryData.stats(days: Int = 14, today: Long = localDayIndex()): WatchStats
     }
     return WatchStats(
         totalMinutes = watchDays.values.sum() / 60,
-        episodes = entries.values.sumOf { it.episodesWatched },
+        episodes = entries.values.sumOf { it.watchedEpisodeCount },
         completed = entries.values.count { it.status == ListStatus.Completed },
         streak = streak,
         bestStreak = maxOf(best, streak),

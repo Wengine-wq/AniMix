@@ -2,7 +2,8 @@ package app.animix.ui.components
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
+import app.animix.ui.theme.animateMotionFloatAsState as animateFloatAsState
+import app.animix.ui.theme.LocalUiPerformance
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ val LocalHaze = staticCompositionLocalOf<HazeState?> { null }
 @Composable
 fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdrop: Boolean = true): Modifier {
     val colors = AniMixTheme.colors
+    if (LocalUiPerformance.current.batterySaver) return clip(shape).background(colors.surface).rim(shape, accent = false)
     // Controls inside the scrolling content can't blur the layer they belong to; they use a translucent fill.
     val haze = LocalHaze.current.takeIf { backdrop }
     val base = clip(shape)
@@ -65,6 +67,7 @@ fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdr
 /** A gentle shrink while pressed, so taps feel physical without shouting. */
 @Composable
 fun Modifier.pressScale(interaction: MutableInteractionSource, pressed: Float = 0.97f): Modifier {
+    if (!LocalUiPerformance.current.animations) return this
     val isPressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         if (isPressed) pressed else 1f,
@@ -83,6 +86,7 @@ fun Modifier.pressScale(interaction: MutableInteractionSource, pressed: Float = 
 @Composable
 fun AmbientBackdrop(imageUrl: String?, modifier: Modifier = Modifier, height: Dp = 520.dp) {
     val colors = AniMixTheme.colors
+    if (LocalUiPerformance.current.batterySaver) return
     val intensity by animateFloatAsState(if (imageUrl != null) 1f else 0f, tween(600))
     Box(modifier.fillMaxWidth().height(height)) {
         // Without an image, a soft accent dawn at the top keeps the screen from feeling flat.
@@ -95,11 +99,11 @@ fun AmbientBackdrop(imageUrl: String?, modifier: Modifier = Modifier, height: Dp
                 ),
             ),
         )
-        Crossfade(targetState = imageUrl, animationSpec = tween(900), modifier = Modifier.fillMaxSize()) { url ->
+        Crossfade(targetState = imageUrl, animationSpec = tween(if (LocalUiPerformance.current.animations) 900 else 0), modifier = Modifier.fillMaxSize()) { url ->
             if (url != null) {
                 RemoteImage(
                     url,
-                    Modifier.fillMaxSize().blur(90.dp).alpha(if (colors.isDark) 0.55f * intensity else 0.45f * intensity),
+                    Modifier.fillMaxSize().blur(90.dp).alpha(if (colors.isDark) 0.32f * intensity else 0.28f * intensity),
                     shape = RectangleShape,
                     placeholder = false,
                 )
@@ -108,8 +112,8 @@ fun AmbientBackdrop(imageUrl: String?, modifier: Modifier = Modifier, height: Dp
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to colors.background.copy(alpha = 0.15f),
-                    0.6f to colors.background.copy(alpha = 0.7f),
+                    0f to colors.background.copy(alpha = if (colors.isDark) 0.35f else 0.3f),
+                    0.6f to colors.background.copy(alpha = 0.82f),
                     1f to colors.background,
                 ),
             ),

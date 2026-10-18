@@ -1,6 +1,6 @@
 package app.animix.ui.player
 
-import androidx.compose.animation.AnimatedVisibility
+import app.animix.ui.theme.MotionVisibility as AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,7 +13,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
+import app.animix.ui.components.LoadingIndicator as CircularProgressIndicator
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import app.animix.ui.components.Panel
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
@@ -49,12 +52,16 @@ import app.animix.ui.components.pressScale
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 import kotlinx.coroutines.delay
+import kotlin.time.TimeSource
+import kotlin.math.abs
+import kotlinx.coroutines.isActive
+import app.animix.ui.theme.LocalUiPerformance
 
 internal fun skipTarget(positionMs: Long, range: SkipRange?): Long? = range?.takeIf {
     it.start >= 0 && it.length > 0 && positionMs >= it.start * 1000L && positionMs < it.end * 1000L
 }?.let { it.end * 1000L }
 
-/** From here an episode counts as watched: its ending, or the last 8 % when the ending is unknown. */
+/** Story-end boundary for resume/next-episode UI. Rewards additionally require actual coverage. */
 internal fun watchedFromMs(durationMs: Long, ending: SkipRange?): Long? {
     if (durationMs <= 0) return null
     val endingStart = ending?.start?.times(1000L)?.takeIf { it > durationMs / 2 && it < durationMs }
@@ -103,16 +110,17 @@ fun AniMixPlayer(
     onQualityChange: (String) -> Unit = {},
     onAutoNextChoice: (Boolean) -> Unit = {},
     onFillScreenChange: (Boolean) -> Unit = {},
-    onWatchTime: (seconds: Int) -> Unit = {},
+    onPlayback: (PlaybackUpdate) -> Unit = {},
     /** Highest quality to start at (traffic saving on mobile data); the viewer can still pick more. */
     maxStartQuality: Int? = null,
     /** Called once, about five minutes before the end: time to get the next episode ready. */
     onApproachingEnd: () -> Unit = {},
     fullscreen: Boolean = false,
     onFullscreenChange: (Boolean) -> Unit = {},
+    playerFactory: () -> NativePlayer = ::createNativePlayer,
     modifier: Modifier = Modifier,
 ) {
-    val backend = remember { runCatching { createNativePlayer() } }
+    val backend = remember { runCatching(playerFactory) }
     val player = backend.getOrNull()
     if (player == null) {
         Box(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(AniMixTheme.shapes.large).background(Color.Black), contentAlignment = Alignment.Center) {
@@ -143,8 +151,41 @@ fun AniMixPlayer(
     val nextCallback by rememberUpdatedState(onNext)
     val savedPositionNow by rememberUpdatedState(savedPosition)
     val atEnd = state.ended || finishedEarly
+    val tracker = remember(player) { PlaybackTracker() }
+    val playbackClock = remember(player) { TimeSource.Monotonic.markNow() }
+    val playbackCallback by rememberUpdatedState(onPlayback)
+    val currentPlan by rememberUpdatedState(plan)
+    var endReported by remember { mutableStateOf(false) }
+    fun flushViewing(forceEnd: Boolean = false) {
+        val snapshot = player.state.value
+        val skipPlan = currentPlan
+        val boundary = watchedFromMs(snapshot.durationMs, skipPlan.ending)
+        val reached = forceEnd || snapshot.ended || (boundary != null && snapshot.positionMs >= boundary)
+        val credit = tracker.drain()
+        if (credit.ranges.isNotEmpty() || (reached && !endReported)) {
+            playbackCallback(PlaybackUpdate(credit, snapshot.durationMs, skipPlan.opening, skipPlan.ending, reached))
+        }
+        endReported = reached
+    }
+    val flushViewingNow by rememberUpdatedState<(Boolean) -> Unit>(::flushViewing)
+
+    LaunchedEffect(player) {
+        var lastFlush = 0L
+        player.state.collect { snapshot ->
+            val now = playbackClock.elapsedNow().inWholeMilliseconds
+            tracker.sample(snapshot, now)
+            val boundary = watchedFromMs(snapshot.durationMs, currentPlan.ending)
+            if (now - lastFlush >= 5_000 || !snapshot.playing || snapshot.ended ||
+                (!endReported && boundary != null && snapshot.positionMs >= boundary)) {
+                flushViewingNow(false)
+                lastFlush = now
+            }
+        }
+    }
 
     LaunchedEffect(stream, available, reload) {
+        flushViewing(false)
+        tracker.discontinuity()
         val snapshot = player.state.value
         val position = when {
             snapshot.ended -> 0
@@ -155,6 +196,7 @@ fun AniMixPlayer(
     }
     DisposableEffect(player) {
         onDispose {
+            flushViewingNow(false)
             val last = player.state.value
             // Never overwrite a saved position with the 0 of an episode that did not start.
             if (last.ended) progressCallback(0) else if (last.ready) progressCallback(savedPositionNow(last.positionMs))
@@ -170,7 +212,9 @@ fun AniMixPlayer(
     LaunchedEffect(state.durationMs > 0, plan) {
         if (state.durationMs <= 0 || resumeChecked) return@LaunchedEffect
         resumeChecked = true
-        if (initialPositionMs > 0 && resumePositionMs(initialPositionMs, state.durationMs, plan.ending) == 0L && state.positionMs > 0) player.seekTo(0)
+        if (initialPositionMs > 0 && resumePositionMs(initialPositionMs, state.durationMs, plan.ending) == 0L && state.positionMs > 0) {
+            tracker.discontinuity(); player.seekTo(0)
+        }
     }
     LaunchedEffect(state.positionMs / 5000, state.ready) {
         if (state.ready && !state.ended && state.positionMs > 0) progressCallback(savedPosition(state.positionMs))
@@ -181,22 +225,31 @@ fun AniMixPlayer(
     }
 
     fun show() { controlsVisible = true; activity++ }
+    fun seekTo(target: Long) {
+        flushViewing(false)
+        tracker.discontinuity()
+        finishedEarly = false
+        player.seekTo(target.coerceIn(0, state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE))
+    }
     fun jump(target: Long) {
+        flushViewing(false)
+        tracker.discontinuity()
         // An ending that runs to the last seconds finishes the episode instead of seeking into nothing.
         if (state.durationMs > 0 && target >= state.durationMs - 3_000) {
             player.pause()
             finishedEarly = true
+            flushViewing(true)
             if (!completed) { completed = true; completedCallback() }
-        } else player.seekTo(target)
+        } else seekTo(target)
     }
     fun seekBy(seconds: Int) {
         finishedEarly = false
         val max = state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
-        player.seekTo((state.positionMs + seconds * 1000L).coerceIn(0, max))
+        seekTo((player.state.value.positionMs + seconds * 1000L).coerceIn(0, max))
         seekFeedback = (seekFeedback?.takeIf { (it > 0) == (seconds > 0) } ?: 0) + seconds
     }
     fun togglePlay() {
-        if (state.playing) player.pause() else { finishedEarly = false; player.play() }
+        if (state.playRequested || state.playing) player.pause() else { finishedEarly = false; player.play() }
         show()
     }
     fun toggleMute() {
@@ -226,11 +279,13 @@ fun AniMixPlayer(
     LaunchedEffect(state.durationMs > 0 && state.durationMs - state.positionMs < 300_000) {
         if (state.durationMs > 0 && state.ready && state.durationMs - state.positionMs < 300_000) approachingEndCallback()
     }
-    val watchTimeCallback by rememberUpdatedState(onWatchTime)
-    LaunchedEffect(state.playing) {
-        // Feeds the daily statistics (streak, activity chart) in 30-second steps of real playback.
-        if (state.playing) while (true) { delay(30_000); watchTimeCallback(30) }
+    val tapAction by rememberUpdatedState<() -> Unit> {
+        if (isDesktop) togglePlay() else if (controlsVisible) controlsVisible = false else show()
     }
+    val doubleTapAction by rememberUpdatedState<(Int) -> Unit> { direction ->
+        when { direction < 0 -> seekBy(-10); direction > 0 -> seekBy(10); else -> onFullscreenChange(!fullscreen) }
+    }
+    val showAction by rememberUpdatedState<() -> Unit>(::show)
 
     val activeSkip = when {
         skipTarget(state.positionMs, plan.opening) != null -> "Пропустить опенинг" to skipTarget(state.positionMs, plan.opening)!!
@@ -269,7 +324,7 @@ fun AniMixPlayer(
                         while (true) {
                             val event = awaitPointerEvent()
                             when (event.type) {
-                                PointerEventType.Move -> if (isDesktop) show()
+                                PointerEventType.Move -> if (isDesktop) showAction()
                                 PointerEventType.Scroll -> {
                                     val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                                     if (delta != 0f) { player.setVolume(player.state.value.volume - delta * 0.05f); show() }
@@ -283,14 +338,10 @@ fun AniMixPlayer(
                     detectTapGestures(
                         onTap = {
                             runCatching { focus.requestFocus() }
-                            if (isDesktop) togglePlay() else if (controlsVisible) controlsVisible = false else show()
+                            tapAction()
                         },
                         onDoubleTap = { offset ->
-                            when {
-                                offset.x < size.width / 3f -> seekBy(-10)
-                                offset.x > size.width * 2f / 3f -> seekBy(10)
-                                else -> onFullscreenChange(!fullscreen)
-                            }
+                            doubleTapAction(when { offset.x < size.width / 3f -> -1; offset.x > size.width * 2f / 3f -> 1; else -> 0 })
                         },
                     )
                 },
@@ -308,7 +359,7 @@ fun AniMixPlayer(
                 hasNext = onNext != null,
                 onTogglePlay = ::togglePlay,
                 onSeekBy = { seekBy(it); show() },
-                onSeekTo = { finishedEarly = false; player.seekTo(it); show() },
+                onSeekTo = { seekTo(it); show() },
                 onScrub = { show() },
                 onQuality = { pickQuality(it); show() },
                 onDownload = onDownload?.let { download -> { download(available) } },
@@ -319,9 +370,6 @@ fun AniMixPlayer(
                 onVolume = { player.setVolume(it); show() },
                 onNext = { nextCallback?.invoke() },
             )
-            if (state.buffering && state.error == null) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center).size(44.dp), color = AniMixTheme.colors.accent, strokeWidth = 3.dp)
-            }
             seekFeedback?.let { seconds ->
                 SeekBubble(seconds, Modifier.align(if (seconds < 0) BiasAlignment(-0.6f, 0f) else BiasAlignment(0.6f, 0f)))
             }
@@ -343,7 +391,7 @@ fun AniMixPlayer(
                     auto = settings.autoNextAsked && settings.autoNextEpisode,
                     onNext = { nextCallback?.invoke() },
                     onChoice = { yes -> onAutoNextChoice(yes); if (yes) nextCallback?.invoke() },
-                    onReplay = { finishedEarly = false; openingSkipped = false; endingSkipped = false; player.seekTo(0); player.play() },
+                    onReplay = { finishedEarly = false; openingSkipped = false; endingSkipped = false; seekTo(0); player.play() },
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
@@ -419,7 +467,7 @@ private fun PlayerOverlay(
             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                 OverlayIcon(AniMixIcons.SeekBack, { onSeekBy(-10) }, size = 52, label = "10")
                 Spacer(Modifier.width(28.dp))
-                if (!state.buffering) {
+                run {
                     val interaction = remember { MutableInteractionSource() }
                     Box(
                         Modifier.size(68.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
@@ -427,15 +475,19 @@ private fun PlayerOverlay(
                             .clickable(interaction, indication = null, onClick = onTogglePlay),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(if (state.playing) AniMixIcons.Pause else AniMixIcons.Play, if (state.playing) "Пауза" else "Смотреть", Modifier.size(32.dp), tint = Color.White)
+                        if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(30.dp), color = Color.White)
+                        else Icon(if (state.playRequested || state.playing) AniMixIcons.Pause else AniMixIcons.Play,
+                            if (state.playRequested || state.playing) "Пауза" else "Смотреть", Modifier.size(32.dp), tint = Color.White)
                     }
-                } else Spacer(Modifier.size(68.dp))
+                }
                 Spacer(Modifier.width(28.dp))
                 OverlayIcon(AniMixIcons.SeekForward, { onSeekBy(10) }, size = 52, label = "10")
             }
             Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 14.dp).padding(bottom = 8.dp)) {
                 var scrub by remember { mutableStateOf<Long?>(null) }
-                SeekBar(state.positionMs, state.durationMs, plan, onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) })
+                SeekBar(state.positionMs, state.durationMs, plan,
+                    playing = state.playing && !state.buffering && !state.seeking,
+                    onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) }, onCancel = { scrub = null })
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Txt("${timeLabel(scrub ?: state.positionMs)} / ${timeLabel(state.durationMs)}", AniMixTheme.type.micro, color = Color.White)
                     Spacer(Modifier.weight(1f))
@@ -452,30 +504,45 @@ private fun PlayerOverlay(
 
 /** The progress line with opening and ending marked, so a skip is visible before it happens. */
 @Composable
-private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, onScrub: (Long) -> Unit, onSeek: (Long) -> Unit) {
+private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing: Boolean, onScrub: (Long) -> Unit, onSeek: (Long) -> Unit, onCancel: () -> Unit) {
     val accent = AniMixTheme.colors.accent
     var drag by remember { mutableStateOf<Float?>(null) }
     val enabled = durationMs > 0
-    val fraction = drag ?: if (enabled) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val smooth = LocalUiPerformance.current.animations
+    val displayed = remember { mutableLongStateOf(positionMs) }
+    LaunchedEffect(positionMs, playing, smooth) {
+        displayed.longValue = positionMs
+        if (playing && smooth) {
+            val started = withFrameNanos { it }
+            while (isActive) withFrameNanos { now ->
+                displayed.longValue = (positionMs + ((now - started) / 1_000_000).coerceAtMost(600)).coerceAtMost(durationMs)
+            }
+        }
+    }
+    val seekNow by rememberUpdatedState(onSeek)
+    val scrubNow by rememberUpdatedState(onScrub)
+    val cancelNow by rememberUpdatedState(onCancel)
     Canvas(
-        Modifier.fillMaxWidth().height(26.dp)
+        Modifier.fillMaxWidth().height(32.dp)
             .pointerInput(enabled, durationMs) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> onSeek(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong()) }
+                detectTapGestures { offset -> seekNow(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong()) }
             }
             .pointerInput(enabled, durationMs) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
-                    onDragStart = { offset -> drag = (offset.x / size.width).coerceIn(0f, 1f); onScrub((drag!! * durationMs).toLong()) },
+                    onDragStart = { offset -> drag = (offset.x / size.width).coerceIn(0f, 1f); scrubNow((drag!! * durationMs).toLong()) },
                     onHorizontalDrag = { change, _ ->
                         drag = (change.position.x / size.width).coerceIn(0f, 1f)
-                        onScrub((drag!! * durationMs).toLong())
+                        change.consume()
+                        scrubNow((drag!! * durationMs).toLong())
                     },
-                    onDragEnd = { drag?.let { onSeek((it * durationMs).toLong()) }; drag = null },
-                    onDragCancel = { drag = null },
+                    onDragEnd = { drag?.let { seekNow((it * durationMs).toLong()) }; drag = null },
+                    onDragCancel = { drag = null; cancelNow() },
                 )
             },
     ) {
+        val fraction = drag ?: if (enabled) (displayed.longValue.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
         val track = 3.dp.toPx()
         val y = size.height / 2
         val radius = CornerRadius(track / 2)
@@ -528,18 +595,24 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
 @Composable
 private fun QualityMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val animated = LocalUiPerformance.current.animations
+    val options: @Composable () -> Unit = {
+        qualities.forEach { label ->
+            val selected = label == quality
+            Row(Modifier.widthIn(min = 140.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) AniMixTheme.colors.accent else AniMixTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
+            }
+        }
+    }
     Box {
         GlassChip(quality) { open = true }
-        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = AniMixTheme.colors.surfaceRaised, shape = AniMixTheme.shapes.medium) {
-            qualities.forEach { label ->
-                val selected = label == quality
-                Row(
-                    Modifier.widthIn(min = 140.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) AniMixTheme.colors.accent else AniMixTheme.colors.textPrimary, modifier = Modifier.weight(1f))
-                    if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
-                }
+        if (animated) {
+            DropdownMenu(open, onDismissRequest = { open = false }, containerColor = AniMixTheme.colors.surfaceRaised, shape = AniMixTheme.shapes.medium) { options() }
+        } else if (open) {
+            Popup(alignment = Alignment.TopEnd, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+                Panel(Modifier.width(160.dp)) { options() }
             }
         }
     }

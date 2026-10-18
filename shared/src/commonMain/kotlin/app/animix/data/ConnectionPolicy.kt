@@ -18,9 +18,10 @@ class ConnectionPolicy(private val settings: AppSettings) {
     val savingTraffic: Boolean get() = settings.state.value.trafficSaver && isNetworkMetered()
 
     /** Resolve the next episode while the current one plays, so it starts at once. */
-    val prefetch: Boolean get() = smart
+    val prefetch: Boolean get() = smart && !settings.state.value.batterySaver
 
     fun downloadParallelism(): Int = when {
+        settings.state.value.batterySaver -> 1
         !smart -> 1
         savingTraffic -> 2
         else -> 4

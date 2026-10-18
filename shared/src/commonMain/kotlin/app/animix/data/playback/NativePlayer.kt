@@ -6,9 +6,11 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class PlayerSnapshot(
     val playing: Boolean = false,
+    val playRequested: Boolean = false,
     val buffering: Boolean = false,
     val ready: Boolean = false,
     val ended: Boolean = false,
+    val seeking: Boolean = false,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val volume: Float = 1f,

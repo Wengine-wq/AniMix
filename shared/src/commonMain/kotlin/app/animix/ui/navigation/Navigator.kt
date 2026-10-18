@@ -45,6 +45,10 @@ sealed interface Route {
         override val key get() = "offline:$downloadId"
     }
 
+    data class Downloads(val anime: Anime) : Route {
+        override val key get() = "downloads:${anime.key}"
+    }
+
     data class Reviews(val anime: Anime) : Route {
         override val key get() = "reviews:${anime.key}"
     }
@@ -113,6 +117,11 @@ class Navigator {
             "watch" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false
                 push(Route.Watch(Anime.placeholder(id), episode = path.getOrNull(2)?.ifBlank { null }))
+            }
+            "downloads" -> {
+                val id = path.getOrNull(1)?.toIntOrNull() ?: run { tab = Tab.Downloads; return true }
+                tab = Tab.Downloads
+                push(Route.Downloads(Anime.placeholder(id)))
             }
             "reviews" -> {
                 val id = path.getOrNull(1)?.toIntOrNull() ?: return false

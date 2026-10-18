@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ object AniMixShapes {
     val medium = RoundedCornerShape(16.dp)
     val large = RoundedCornerShape(22.dp)
     val extraLarge = RoundedCornerShape(30.dp)
+    val sheet = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
     val pill = RoundedCornerShape(percent = 50)
 }
 
@@ -35,7 +37,7 @@ object AniMixTheme {
 }
 
 @Composable
-fun AniMixTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+fun AniMixTheme(mode: ThemeMode, animationsEnabled: Boolean = true, batterySaver: Boolean = false, content: @Composable () -> Unit) {
     val dark = when (mode) {
         ThemeMode.System -> isSystemInDarkTheme()
         ThemeMode.Dusk -> true
@@ -43,7 +45,10 @@ fun AniMixTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     }
     val colors = if (dark) HorizonDusk else HorizonDawn
     val type = rememberAniMixType(colors)
-    CompositionLocalProvider(LocalColors provides colors, LocalType provides type) {
+    val ripple = LocalRippleConfiguration.current.takeIf { animationsEnabled && !batterySaver }
+    CompositionLocalProvider(LocalColors provides colors, LocalType provides type,
+        LocalRippleConfiguration provides ripple,
+        LocalUiPerformance provides UiPerformance(animationsEnabled && !batterySaver, batterySaver)) {
         MaterialTheme(colorScheme = colors.toMaterial(), typography = type.toMaterial(), content = content)
     }
 }

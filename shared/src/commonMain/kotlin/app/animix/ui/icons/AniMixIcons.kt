@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
  * so every icon in the app shares one stroke weight.
  */
 object AniMixIcons {
+    val Battery = outline("Battery", "M3 7h15a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM22 10v4M6 10v4M10 10v4")
     val Home = outline("Home", "M3 10.5 12 3l9 7.5V19a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z")
     val Catalog = outline(
         "Catalog",
@@ -87,6 +88,8 @@ object AniMixIcons {
         "Star",
         "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z",
     )
+    val StarOutline = outline("StarOutline", "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z")
+    val Edit = outline("Edit", "M14 5l5 5M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11z")
 
     private fun outline(name: String, path: String, stroke: Float = 1.7f) =
         ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
