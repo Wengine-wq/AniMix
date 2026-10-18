@@ -192,6 +192,11 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                                 modifier = Modifier.heightIn(min = 44.dp), icon = AniMixIcons.Trash)
                         }
                     }
+                    // Offer to continue right away, before any choices.
+                    continueOffline(items, library.entry(anime))?.let { next ->
+                        Spacer(Modifier.height(20.dp))
+                        ContinueOffline(next, library.entry(anime)?.episodePositions?.get(next.episode.number) ?: 0) { navigator.push(Route.Offline(next.id)) }
+                    }
                     if (dubbingKeys.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         SelectionList("Озвучка", dubbingKeys.map { key ->
@@ -224,60 +229,57 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                     }
                 }
             }
-            val savedEpisodes = episodes.mapNotNull { saved[it] }
-            if (savedEpisodes.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Txt("Скачанные · ${savedEpisodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-                        if (running || resumable) Chip(if (running) "Пауза" else "Продолжить", false, {
-                            action { group.filter { if (running) it.active || it.status == DownloadStatus.Queued
-                                else it.status == DownloadStatus.Paused || it.status == DownloadStatus.Failed }
-                                .forEach { if (running) graph.downloads.pause(it.id) else graph.downloads.resume(it.id) } }
-                        }, icon = if (running) AniMixIcons.Pause else AniMixIcons.Play)
-                    }
-                }
-                items(savedEpisodes, key = { it.id }, span = { GridItemSpan(if (maxLineSpan >= 8) maxLineSpan / 2 else maxLineSpan) }) { item ->
-                    DownloadEpisodeCard(item, library.entry(anime),
-                        onPlay = { navigator.push(Route.Offline(item.id)) },
-                        onPause = { action { graph.downloads.pause(item.id) } },
-                        onResume = { action { graph.downloads.resume(item.id) } },
-                        onRemove = { action { graph.downloads.remove(item.id) } })
-                }
-            }
+            // One list from the first episode to the last: saved ones with their actions, the rest to pick.
+            val wideSpan: (Int) -> Int = { line -> if (line >= 8) line / 2 else line }
             when {
-                pickable.isNotEmpty() -> {
+                episodes.isNotEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
-                            Txt(if (savedEpisodes.isEmpty()) "Серии · ${pickable.size}" else "Добавить серии · ${pickable.size}", AniMixTheme.type.heading)
-                            Spacer(Modifier.height(12.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                val all = picked.containsAll(pickable)
-                                Chip(if (all) "Снять выбор" else "Весь сезон", all, { picked = if (all) emptySet() else pickable.toSet() }, icon = AniMixIcons.Check)
-                                PrimaryButton(
-                                    when {
-                                        picked.isEmpty() -> "Отметьте серии"
-                                        quality == null -> "Выберите качество"
-                                        else -> "Скачать ${picked.size}"
-                                    },
-                                    onClick = ::download,
-                                    enabled = picked.isNotEmpty() && quality != null,
-                                    icon = AniMixIcons.Download,
-                                    modifier = Modifier.weight(1f),
-                                )
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Txt("Серии · ${episodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+                                if (running || resumable) Chip(if (running) "Пауза загрузок" else "Докачать", false, {
+                                    action { group.filter { if (running) it.active || it.status == DownloadStatus.Queued
+                                        else it.status == DownloadStatus.Paused || it.status == DownloadStatus.Failed }
+                                        .forEach { if (running) graph.downloads.pause(it.id) else graph.downloads.resume(it.id) } }
+                                }, icon = if (running) AniMixIcons.Pause else AniMixIcons.Play)
+                            }
+                            if (pickable.isNotEmpty()) {
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    val all = picked.containsAll(pickable)
+                                    Chip(if (all) "Снять" else "Выбрать все", all, { picked = if (all) emptySet() else pickable.toSet() }, icon = AniMixIcons.Check)
+                                    PrimaryButton(
+                                        when {
+                                            picked.isEmpty() -> "Скачать"
+                                            quality == null -> "Выберите качество"
+                                            else -> "Скачать ${picked.size}"
+                                        },
+                                        onClick = ::download,
+                                        enabled = picked.isNotEmpty() && quality != null,
+                                        icon = AniMixIcons.Download,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
                             }
                         }
                     }
-                    items(pickable, key = { "$dubbingKey:$it" }) { number ->
-                        val on = number in picked
-                        val watched = library.entry(anime)?.isEpisodeWatched(number) == true
-                        EpisodeCardSurface(selected = on, onClick = { picked = if (on) picked - number else picked + number }, modifier = Modifier.height(48.dp)) {
-                            Txt(number, AniMixTheme.type.bodyStrong, modifier = Modifier.align(Alignment.Center),
-                                color = when { on -> colors.accentText; watched -> colors.textMuted; else -> colors.textPrimary })
-                            if (on) Icon(AniMixIcons.Check, "Выбрана", Modifier.align(Alignment.TopEnd).padding(5.dp).size(11.dp), tint = colors.accent)
+                    items(episodes, key = { "$dubbingKey:$it" }, span = { GridItemSpan(wideSpan(maxLineSpan)) }) { number ->
+                        val item = saved[number]
+                        val entry = library.entry(anime)
+                        if (item != null) {
+                            DownloadEpisodeCard(item, entry,
+                                onPlay = { navigator.push(Route.Offline(item.id)) },
+                                onPause = { action { graph.downloads.pause(item.id) } },
+                                onResume = { action { graph.downloads.resume(item.id) } },
+                                onRemove = { action { graph.downloads.remove(item.id) } })
+                        } else {
+                            val on = number in picked
+                            PickEpisodeRow(number, on, watched = entry?.isEpisodeWatched(number) == true, enabled = dubbing != null) {
+                                picked = if (on) picked - number else picked + number
+                            }
                         }
                     }
                 }
-                savedEpisodes.isNotEmpty() -> Unit
                 source.value is Load.Loading -> items(15) { Shimmer(Modifier.fillMaxWidth().height(48.dp), AniMixTheme.shapes.medium) }
                 else -> item(span = { GridItemSpan(maxLineSpan) }) {
                     val failure = source.value as? Load.Failed
@@ -362,10 +364,7 @@ private fun DownloadEpisodeCard(item: DownloadItem, entry: LibraryEntry?, onPlay
     // One row per saved episode: number, state with progress, then the actions for this episode only.
     EpisodeCardSurface(selected = item.active, onClick = onPlay, enabled = ready) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(AniMixTheme.shapes.small).background(if (ready && !watched) colors.accentSoft else colors.surfaceRaised),
-                contentAlignment = Alignment.Center) {
-                Txt(item.episode.number, AniMixTheme.type.bodyStrong, color = if (ready && !watched) colors.accentText else colors.textSecondary, maxLines = 1)
-            }
+            EpisodeBadge(item.episode.number, watched = watched, highlight = ready && !watched)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -377,17 +376,16 @@ private fun DownloadEpisodeCard(item: DownloadItem, entry: LibraryEntry?, onPlay
                         DownloadStatus.Assembling -> "Собираем файл"
                         DownloadStatus.Paused -> "На паузе · ${(item.share() * 100).toInt()}%"
                         DownloadStatus.Downloading -> "Скачивается · ${(item.share() * 100).toInt()}%"
-                    }, AniMixTheme.type.label, color = if (item.status == DownloadStatus.Failed) colors.danger else colors.textPrimary, maxLines = 1)
-                    if (watched) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(AniMixIcons.Check, null, Modifier.size(12.dp), tint = colors.textSecondary)
-                    }
+                    }, AniMixTheme.type.label, color = when { item.status == DownloadStatus.Failed -> colors.danger; watched -> colors.textSecondary; else -> colors.textPrimary }, maxLines = 1)
                 }
                 Txt(
                     if (item.status == DownloadStatus.Failed) item.error ?: "Попробуйте ещё раз" else "${item.quality} · ${megabytes(item.downloadedBytes)}",
                     AniMixTheme.type.micro, maxLines = 2, modifier = Modifier.padding(top = 2.dp),
                 )
                 if (!ready) DownloadProgress(item.share(), Modifier.padding(top = 8.dp))
+                // How far the viewer got in a saved, unfinished episode.
+                val duration = item.episode.durationSeconds?.takeIf { it > 0 }
+                if (ready && !watched && position > 0 && duration != null) DownloadProgress((position / 1000f / duration).coerceIn(0.05f, 1f), Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.width(4.dp))
             when {
@@ -454,4 +452,71 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
             }
         }
     }
+}
+
+/** The episode number; a watched one gets a clear check mark in the corner. */
+@Composable
+private fun EpisodeBadge(number: String, watched: Boolean, highlight: Boolean) {
+    val colors = AniMixTheme.colors
+    Box(Modifier.size(44.dp)) {
+        Box(Modifier.size(40.dp).align(Alignment.TopStart).clip(AniMixTheme.shapes.small)
+            .background(if (highlight) colors.accentSoft else colors.surfaceRaised), contentAlignment = Alignment.Center) {
+            Txt(number, AniMixTheme.type.bodyStrong, maxLines = 1,
+                color = when { highlight -> colors.accentText; watched -> colors.textMuted; else -> colors.textSecondary })
+        }
+        if (watched) {
+            Box(Modifier.size(18.dp).align(Alignment.BottomEnd).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accent),
+                contentAlignment = Alignment.Center) {
+                Icon(AniMixIcons.Check, "Просмотрено", Modifier.size(11.dp), tint = colors.onAccent)
+            }
+        }
+    }
+}
+
+/** An episode that is not saved yet: tap to add it to the download selection. */
+@Composable
+private fun PickEpisodeRow(number: String, picked: Boolean, watched: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val colors = AniMixTheme.colors
+    EpisodeCardSurface(selected = picked, onClick = onToggle, enabled = enabled) {
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            EpisodeBadge(number, watched = watched, highlight = false)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Txt(if (picked) "Будет скачана" else "Не скачана", AniMixTheme.type.label, color = if (picked) colors.accentText else colors.textSecondary)
+                if (watched) Txt("Просмотрено онлайн", AniMixTheme.type.micro, modifier = Modifier.padding(top = 2.dp))
+            }
+            Box(Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (picked) colors.accent else colors.outline), contentAlignment = Alignment.Center) {
+                if (picked) Icon(AniMixIcons.Check, "Выбрана", Modifier.size(14.dp), tint = colors.onAccent)
+            }
+        }
+    }
+}
+
+/** «Продолжить»: the saved episode in progress, or the first saved one not watched yet. */
+@Composable
+private fun ContinueOffline(item: DownloadItem, positionMs: Long, onPlay: () -> Unit) {
+    val colors = AniMixTheme.colors
+    EpisodeCardSurface(selected = true, onClick = onPlay) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+                Icon(AniMixIcons.Play, null, Modifier.size(18.dp), tint = colors.onAccent)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Txt("Продолжить · Серия ${item.episode.number}", AniMixTheme.type.bodyStrong, maxLines = 1)
+                Txt(
+                    if (positionMs > 0) "С ${positionMs / 60_000}:${(positionMs / 1000 % 60).toString().padStart(2, '0')} · без интернета" else "Следующая непросмотренная · без интернета",
+                    AniMixTheme.type.micro, maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** The saved episode to continue: the one in progress, else the first finished download not watched yet. */
+internal fun continueOffline(items: List<DownloadItem>, entry: LibraryEntry?): DownloadItem? {
+    val ready = items.filter { it.status == DownloadStatus.Completed }.sortedBy { it.episode.sortKey }
+    val unwatched = ready.filter { entry?.isEpisodeWatched(it.episode.number) != true }
+    return unwatched.lastOrNull { (entry?.episodePositions?.get(it.episode.number) ?: 0) > 0 } ?: unwatched.firstOrNull()
 }

@@ -132,7 +132,11 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                     )
                 }
                 item {
-                    ContinueShelf(continueItems, onOpen = { navigator.push(Route.Watch(it.entry.anime, episode = it.episode)) }) { navigator.push(Route.History) }
+                    ContinueShelf(continueItems, onOpen = { item ->
+                        // A downloaded episode opens offline: it starts at once and works without a network.
+                        val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key && d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
+                        navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
+                    }) { navigator.push(Route.History) }
                 }
                 (picks.value as? Load.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { recommended ->
                     item { Shelf("Подобрано для вас", recommended, open, onMore = null) }
