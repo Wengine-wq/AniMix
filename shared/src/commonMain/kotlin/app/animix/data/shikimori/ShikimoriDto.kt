@@ -83,6 +83,8 @@ internal class AnimeDto(
     val name: String = "",
     val russian: String? = null,
     val english: String? = null,
+    val japanese: String? = null,
+    val synonyms: List<String>? = null,
     val kind: String? = null,
     val score: Double? = null,
     val status: String? = null,

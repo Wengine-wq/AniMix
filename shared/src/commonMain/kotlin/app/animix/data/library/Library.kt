@@ -159,6 +159,41 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         save()
     }
 
+    /**
+     * Merges titles from another service in one save. What is already on this device wins:
+     * a local status or score is kept, watched episodes only ever grow. Imported marks never
+     * grant watch rewards (they do not touch [LibraryEntry.viewing]).
+     */
+    fun importTitles(titles: List<ImportedTitle>): ImportResult {
+        var added = 0
+        var updated = 0
+        val changes = mutableListOf<StatusChange>()
+        _state.update { data ->
+            val entries = data.entries.toMutableMap()
+            for (title in titles) {
+                val key = title.anime.key
+                val current = entries[key]
+                val base = current ?: LibraryEntry(title.anime)
+                val merged = base.copy(
+                    anime = title.anime.takeIf { it.title.isNotEmpty() } ?: base.anime,
+                    status = base.status ?: title.status,
+                    favorite = base.favorite || title.favorite,
+                    episodesWatched = maxOf(base.episodesWatched, title.episodesWatched),
+                    score = base.score ?: title.score?.takeIf { it in 1..10 },
+                    updatedAt = nowMillis(),
+                )
+                if (merged.copy(updatedAt = base.updatedAt, anime = base.anime) == base) continue
+                if (current == null) added++ else updated++
+                if (merged.status != base.status) changes += StatusChange(key, base.status, merged.status)
+                entries[key] = merged
+            }
+            data.copy(entries = entries)
+        }
+        changes.forEach { statusChanges.tryEmit(it) }
+        save()
+        return ImportResult(added, updated)
+    }
+
     private fun change(anime: Anime, transform: (LibraryEntry) -> LibraryEntry) {
         _state.update { data ->
             val current = data.entries[anime.key] ?: LibraryEntry(anime)
@@ -185,3 +220,14 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         const val FILE = "library.json"
     }
 }
+
+/** One title brought in from Shikimori or Anixart. */
+data class ImportedTitle(
+    val anime: Anime,
+    val status: ListStatus?,
+    val episodesWatched: Int = 0,
+    val score: Int? = null,
+    val favorite: Boolean = false,
+)
+
+data class ImportResult(val added: Int, val updated: Int)

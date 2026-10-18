@@ -128,7 +128,11 @@ class Navigator {
                 push(Route.Reviews(Anime.placeholder(id)))
             }
             "search" -> push(Route.Search(path.drop(1).joinToString("/").decodeUrlComponent()))
-            "settings" -> { tab = Tab.Profile; push(Route.Settings) }
+            "settings" -> {
+                tab = Tab.Profile
+                push(Route.Settings)
+                path.getOrNull(1)?.let { section -> push(Route.SettingsSection(section.replaceFirstChar { it.uppercase() })) }
+            }
             "lists", "favorites" -> tab = Tab.Lists
             "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
             "history" -> { tab = Tab.Profile; push(Route.History) }

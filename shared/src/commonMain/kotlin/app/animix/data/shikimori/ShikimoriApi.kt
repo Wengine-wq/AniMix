@@ -12,6 +12,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /** Shikimori catalog through its public GraphQL endpoint. No account needed. */
 internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: String = BASE_URL) {
@@ -37,6 +38,25 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
         val response = AppJson.decodeFromString(AnimesResponse.serializer(), post(DETAIL_QUERY, variables))
         response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
         return response.data?.animes?.firstOrNull()
+    }
+
+    /**
+     * Several searches in one GraphQL request (aliased fields), with the extra names and dates
+     * that matching titles from other services needs. Keeps the import within Shikimori's rate limit.
+     */
+    suspend fun searchMany(queries: List<String>, limit: Int = 8): List<List<AnimeDto>> {
+        if (queries.isEmpty()) return emptyList()
+        val declarations = queries.indices.joinToString(", ") { "\$s$it: String" }
+        val fields = queries.indices.joinToString(" ") {
+            "q$it: animes(search: \$s$it, limit: $limit, censored: false) { $CARD_FIELDS japanese synonyms airedOn { year date } studios { name } }"
+        }
+        val variables = JsonObject(queries.mapIndexed { index, query -> "s$index" to JsonPrimitive(query) }.toMap())
+        val raw = AppJson.parseToJsonElement(post("query($declarations) { $fields }", variables)).jsonObject
+        raw["errors"]?.let { throw ShikimoriException("Shikimori не ответил на поиск") }
+        val data = raw["data"]?.jsonObject ?: throw ShikimoriException("Shikimori returned no data")
+        return queries.indices.map { index ->
+            data["q$index"]?.let { AppJson.decodeFromJsonElement(ListSerializer(AnimeDto.serializer()), it) }.orEmpty()
+        }
     }
 
     suspend fun genres(): List<GenreDto> {

@@ -176,6 +176,7 @@ private enum class SettingsCategory(val title: String, val icon: ImageVector) {
     Playback("Воспроизведение", AniMixIcons.Play),
     Lists("Списки", AniMixIcons.Bookmark),
     Downloads("Загрузки", AniMixIcons.Download),
+    Import("Импорт списков", AniMixIcons.Share),
     Network("Соединение", AniMixIcons.Wifi),
     Performance("Производительность", AniMixIcons.Battery),
     Data("Данные", AniMixIcons.Refresh),
@@ -194,6 +195,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Playback -> if (settings.autoNextEpisode) "Автопереход вкл." else "Автопереход выкл."
                     SettingsCategory.Lists -> if (settings.favoritesLast) "Избранное в конце" else "Избранное первым"
                     SettingsCategory.Downloads -> settings.downloadQuality ?: "Не выбрано"
+                    SettingsCategory.Import -> "Shikimori, Anixart"
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> if (settings.batterySaver) "Экономия" else "Обычный режим"
                     SettingsCategory.Data -> null
@@ -285,6 +287,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                     modifier = Modifier.padding(start = 4.dp),
                 )
             }
+            SettingsCategory.Import -> ImportSection(graph, navigator)
             SettingsCategory.Data -> Panel {
                 NavRow(if (cacheCleared) "Кэш каталога очищен" else "Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache(); cacheCleared = true } })
             }

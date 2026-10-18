@@ -55,6 +55,12 @@ class AppGraph {
     /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
     val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)
 
+    /** Importing lists: Shikimori (signed in) and public Anixart lists. */
+    val shikimoriAccount = app.animix.data.importer.ShikimoriAccount(http, DiskStore(Platform.dataDir))
+    val anixart = app.animix.data.importer.AnixartClient(http)
+    val anixartMatcher = app.animix.data.importer.AnixartMatcher(http, yummy, DiskStore(Platform.dataDir))
+    val imports = app.animix.data.importer.ImportJobs(scope, library, shikimoriAccount, anixart, anixartMatcher)
+
     suspend fun clearCache() {
         apiCache.clear()
         kodik.clear()
