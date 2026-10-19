@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         val graph = (application as AniMixApplication).graph
-        graph.scope.launch { graph.library.flush() }
+        graph.watchFlow.pause()
+        graph.scope.launch { graph.watchFlow.flush(); graph.library.flush() }
     }
 }

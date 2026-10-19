@@ -91,6 +91,8 @@ import app.animix.ui.screens.profile.HistoryScreen
 import app.animix.ui.screens.profile.SupportScreen
 import app.animix.ui.screens.profile.AchievementToastHost
 import app.animix.ui.screens.profile.ProfileScreen
+import app.animix.ui.screens.profile.EditProfileScreen
+import app.animix.ui.screens.watchflow.WatchFlowScreen
 import app.animix.ui.screens.profile.SettingsScreen
 import app.animix.ui.theme.AniMixTheme
 import app.animix.ui.theme.AniMixMotion
@@ -110,6 +112,7 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
         graph.settings.load()
         graph.library.load()
         graph.achievements.load()
+        graph.watchFlow.load()
         graph.downloads.load()
     }
     LaunchedEffect(startLink) { startLink?.let(navigator::openLink) }
@@ -215,6 +218,8 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Catalog -> CatalogScreen(graph, navigator, padding, title = route.title, preset = route.preset, showBack = true)
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
+                    route is Route.EditProfile -> EditProfileScreen(graph, navigator, padding)
+                    route is Route.WatchFlow -> WatchFlowScreen(graph, navigator, padding, route.anime, route.episode)
                     route is Route.SettingsSection -> SettingsSectionScreen(graph, navigator, padding, route.id)
                     route == Route.Lists -> ListsScreen(graph, navigator, padding, showBack = true)
                     route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)
@@ -242,7 +247,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
 @Composable
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
-    val shape = AniMixTheme.shapes.extraLarge
+    val shape = AniMixTheme.shapes.pill
     BoxWithConstraints(
         modifier
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -250,12 +255,12 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .dropShadow(shape, Shadow(radius = 24.dp, color = Color.Black.copy(alpha = if (colors.isDark) 0.35f else 0.08f), offset = DpOffset(0.dp, 8.dp)))
             .glass(shape)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(6.dp),
     ) {
         val slot = maxWidth / Tab.entries.size
         val position by animateFloatAsState(navigator.tab.ordinal.toFloat(), AniMixMotion.selectionSpring())
-        Box(Modifier.offset(x = slot * position + (slot - 52.dp) / 2, y = 4.dp)
-            .size(width = 52.dp, height = 40.dp).clip(AniMixTheme.shapes.pill).background(colors.accentSoft))
+        Box(Modifier.offset(x = slot * position)
+            .size(width = slot, height = 48.dp).clip(shape).background(colors.accentSoft))
         Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Tab.entries.forEach { tab ->
                 val selected = navigator.tab == tab

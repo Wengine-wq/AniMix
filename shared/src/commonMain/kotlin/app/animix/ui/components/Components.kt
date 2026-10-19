@@ -461,11 +461,28 @@ fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: Stri
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = colors.textSecondary)
         Spacer(Modifier.width(14.dp))
-        Txt(title, AniMixTheme.type.bodyStrong, modifier = Modifier.weight(1f))
-        if (trailing != null) {
-            Txt(trailing, AniMixTheme.type.caption)
-            Spacer(Modifier.width(6.dp))
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val type = AniMixTheme.type
+            val measurer = rememberTextMeasurer()
+            val available = with(LocalDensity.current) { maxWidth.roundToPx() }
+            val gap = with(LocalDensity.current) { 12.dp.roundToPx() }
+            val titleWidth = measurer.measure(title, type.bodyStrong, softWrap = false, maxLines = 1).size.width
+            val trailingWidth = trailing?.let { measurer.measure(it, type.caption, softWrap = false, maxLines = 1).size.width } ?: 0
+            if (trailing != null && titleWidth + trailingWidth + gap > available) {
+                Column {
+                    Txt(title, type.bodyStrong)
+                    Spacer(Modifier.height(4.dp))
+                    Txt(trailing, type.caption)
+                }
+            } else Row(verticalAlignment = Alignment.CenterVertically) {
+                Txt(title, type.bodyStrong, modifier = Modifier.weight(1f))
+                if (trailing != null) {
+                    Spacer(Modifier.width(12.dp))
+                    Txt(trailing, type.caption)
+                }
+            }
         }
+        Spacer(Modifier.width(8.dp))
         Icon(AniMixIcons.ChevronRight, null, Modifier.size(16.dp), tint = colors.textMuted)
     }
 }

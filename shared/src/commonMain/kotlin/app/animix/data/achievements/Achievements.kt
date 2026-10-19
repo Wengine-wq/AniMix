@@ -9,6 +9,8 @@ import app.animix.data.library.LibraryData
 import app.animix.data.library.ListStatus
 import app.animix.data.library.hasVerifiedCompletion
 import app.animix.data.library.verifiedEpisodes
+import app.animix.data.library.completedWithHistory
+import app.animix.data.library.episodesWithHistory
 import app.animix.core.localDayIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,9 +56,12 @@ data class AchievementProgress(
     val achievement: Achievement,
     val current: Int,
     val unlockedAt: Long?,
+    val historyUnlockedAt: Long? = null,
 ) {
     val target: Int get() = achievement.trigger.threshold
-    val unlocked: Boolean get() = unlockedAt != null
+    val earned: Boolean get() = unlockedAt != null
+    val fromHistory: Boolean get() = !earned && historyUnlockedAt != null
+    val unlocked: Boolean get() = earned || historyUnlockedAt != null
     val fraction: Float get() = if (unlocked) 1f else (current.toFloat() / target).coerceIn(0f, 1f)
 }
 
@@ -69,6 +74,8 @@ data class AchievementState(
     val sets: Map<String, Set<String>> = emptyMap(),
     /** When each title was first marked completed, for the monthly achievement. */
     val firstCompleted: Map<String, Long> = emptyMap(),
+    /** Recognition of external viewing history. These awards carry no XP or activity dates. */
+    val historical: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -174,6 +181,7 @@ class Achievements(
         val verifiedDays = entries.flatMap { it.viewing.values }.mapNotNull { it.completedAt }
             .groupingBy { localDayIndex(it) }.eachCount()
         val unlocked = state.unlocked.toMutableMap()
+        val historical = state.historical.toMutableMap()
         val fresh = mutableListOf<Achievement>()
 
         fun current(a: Achievement): Int {
@@ -211,22 +219,33 @@ class Achievements(
             }
         }
 
-        // Two passes so the completionist sees unlocks made in the first one.
+        fun withHistory(a: Achievement): Int = when (a.trigger.metric) {
+            "anime_season_completed", "anime_release_completed" ->
+                if (lib.entries["s${a.trigger.animeId}"]?.completedWithHistory == true) 1 else 0
+            "anime_episodes_watched" -> lib.entries["s${a.trigger.animeId}"]?.episodesWithHistory ?: 0
+            "titles_completed" -> entries.count { it.completedWithHistory }
+            "all_required_achievements_unlocked" -> a.trigger.required.count { it in unlocked || it in historical }
+            else -> current(a)
+        }
+
+        // Two passes so the completionist sees both earned and historical dependencies.
         repeat(2) {
             for (a in catalog) {
                 if (a.id in unlocked) continue
                 if (current(a) >= a.trigger.threshold) {
                     unlocked[a.id] = nowMillis()
                     fresh += a
+                } else if (a.id !in historical && withHistory(a) >= a.trigger.threshold) {
+                    historical[a.id] = nowMillis()
                 }
             }
         }
-        if (fresh.isNotEmpty()) {
-            _state.update { it.copy(unlocked = unlocked) }
+        if (fresh.isNotEmpty() || historical != state.historical) {
+            _state.update { it.copy(unlocked = unlocked, historical = historical) }
             save()
             fresh.forEach { _unlockedNow.tryEmit(it) }
         }
-        _progress.value = catalog.map { AchievementProgress(it, current(it), unlocked[it.id]) }
+        _progress.value = catalog.map { AchievementProgress(it, maxOf(current(it), withHistory(it)), unlocked[it.id], historical[it.id]) }
     }
 
     private fun save() {

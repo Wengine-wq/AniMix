@@ -61,7 +61,7 @@ import app.animix.ui.theme.AniMixTheme
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
 
-private enum class Filter(val label: String) { All("Все"), Unlocked("Получены"), Locked("Впереди"), Anime("Аниме"), Other("Другое") }
+private enum class Filter(val label: String) { All("Все"), Unlocked("Получены"), History("Из истории"), Locked("Впереди"), Anime("Аниме"), Other("Другое") }
 
 @Composable
 fun AchievementsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
@@ -72,6 +72,7 @@ fun AchievementsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pa
         when (filter) {
             Filter.All -> true
             Filter.Unlocked -> it.unlocked
+            Filter.History -> it.fromHistory
             Filter.Locked -> !it.unlocked
             Filter.Anime -> it.achievement.category == AchievementCategory.Anime
             Filter.Other -> it.achievement.category != AchievementCategory.Anime
@@ -99,6 +100,10 @@ fun AchievementsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pa
                     }
                     Spacer(Modifier.height(20.dp))
                     Summary(unlockedCount, all.size)
+                    Spacer(Modifier.height(8.dp))
+                    Txt("В AniMix: ${all.count { it.earned }} · Из истории: ${all.count { it.fromHistory }}", AniMixTheme.type.caption)
+                    Spacer(Modifier.height(4.dp))
+                    Txt("История открывает награды за тайтлы без XP. Часы, марафоны и серии дней учитываются по просмотру в AniMix.", AniMixTheme.type.micro)
                     Spacer(Modifier.height(16.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(Filter.entries.toList()) { item ->
@@ -163,6 +168,10 @@ private fun AchievementRow(progress: AchievementProgress) {
                 Txt(a.name, AniMixTheme.type.bodyStrong, color = if (progress.unlocked) colors.textPrimary else colors.textSecondary, maxLines = 2)
                 Spacer(Modifier.height(2.dp))
                 Txt(a.description, AniMixTheme.type.caption, maxLines = 3)
+                if (progress.fromHistory) {
+                    Spacer(Modifier.height(4.dp))
+                    Txt("Из истории просмотров · без XP", AniMixTheme.type.micro, color = colors.textSecondary)
+                }
                 if (!progress.unlocked && progress.target > 1) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

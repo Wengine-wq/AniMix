@@ -36,7 +36,7 @@ internal fun ImportSection(graph: AppGraph, navigator: Navigator) {
         Spacer(Modifier.height(4.dp))
         Txt("Вход обязателен: так импорт видит все ваши списки, включая скрытые.", AniMixTheme.type.caption)
         Spacer(Modifier.height(12.dp))
-        ShikimoriImport(graph)
+        ShikimoriImport(graph, navigator)
         Spacer(Modifier.height(32.dp))
         Txt("Anixart", AniMixTheme.type.heading)
         Spacer(Modifier.height(4.dp))
@@ -45,14 +45,14 @@ internal fun ImportSection(graph: AppGraph, navigator: Navigator) {
         AnixartImport(graph, navigator)
         Spacer(Modifier.height(20.dp))
         Txt(
-            "Импорт не стирает ваше: статус и оценка с этого устройства сохраняются, просмотренных серий становится только больше. Награды за просмотр импорт не выдаёт.",
+            "Статус и оценка с этого устройства сохраняются, просмотренных серий становится только больше. Награды за тайтлы и количество завершённых открываются с пометкой «Из истории просмотров», без XP. Часы, марафоны и серии дней зарабатываются в AniMix. Для ранее перенесённых списков повторите импорт.",
             AniMixTheme.type.micro,
         )
     }
 }
 
 @Composable
-private fun ShikimoriImport(graph: AppGraph) {
+private fun ShikimoriImport(graph: AppGraph, navigator: Navigator) {
     val colors = AniMixTheme.colors
     val user by graph.shikimoriAccount.user.collectAsState()
     val state by graph.imports.shikimoriImport.collectAsState()
@@ -99,7 +99,7 @@ private fun ShikimoriImport(graph: AppGraph) {
         )
     }
     problem?.let { Txt(it, AniMixTheme.type.caption, color = colors.danger, modifier = Modifier.padding(top = 10.dp)) }
-    ImportStatus(state, onMissing = {})
+    ImportStatus(state, onMissing = {}, onAchievements = { navigator.push(Route.Achievements) })
 }
 
 @Composable
@@ -209,11 +209,11 @@ private fun AnixartImport(graph: AppGraph, navigator: Navigator) {
             enabled = state !is ImportState.Running && lists.isNotEmpty(),
         )
     }
-    ImportStatus(state, onMissing = { navigator.push(Route.Search(it)) })
+    ImportStatus(state, onMissing = { navigator.push(Route.Search(it)) }, onAchievements = { navigator.push(Route.Achievements) })
 }
 
 @Composable
-private fun ImportStatus(state: ImportState, onMissing: (String) -> Unit) {
+private fun ImportStatus(state: ImportState, onMissing: (String) -> Unit, onAchievements: () -> Unit) {
     val colors = AniMixTheme.colors
     when (state) {
         ImportState.Idle -> Unit
@@ -226,6 +226,10 @@ private fun ImportStatus(state: ImportState, onMissing: (String) -> Unit) {
         is ImportState.Finished -> Column(Modifier.padding(top = 12.dp)) {
             val found = state.total - state.missing.size
             Txt("Готово: найдено $found из ${state.total}. Добавлено ${state.added}, обновлено ${state.updated}.", AniMixTheme.type.bodyStrong)
+            Spacer(Modifier.height(8.dp))
+            Txt("Награды из истории — в «Достижениях», без XP.", AniMixTheme.type.caption)
+            Spacer(Modifier.height(8.dp))
+            Chip("Достижения", false, onAchievements, icon = AniMixIcons.Trophy)
             if (state.missing.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 Txt("Не нашлись автоматически · нажмите, чтобы найти вручную", AniMixTheme.type.caption)

@@ -24,6 +24,13 @@ enum class ListStatus(val label: String, val apiValue: String) {
     Dropped("Брошено", "dropped"),
 }
 
+/** A claim from an external list, kept separate from decoded playback and local list edits. */
+@Serializable
+data class ImportedViewing(
+    val completed: Boolean = false,
+    val episodesWatched: Int = 0,
+)
+
 @Serializable
 data class LibraryEntry(
     val anime: Anime,
@@ -34,15 +41,10 @@ data class LibraryEntry(
     val episodePositions: Map<String, Long> = emptyMap(),
     val updatedAt: Long = 0,
     val viewing: Map<String, EpisodeViewing> = emptyMap(),
+    val importedViewing: ImportedViewing? = null,
 ) {
-    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty() && viewing.isEmpty()
+    val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty() && viewing.isEmpty() && importedViewing == null
 }
-
-@Serializable
-data class LocalProfile(
-    val name: String = "Гость",
-    val createdAt: Long = 0,
-)
 
 @Serializable
 data class LibraryData(
@@ -78,8 +80,9 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     suspend fun load() {
         val text = store.read(FILE)
         val loaded = text?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) }.getOrNull() }
-        _state.value = loaded ?: LibraryData(profile = LocalProfile(createdAt = nowMillis()))
-        if (loaded == null) save()
+        _state.value = loaded?.copy(profile = loaded.profile.copy(name = loaded.profile.name.take(ProfileNameLimit)))
+            ?: LibraryData(profile = LocalProfile(createdAt = nowMillis()))
+        if (loaded == null || loaded != _state.value) save()
     }
 
     /** Every list status change as it happens, so listeners never miss a quick In-between step. */
@@ -153,16 +156,21 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     }
 
     fun renameProfile(name: String) {
-        val clean = name.trim().take(32)
+        val clean = name.trim().take(ProfileNameLimit)
         if (clean.isEmpty()) return
-        _state.update { it.copy(profile = it.profile.copy(name = clean)) }
+        _state.update { it.copy(profile = it.profile.copy(name = clean, updatedAt = nowMillis())) }
+        save()
+    }
+
+    fun updateProfile(draft: ProfileDraft, unlockedBadges: Set<String>) {
+        _state.update { it.copy(profile = it.profile.edited(draft, unlockedBadges, nowMillis())) }
         save()
     }
 
     /**
      * Merges titles from another service in one save. What is already on this device wins:
-     * a local status or score is kept, watched episodes only ever grow. Imported marks never
-     * grant watch rewards (they do not touch [LibraryEntry.viewing]).
+     * a local status or score is kept, watched episodes only ever grow. External viewing claims
+     * can unlock historical awards, but never produce playback coverage or XP.
      */
     fun importTitles(titles: List<ImportedTitle>): ImportResult {
         var added = 0
@@ -174,12 +182,17 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
                 val key = title.anime.key
                 val current = entries[key]
                 val base = current ?: LibraryEntry(title.anime)
+                val completed = base.importedViewing?.completed == true || title.status == ListStatus.Completed
+                val importedEpisodes = maxOf(base.importedViewing?.episodesWatched ?: 0,
+                    title.episodesWatched.coerceAtLeast(0),
+                    if (title.status == ListStatus.Completed) title.anime.episodes.coerceAtLeast(0) else 0)
                 val merged = base.copy(
                     anime = title.anime.takeIf { it.title.isNotEmpty() } ?: base.anime,
                     status = base.status ?: title.status,
                     favorite = base.favorite || title.favorite,
-                    episodesWatched = maxOf(base.episodesWatched, title.episodesWatched),
+                    episodesWatched = maxOf(base.episodesWatched, importedEpisodes),
                     score = base.score ?: title.score?.takeIf { it in 1..10 },
+                    importedViewing = if (completed || importedEpisodes > 0) ImportedViewing(completed, importedEpisodes) else base.importedViewing,
                     updatedAt = nowMillis(),
                 )
                 if (merged.copy(updatedAt = base.updatedAt, anime = base.anime) == base) continue

@@ -71,6 +71,7 @@ import app.animix.ui.components.rim
 import app.animix.ui.components.userMessage
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
+import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 import app.animix.ui.theme.LocalUiPerformance
 
@@ -189,6 +190,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                                 maxLines = 1,
                             )
                         }
+                        IconCircle(AniMixIcons.Clock, { navigator.push(Route.WatchFlow(anime, episodeNumber)) }, contentDescription = "Подготовить Watch flow")
                     }
                     Spacer(Modifier.height(16.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

@@ -2,6 +2,11 @@ package app.animix.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -46,12 +51,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import app.animix.ui.components.PageIndicator
 import app.animix.ui.theme.AniMixMotion
 import app.animix.ui.theme.LocalUiPerformance
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import app.animix.ui.components.accentGlow
 import app.animix.ui.components.highlight
 import app.animix.ui.components.rim
@@ -86,6 +92,9 @@ import kotlinx.coroutines.coroutineScope
 
 private class HomeData(val ongoing: List<Anime>, val popular: List<Anime>, val top: List<Anime>)
 
+internal fun carouselStartPage(count: Int): Int = if (count <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % count }
+internal fun carouselItem(page: Int, count: Int): Int = if (count <= 1) 0 else ((page % count) + count) % count
+
 @Composable
 fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
     val load = rememberLoad(Unit) { force ->
@@ -104,6 +113,8 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     // Recomputed only when the taste changes, not on every saved position.
     val taste = remember(library) { library.tasteGenres().take(3).joinToString { it.first } }
     val picks = rememberLoad(taste) { if (taste.isEmpty()) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
+    val homeState = load.value
+    val recommended = (picks.value as? Load.Ready)?.value.orEmpty()
 
     LazyColumn(
         state = rememberLazyListState(),
@@ -111,7 +122,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         contentPadding = contentPadding,
     ) {
         item { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
-        when (val state = load.value) {
+        when (val state = homeState) {
             Load.Loading -> item { HomePlaceholder() }
             is Load.Failed -> item {
                 MessageState(
@@ -129,6 +140,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                 item {
                     QuickFilters(
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
+                        onFlow = { navigator.push(Route.WatchFlow()) },
                     )
                 }
                 item {
@@ -138,7 +150,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                         navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
                     }) { navigator.push(Route.History) }
                 }
-                (picks.value as? Load.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { recommended ->
+                recommended.takeIf { it.isNotEmpty() }?.let { recommended ->
                     item { Shelf("Подобрано для вас", recommended, open, onMore = null) }
                 }
                 item { Shelf("Сейчас на экранах", data.ongoing.drop(5), open) {
@@ -183,31 +195,38 @@ private fun HomeTopBar(onSearch: () -> Unit) {
 @Composable
 private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (Anime) -> Unit) {
     if (items.isEmpty()) return
-    val pager = rememberPagerState { items.size }
+    val pager = rememberPagerState(initialPage = carouselStartPage(items.size)) { if (items.size > 1) Int.MAX_VALUE else 1 }
     val performance = LocalUiPerformance.current
     val scope = rememberCoroutineScope()
-    LaunchedEffect(pager.currentPage, items) { onShown(items[pager.currentPage]) }
-    // Advance on its own, but pause while the user is swiping.
-    LaunchedEffect(pager, items.size, performance.animations) {
-        if (!performance.animations) return@LaunchedEffect
-        while (items.size > 1) {
-            delay(6_000)
-            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size,
-                animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing))
-        }
+    val interaction = remember { MutableInteractionSource() }
+    val hoverInteraction = remember { MutableInteractionSource() }
+    val dragged by pager.interactionSource.collectIsDraggedAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by hoverInteraction.collectIsHoveredAsState()
+    val timer = remember { Animatable(0f) }
+    var selectionRevision by remember { mutableStateOf(0) }
+    val paused = dragged || pressed || hovered || pager.isScrollInProgress
+    LaunchedEffect(pager.currentPage, items) { onShown(items[carouselItem(pager.currentPage, items.size)]) }
+    LaunchedEffect(pager.settledPage, paused, selectionRevision, items.size, performance.animations) {
+        timer.snapTo(0f)
+        if (!performance.animations || paused || items.size < 2) return@LaunchedEffect
+        timer.animateTo(1f, tween(6_000, easing = LinearEasing))
+        // The scroll has its own job: changes to isScrollInProgress reset the timer, not the scroll.
+        scope.launch { pager.animateScrollToPage(pager.currentPage + 1,
+            animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) }
     }
-    Column {
+    Column(Modifier.hoverable(hoverInteraction)) {
         HorizontalPager(
             state = pager,
             contentPadding = PaddingValues(horizontal = 20.dp),
             pageSpacing = 12.dp,
-            key = { items[it].key },
         ) { page ->
             // Neighbouring banners sit slightly smaller and dimmer, so the current one leads.
             val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).let { if (it < 0) -it else it }.coerceAtMost(1f)
             HeroCard(
-                items[page],
-                onClick = { onOpen(items[page]) },
+                items[carouselItem(page, items.size)],
+                onClick = { onOpen(items[carouselItem(page, items.size)]) },
+                interaction = interaction,
                 modifier = Modifier.graphicsLayer {
                     val scale = if (performance.animations) 1f - 0.05f * offset else 1f
                     scaleX = scale
@@ -216,23 +235,27 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (
                 },
             )
         }
-        PageIndicator(items.size, pager.currentPage + pager.currentPageOffsetFraction,
-            onSelect = { index -> scope.launch { if (performance.animations) pager.animateScrollToPage(index,
-                animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) else pager.scrollToPage(index) } },
-            modifier = Modifier.padding(top = 2.dp))
+        PageIndicator(items.size, carouselItem(pager.currentPage, items.size) + pager.currentPageOffsetFraction,
+            onSelect = { index ->
+                selectionRevision++
+                val target = pager.currentPage + index - carouselItem(pager.currentPage, items.size)
+                scope.launch { if (performance.animations) pager.animateScrollToPage(target,
+                    animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) else pager.scrollToPage(target) }
+            }, modifier = Modifier.padding(top = 2.dp),
+            autoProgress = timer.value.takeIf { performance.animations && !paused })
     }
 }
 
 /** The same banner on every platform: blurred backdrop, poster on the right, title and play on the left. */
 @Composable
-private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, interaction: MutableInteractionSource) {
     val colors = AniMixTheme.colors
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val wide = maxWidth > 700.dp
         val height = if (wide) 320.dp else 230.dp
         val inset = if (wide) 24.dp else 16.dp
         Box(
-            Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(onClick = onClick),
+            Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(interaction, indication = null, onClick = onClick),
         ) {
             if (!LocalUiPerformance.current.batterySaver) RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
             Box(
@@ -268,7 +291,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
 }
 
 @Composable
-private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
+private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, onFlow: () -> Unit) {
     val presets = listOf(
         Triple("Онгоинги", CatalogQuery(status = "ongoing"), AniMixIcons.Clock),
         Triple("Новинки", CatalogQuery(order = CatalogOrder.AiredOn, status = "released"), AniMixIcons.Star),
@@ -279,6 +302,7 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item { Chip("Watch flow", selected = false, onClick = onFlow, icon = AniMixIcons.Clock) }
         items(presets) { (label, query, icon) ->
             Chip(label, selected = false, onClick = { onOpen(query, label) }, icon = icon)
         }

@@ -59,6 +59,21 @@ fun viewingKey(number: String): String = number.toDoubleOrNull()?.let {
 
 val LibraryEntry.verifiedEpisodes: Int get() = viewing.values.count { it.completedAt != null }
 val LibraryEntry.hasVerifiedCompletion: Boolean get() = anime.episodes > 0 && (1..anime.episodes).all { viewing[it.toString()]?.completedAt != null }
+
+/** The union of the external episode prefix and locally confirmed episodes, without duplicates. */
+val LibraryEntry.episodesWithHistory: Int get() {
+    val imported = importedViewing?.episodesWatched ?: 0
+    val additional = viewing.count { (number, value) ->
+        value.completedAt != null && (number.toDoubleOrNull()?.let { it > imported } != false)
+    }
+    return (imported.toLong() + additional).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+}
+val LibraryEntry.completedWithHistory: Boolean get() {
+    if (hasVerifiedCompletion || importedViewing?.completed == true) return true
+    val imported = importedViewing?.episodesWatched ?: return false
+    if (anime.episodes <= 0 || imported <= 0) return false
+    return imported >= anime.episodes || (imported + 1..anime.episodes).all { viewing[it.toString()]?.completedAt != null }
+}
 fun LibraryEntry.isEpisodeWatched(number: String): Boolean =
     viewing[viewingKey(number)]?.completedAt != null || (number.toDoubleOrNull()?.let { it <= episodesWatched } == true)
 val LibraryEntry.watchedEpisodeCount: Int get() = episodesWatched + viewing.count { (number, value) ->
@@ -70,9 +85,9 @@ data class ProfileLevel(val level: Int, val xp: Long, val progressXp: Long, val 
 }
 
 /** Unique minutes + unique episode completions + permanent awards; seeking/replays add no XP. */
-fun LibraryData.level(unlockedAchievements: Int): ProfileLevel {
+fun LibraryData.level(earnedAchievements: Int): ProfileLevel {
     val xp = entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs } } / 60_000 +
-        entries.values.sumOf { it.verifiedEpisodes.toLong() } * 20 + unlockedAchievements.coerceAtLeast(0).toLong() * 50
+        entries.values.sumOf { it.verifiedEpisodes.toLong() } * 20 + earnedAchievements.coerceAtLeast(0).toLong() * 50
     fun threshold(level: Int): Long { val n = level.toLong() - 1; return n * 100 + n * (n - 1) * 25 }
     var low = 1
     var high = 2

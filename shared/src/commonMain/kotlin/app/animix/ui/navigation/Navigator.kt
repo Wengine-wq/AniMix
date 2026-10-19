@@ -76,6 +76,14 @@ sealed interface Route {
     data object Settings : Route {
         override val key get() = "settings"
     }
+
+    data class WatchFlow(val anime: Anime? = null, val episode: String? = null) : Route {
+        override val key get() = "watch-flow:${anime?.key ?: "personal"}"
+    }
+
+    data class EditProfile(val sessionId: String = "${app.animix.core.nowMillis()}-${kotlin.random.Random.nextInt(1_000_000)}") : Route {
+        override val key get() = "edit-profile:$sessionId"
+    }
 }
 
 /** Each tab keeps its own back stack, so switching tabs never loses your place. */
@@ -135,6 +143,8 @@ class Navigator {
             }
             "lists", "favorites" -> tab = Tab.Lists
             "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
+            "watch-flow" -> push(Route.WatchFlow())
+            "edit-profile" -> { tab = Tab.Profile; push(Route.EditProfile()) }
             "history" -> { tab = Tab.Profile; push(Route.History) }
             "support" -> { tab = Tab.Profile; push(Route.Support) }
             else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false

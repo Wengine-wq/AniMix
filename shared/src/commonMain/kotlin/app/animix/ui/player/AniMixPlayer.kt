@@ -111,6 +111,12 @@ fun AniMixPlayer(
     onAutoNextChoice: (Boolean) -> Unit = {},
     onFillScreenChange: (Boolean) -> Unit = {},
     onPlayback: (PlaybackUpdate) -> Unit = {},
+    /** Session controls can block playback and bind the decoder to a background-safe deadline. */
+    playbackAllowed: Boolean = true,
+    onPlaybackRequest: () -> Unit = {},
+    onPlayerBound: ((NativePlayer) -> (() -> Unit))? = null,
+    onSnapshot: (PlayerSnapshot, SkipPlan) -> Unit = { _, _ -> },
+    onEpisodeEnded: () -> Unit = {},
     /** Highest quality to start at (traffic saving on mobile data); the viewer can still pick more. */
     maxStartQuality: Int? = null,
     /** Called once, about five minutes before the end: time to get the next episode ready. */
@@ -129,6 +135,28 @@ fun AniMixPlayer(
         return
     }
     val state by player.state.collectAsState()
+    val snapshotCallback by rememberUpdatedState(onSnapshot)
+    val endedCallback by rememberUpdatedState(onEpisodeEnded)
+    val bindCallback by rememberUpdatedState(onPlayerBound)
+    val allowedNow by rememberUpdatedState(playbackAllowed)
+    val playbackRequest by rememberUpdatedState(onPlaybackRequest)
+    var resumeWhenReady by remember(player) { mutableStateOf(false) }
+    DisposableEffect(player) {
+        val unbind = bindCallback?.invoke(player)
+        onDispose { unbind?.invoke() }
+    }
+    LaunchedEffect(playbackAllowed) {
+        if (!playbackAllowed) { resumeWhenReady = false; player.pause() }
+        else if (bindCallback != null && !player.state.value.ended) {
+            if (player.state.value.ready) player.play() else resumeWhenReady = true
+        }
+    }
+    LaunchedEffect(state.ready, resumeWhenReady) {
+        if (state.ready && resumeWhenReady && allowedNow) {
+            resumeWhenReady = false
+            if (!player.state.value.ended) player.play()
+        }
+    }
     val qualities = stream.qualities.keys.toList()
     var quality by remember { mutableStateOf(startQuality(qualities, settings.preferredQuality, maxStartQuality)) }
     val available = quality.takeIf { it in stream.qualities } ?: qualities.first()
@@ -174,6 +202,7 @@ fun AniMixPlayer(
         player.state.collect { snapshot ->
             val now = playbackClock.elapsedNow().inWholeMilliseconds
             tracker.sample(snapshot, now)
+            snapshotCallback(snapshot, currentPlan)
             val boundary = watchedFromMs(snapshot.durationMs, currentPlan.ending)
             if (now - lastFlush >= 5_000 || !snapshot.playing || snapshot.ended ||
                 (!endReported && boundary != null && snapshot.positionMs >= boundary)) {
@@ -192,7 +221,7 @@ fun AniMixPlayer(
             snapshot.ready || snapshot.positionMs > 0 -> snapshot.positionMs
             else -> resumePositionMs(initialPositionMs, episode.durationSeconds?.times(1000L), episode.ending)
         }
-        player.load(stream.qualities.getValue(available), stream.headers, position, if (snapshot.ready) snapshot.playing else true)
+        player.load(stream.qualities.getValue(available), stream.headers, position, allowedNow && if (snapshot.ready) snapshot.playing else true)
     }
     DisposableEffect(player) {
         onDispose {
@@ -249,6 +278,7 @@ fun AniMixPlayer(
         seekFeedback = (seekFeedback?.takeIf { (it > 0) == (seconds > 0) } ?: 0) + seconds
     }
     fun togglePlay() {
+        if (!allowedNow) { playbackRequest(); show(); return }
         if (state.playRequested || state.playing) player.pause() else { finishedEarly = false; player.play() }
         show()
     }
@@ -266,10 +296,13 @@ fun AniMixPlayer(
     }
     LaunchedEffect(atEnd, settings.autoNextEpisode, settings.autoNextAsked) {
         // Asked once; after that the next episode just starts, without a countdown to watch.
-        if (atEnd && onNext != null && settings.autoNextAsked && settings.autoNextEpisode) {
+        if (atEnd && allowedNow && onNext != null && settings.autoNextAsked && settings.autoNextEpisode) {
             delay(400)
             nextCallback?.invoke()
         }
+    }
+    LaunchedEffect(atEnd) {
+        if (atEnd) { flushViewing(true); endedCallback() }
     }
     LaunchedEffect(controlsVisible, state.playing, activity) {
         if (controlsVisible && state.playing) { delay(3_000); controlsVisible = false }
@@ -391,7 +424,7 @@ fun AniMixPlayer(
                     auto = settings.autoNextAsked && settings.autoNextEpisode,
                     onNext = { nextCallback?.invoke() },
                     onChoice = { yes -> onAutoNextChoice(yes); if (yes) nextCallback?.invoke() },
-                    onReplay = { finishedEarly = false; openingSkipped = false; endingSkipped = false; seekTo(0); player.play() },
+                    onReplay = { if (allowedNow) { finishedEarly = false; openingSkipped = false; endingSkipped = false; seekTo(0); player.play() } },
                     modifier = Modifier.align(Alignment.Center),
                 )
             }

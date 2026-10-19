@@ -57,6 +57,7 @@ object AniMixIcons {
         "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3",
     )
     val History = outline("History", "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2")
+    val Info = outline("Info", "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM12 11v6M12 7h.01")
     val Help = outline(
         "Help",
         "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01",
@@ -89,7 +90,8 @@ object AniMixIcons {
         "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z",
     )
     val StarOutline = outline("StarOutline", "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z")
-    val Edit = outline("Edit", "M14 5l5 5M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11z")
+    val Edit = outline("Edit", "M16 4a2.8 2.8 0 0 1 4 4L8 20l-6 2 2-6zM14 6l4 4M4 16l4 4")
+    val Image = outline("Image", "M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 16l6-6 4 4 3-3 5 5M16 7h.01")
 
     private fun outline(name: String, path: String, stroke: Float = 1.7f) =
         ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)

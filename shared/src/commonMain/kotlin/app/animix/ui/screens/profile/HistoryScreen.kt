@@ -26,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.Platform
-import app.animix.data.AppVersion
+import app.animix.data.AppRelease
 import app.animix.data.library.LibraryEntry
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.MessageState
@@ -129,7 +129,7 @@ fun SupportScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             Spacer(Modifier.height(24.dp))
             Panel {
                 Column(Modifier.padding(16.dp)) {
-                    Txt("AniMix $AppVersion · New Horizons", AniMixTheme.type.bodyStrong)
+                    Txt(AppRelease.label, AniMixTheme.type.bodyStrong)
                     Spacer(Modifier.height(4.dp))
                     Txt("${Platform.name} · данные: ${Platform.dataDir}", AniMixTheme.type.caption)
                 }

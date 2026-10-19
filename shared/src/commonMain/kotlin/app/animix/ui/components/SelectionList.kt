@@ -73,11 +73,11 @@ fun SelectionList(
 
 /** Surface and touch feedback shared by online episode cells and offline episode cards. */
 @Composable
-fun EpisodeCardSurface(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable BoxScope.() -> Unit) {
+fun EpisodeCardSurface(selected: Boolean, onClick: (() -> Unit)?, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable BoxScope.() -> Unit) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip, tween(AniMixMotion.Standard))
-    Box(modifier.pressScale(interaction).clip(AniMixTheme.shapes.medium).background(background)
+    Box(modifier.then(if (onClick != null) Modifier.pressScale(interaction) else Modifier).clip(AniMixTheme.shapes.medium).background(background)
         .rim(AniMixTheme.shapes.medium, accent = selected)
-        .clickable(interaction, indication = null, role = Role.Button, enabled = enabled, onClick = onClick), content = content)
+        .then(if (onClick != null) Modifier.clickable(interaction, indication = null, role = Role.Button, enabled = enabled, onClick = onClick) else Modifier), content = content)
 }

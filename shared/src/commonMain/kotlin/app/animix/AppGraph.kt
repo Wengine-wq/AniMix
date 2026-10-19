@@ -34,6 +34,8 @@ class AppGraph {
     /** Achievements, earned from the local library, settings and in-app events. */
     val achievements = Achievements(DiskStore(Platform.dataDir), scope, library, settings)
 
+    val watchFlow = app.animix.data.watchflow.WatchFlow(DiskStore(Platform.dataDir), scope)
+
     private val apiCache = ResponseCache(DiskStore("${Platform.cacheDir}/api"))
 
     val shikimori = ShikimoriRepository(ShikimoriApi(http), apiCache)
@@ -54,6 +56,8 @@ class AppGraph {
 
     /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
     val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)
+
+    val flowPlanner = app.animix.data.watchflow.FlowPlanner(yummy, anime, downloads, skips, library)
 
     /** Importing lists: Shikimori (signed in) and public Anixart lists. */
     val shikimoriAccount = app.animix.data.importer.ShikimoriAccount(http, DiskStore(Platform.dataDir))
