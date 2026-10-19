@@ -34,7 +34,7 @@ private enum class SettingsCategory(val title: String, val icon: ImageVector) {
     Import("Импорт списков", AniMixIcons.Share),
     Network("Соединение", AniMixIcons.Wifi),
     Performance("Производительность", AniMixIcons.Battery),
-    Data("Данные", AniMixIcons.Refresh),
+    Data("Данные и кэш", AniMixIcons.Refresh),
     About("О приложении", AniMixIcons.Info),
 }
 
@@ -64,7 +64,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Import -> "Shikimori, Anixart"
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> if (settings.batterySaver) "Экономия" else "Обычный режим"
-                    SettingsCategory.Data -> null
+                    SettingsCategory.Data -> "Объём и очистка"
                     SettingsCategory.About -> AppRelease.version
                 }
                 NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)
@@ -83,7 +83,6 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
     val settings by graph.settings.state.collectAsState()
     val scope = rememberCoroutineScope()
     val category = SettingsCategory.entries.firstOrNull { it.name == id } ?: SettingsCategory.Appearance
-    var cacheCleared by remember { mutableStateOf(false) }
     ScreenColumn(contentPadding) {
         PageHeader(category.title, { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
@@ -158,9 +157,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
             }
             SettingsCategory.Import -> ImportSection(graph, navigator)
             SettingsCategory.About -> AboutSection()
-            SettingsCategory.Data -> Panel {
-                NavRow(if (cacheCleared) "Кэш каталога очищен" else "Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache(); cacheCleared = true } })
-            }
+            SettingsCategory.Data -> StorageSection(graph, navigator)
         }
     }
 }

@@ -112,32 +112,3 @@ private fun clock(ms: Long): String {
     return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 }
 
-/** Version, where the data lives, and housekeeping. */
-@Composable
-fun SupportScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
-    val scope = rememberCoroutineScope()
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = 720.dp).fillMaxWidth()
-                .padding(contentPadding).padding(horizontal = 20.dp, vertical = 12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconCircle(AniMixIcons.Back, onClick = { navigator.back() })
-                Spacer(Modifier.width(12.dp))
-                Txt("Поддержка", AniMixTheme.type.title)
-            }
-            Spacer(Modifier.height(24.dp))
-            Panel {
-                Column(Modifier.padding(16.dp)) {
-                    Txt(AppRelease.label, AniMixTheme.type.bodyStrong)
-                    Spacer(Modifier.height(4.dp))
-                    Txt("${Platform.name} · данные: ${Platform.dataDir}", AniMixTheme.type.caption)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            Panel {
-                NavRow("Очистить кэш каталога", AniMixIcons.Refresh, onClick = { scope.launch { graph.clearCache() } })
-            }
-        }
-    }
-}
