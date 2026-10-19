@@ -140,7 +140,6 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                 item {
                     QuickFilters(
                         onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
-                        onFlow = { navigator.push(Route.WatchFlow()) },
                     )
                 }
                 item {
@@ -291,7 +290,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
 }
 
 @Composable
-private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, onFlow: () -> Unit) {
+private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
     val presets = listOf(
         Triple("Онгоинги", CatalogQuery(status = "ongoing"), AniMixIcons.Clock),
         Triple("Новинки", CatalogQuery(order = CatalogOrder.AiredOn, status = "released"), AniMixIcons.Star),
@@ -302,7 +301,6 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, onFlow: () -> U
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { Chip("Watch flow", selected = false, onClick = onFlow, icon = AniMixIcons.Clock) }
         items(presets) { (label, query, icon) ->
             Chip(label, selected = false, onClick = { onOpen(query, label) }, icon = icon)
         }

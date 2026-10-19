@@ -100,6 +100,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             onLists = { sheet = DetailSheet.Lists },
             onDownload = { navigator.push(Route.Downloads(anime, add = true)) },
             onSaved = { navigator.push(Route.Downloads(anime)) },
+            onFlow = { navigator.push(Route.WatchFlow(anime)) },
             downloaded = downloads.count { it.anime.key == anime.key && it.status == app.animix.data.downloads.DownloadStatus.Completed },
             queued = downloads.count { it.anime.key == anime.key },
             onFavorite = { graph.library.toggleFavorite(anime) },
@@ -314,6 +315,7 @@ private fun WatchActions(
     onLists: () -> Unit,
     onDownload: () -> Unit,
     onSaved: () -> Unit,
+    onFlow: () -> Unit,
     onFavorite: () -> Unit,
     onRate: () -> Unit,
     downloaded: Int,
@@ -379,6 +381,17 @@ private fun WatchActions(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+    // Watch flow: a session for the time you have, online or from downloads, starting with this title.
+    Spacer(Modifier.height(8.dp))
+    PersonalAction(
+        label = "Watch flow",
+        value = "Серии под ваше время",
+        icon = AniMixIcons.Clock,
+        active = false,
+        onClick = onFlow,
+        modifier = Modifier.fillMaxWidth(),
+        trailing = AniMixIcons.ChevronRight,
+    )
     if (notice != null) Txt(notice, AniMixTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(top = 10.dp))
 }
 

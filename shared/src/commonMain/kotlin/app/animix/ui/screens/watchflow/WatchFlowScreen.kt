@@ -2,6 +2,8 @@ package app.animix.ui.screens.watchflow
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.rememberScrollState
@@ -56,8 +58,10 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
     val library by graph.library.state.collectAsState()
     val downloads by graph.downloads.state.collectAsState()
     val settings by graph.settings.state.collectAsState()
-    val choices = remember(library.entries, downloads, opened) {
-        (listOfNotNull(opened) + library.entries.values.filter { it.status == ListStatus.Watching || it.status == ListStatus.OnHold }
+    // Any catalog title can join the queue: searched ones come first, then «Смотрю», «Отложено» and downloads.
+    var searched by remember { mutableStateOf<List<Anime>>(emptyList()) }
+    val choices = remember(library.entries, downloads, opened, searched) {
+        (listOfNotNull(opened) + searched + library.entries.values.filter { it.status == ListStatus.Watching || it.status == ListStatus.OnHold }
             .sortedByDescending { it.updatedAt }.map { it.anime } + downloads.filter { it.status == DownloadStatus.Completed }.map { it.anime })
             .distinctBy { it.key }
     }
@@ -108,7 +112,7 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                 Column {
                     PageHeader("Watch flow", { navigator.back() })
                     Spacer(Modifier.height(8.dp))
-                    Txt("Очередь под ваше время — от первой серии до конца сессии.", AniMixTheme.type.caption)
+                    Txt("Очередь под ваше время: серии онлайн и из загрузок, любой тайтл каталога.", AniMixTheme.type.caption)
                     Spacer(Modifier.height(24.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Txt("У меня есть", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
@@ -162,11 +166,17 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                     Spacer(Modifier.height(10.dp))
                     Txt("Таймер учитывает паузы и загрузку. Опенинги исключаем только при наличии разметки. Лимит — от 1 до 360 минут.", AniMixTheme.type.micro)
                     Spacer(Modifier.height(24.dp))
+                    FlowTitleSearch(graph) { picked ->
+                        searched = (listOf(picked) + searched).distinctBy { it.key }.take(6)
+                        animeKey = picked.key
+                        problem = null
+                    }
+                    Spacer(Modifier.height(16.dp))
                     if (choices.isEmpty()) {
                         MessageState("Добавьте тайтл в очередь", message = "Выберите аниме из «Смотрю» или откройте Watch flow со страницы просмотра.",
                             icon = AniMixIcons.Clock, actionLabel = "Открыть каталог", onAction = { navigator.openLink("animix://catalog") })
                     } else {
-                        SelectionList("Тайтл", choices.map { SelectionOption(it.key, it.title, "Для очереди Watch flow") }, anime?.key, AniMixIcons.Play) {
+                        SelectionList("Тайтл", choices.map { SelectionOption(it.key, it.title, listOfNotNull(it.kind.label, it.year?.toString()).joinToString(" · ")) }, anime?.key, AniMixIcons.Play) {
                             if (!busy) { animeKey = it; problem = null }
                         }
                         Spacer(Modifier.height(12.dp))
@@ -177,7 +187,7 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                             is Load.Ready -> {
                                 if (loaded.value.dubbings.isEmpty()) Txt("Для этой сессии нужен встроенный плеер Kodik или скачанные серии.", AniMixTheme.type.caption)
                                 else SelectionList("Озвучка", loaded.value.dubbings.map {
-                                    SelectionOption(it.key, it.studio, "${it.episodes.size} ${episodesWord(it.episodes.size)} · ${if (it.offlineOnly) "скачано" else "Kodik"}")
+                                    SelectionOption(it.key, it.studio, "${it.episodes.size} ${episodesWord(it.episodes.size)} · ${if (it.offlineOnly) "только скачанные" else "онлайн"}")
                                 }, dubbing?.key, AniMixIcons.Mic) { if (!busy) dubbingKey = it }
                             }
                         }
@@ -401,3 +411,57 @@ internal fun flowLength(ms: Long): String {
 
 private fun flowCountdown(ms: Long): String = ((ms.coerceAtLeast(0) + 999) / 1000).let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" }
 private fun flowFinishLabel(time: Long): String = flowTimeLabel(time) + if (localDayIndex(time) > localDayIndex()) " завтра" else ""
+
+/** Finds any title in the catalog to add to the queue, online. */
+@Composable
+private fun FlowTitleSearch(graph: AppGraph, onPick: (Anime) -> Unit) {
+    val colors = AniMixTheme.colors
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<Anime>?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun search() {
+        val text = query.trim()
+        if (text.length < 2 || searching) return
+        searching = true
+        scope.launch {
+            results = try { graph.anime.catalog(app.animix.data.shikimori.CatalogQuery(search = text, limit = 8)) }
+            catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
+            searching = false
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BasicTextField(query, { query = it.take(60) }, singleLine = true,
+            textStyle = AniMixTheme.type.body.copy(color = colors.textPrimary), cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { search() }),
+            modifier = Modifier.weight(1f).height(48.dp).clip(AniMixTheme.shapes.medium).background(colors.chip),
+            decorationBox = { field ->
+                Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) Txt("Найти тайтл для очереди", AniMixTheme.type.body, color = colors.textMuted)
+                    field()
+                }
+            })
+        Spacer(Modifier.width(10.dp))
+        IconCircle(AniMixIcons.Search, ::search, size = 48.dp, contentDescription = "Найти тайтл")
+    }
+    if (searching) Shimmer(Modifier.padding(top = 10.dp).fillMaxWidth().height(48.dp), AniMixTheme.shapes.medium)
+    results?.let { found ->
+        Spacer(Modifier.height(10.dp))
+        if (found.isEmpty()) Txt("Ничего не нашлось", AniMixTheme.type.caption)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            found.take(5).forEach { anime ->
+                Row(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.medium).background(colors.chip)
+                    .clickable { onPick(anime); results = null; query = "" }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RemoteImage(anime.posterUrl, Modifier.width(36.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Txt(anime.title, AniMixTheme.type.bodyStrong, maxLines = 1)
+                        Txt(listOfNotNull(anime.kind.label, anime.year?.toString()).joinToString(" · "), AniMixTheme.type.micro)
+                    }
+                    Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.textMuted)
+                }
+            }
+        }
+    }
+}
