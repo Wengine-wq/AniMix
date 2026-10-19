@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 
 /** Settings are grouped into categories; each opens its own page. */
 private enum class SettingsCategory(val title: String, val icon: ImageVector) {
+    Account("Аккаунт", AniMixIcons.User),
     Appearance("Внешний вид", AniMixIcons.Palette),
     Playback("Воспроизведение", AniMixIcons.Play),
     Lists("Списки", AniMixIcons.Bookmark),
@@ -65,6 +66,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> if (settings.batterySaver) "Экономия" else "Обычный режим"
                     SettingsCategory.Data -> "Объём и очистка"
+                    SettingsCategory.Account -> "Локальный профиль"
                     SettingsCategory.About -> AppRelease.version
                 }
                 NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)
@@ -158,6 +160,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
             SettingsCategory.Import -> ImportSection(graph, navigator)
             SettingsCategory.About -> AboutSection()
             SettingsCategory.Data -> StorageSection(graph, navigator)
+            SettingsCategory.Account -> AccountSection(graph, navigator)
         }
     }
 }
