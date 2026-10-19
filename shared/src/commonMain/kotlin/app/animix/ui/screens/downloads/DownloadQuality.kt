@@ -15,11 +15,11 @@ import app.animix.ui.components.rim
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 
-/** Download qualities offered to the viewer; a missing rendition falls back to the closest lower one. */
+/** Download qualities, best first; a missing rendition falls back to the closest lower one. */
 val DownloadQualities = listOf(
-    "480p" to "Меньше места",
-    "720p" to "Оптимально",
     "1080p" to "Лучшее качество",
+    "720p" to "Оптимально",
+    "480p" to "Меньше места",
 )
 
 /** Asked on the first download; the answer is kept and can be changed in settings. */

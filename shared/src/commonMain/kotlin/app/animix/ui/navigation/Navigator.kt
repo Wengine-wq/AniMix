@@ -45,8 +45,9 @@ sealed interface Route {
         override val key get() = "offline:$downloadId"
     }
 
-    data class Downloads(val anime: Anime) : Route {
-        override val key get() = "downloads:${anime.key}"
+    /** A title in downloads: [add] opens the picker for new episodes (from the anime page), otherwise only what is saved. */
+    data class Downloads(val anime: Anime, val add: Boolean = false) : Route {
+        override val key get() = "downloads:${anime.key}:$add"
     }
 
     data class Reviews(val anime: Anime) : Route {

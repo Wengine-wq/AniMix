@@ -44,13 +44,9 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
     ScreenColumn(contentPadding) {
         PageHeader("Настройки", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
-        Txt("Профиль и коллекция", AniMixTheme.type.heading)
+        Txt("Коллекция", AniMixTheme.type.heading)
         Spacer(Modifier.height(12.dp))
         Panel {
-            NavRow("Редактировать профиль", AniMixIcons.Edit, { navigator.push(Route.EditProfile()) })
-            Divider()
-            NavRow("Мои списки", AniMixIcons.Bookmark, { navigator.push(Route.Lists) })
-            Divider()
             NavRow("История просмотров", AniMixIcons.History, { navigator.push(Route.History) })
             Divider()
             NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.Achievements) })

@@ -228,7 +228,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding, route.episode)
                     route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)
-                    route is Route.Downloads -> TitleDownloadsScreen(graph, navigator, route.anime, padding)
+                    route is Route.Downloads -> TitleDownloadsScreen(graph, navigator, route.anime, padding, add = route.add)
                     key.endsWith("/root") -> when (tab) {
                         Tab.Home -> HomeScreen(graph, navigator, padding)
                         Tab.Catalog -> CatalogScreen(graph, navigator, padding)

@@ -27,6 +27,7 @@ import app.animix.ui.components.*
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
+import app.animix.ui.navigation.Tab
 import app.animix.ui.theme.AniMixTheme
 import kotlin.time.Instant
 
@@ -60,7 +61,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
         }
         Spacer(Modifier.height(32.dp))
-        CollectionDistribution(library)
+        CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) })
         Spacer(Modifier.height(32.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Txt("Активность", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
@@ -171,7 +172,7 @@ private fun ProfileStat(value: String, label: String, modifier: Modifier) {
 }
 
 @Composable
-private fun CollectionDistribution(library: LibraryData) {
+private fun CollectionDistribution(library: LibraryData, onOpen: () -> Unit) {
     val colors = AniMixTheme.colors
     val statuses = listOf(ListStatus.Watching, ListStatus.Completed, ListStatus.Planned, ListStatus.OnHold, ListStatus.Dropped)
     val counts = statuses.map { status -> library.entries.values.count { it.status == status } }
@@ -179,7 +180,9 @@ private fun CollectionDistribution(library: LibraryData) {
     val palette = listOf(colors.accent, colors.accentStrong, colors.textSecondary, colors.star, colors.textMuted)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt("Коллекция", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-        Txt("$total тайтлов", AniMixTheme.type.caption)
+        // Lists are edited where they live: the «Списки» tab, one tap from here.
+        Txt("$total тайтлов · открыть", AniMixTheme.type.label, color = colors.accent,
+            modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 8.dp))
     }
     Spacer(Modifier.height(20.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {

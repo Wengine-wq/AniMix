@@ -486,6 +486,11 @@ private fun PlayerOverlay(
                 ),
             )
             Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (fullscreen) {
+                    // Leaves fullscreen: the same as the system back gesture or Esc, but visible.
+                    OverlayIcon(AniMixIcons.Back, onFullscreen, size = 40)
+                    Spacer(Modifier.width(6.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Txt(title, AniMixTheme.type.bodyStrong, color = Color.White, maxLines = 1)
                     subtitle?.let { Txt(it, AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.72f), maxLines = 1) }

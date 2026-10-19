@@ -96,7 +96,7 @@ fun DownloadsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddi
  * are picked right in the grid; saved ones show their state and actions.
  */
 @Composable
-fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.animix.model.Anime, contentPadding: PaddingValues) {
+fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.animix.model.Anime, contentPadding: PaddingValues, add: Boolean = false) {
     val downloads by graph.downloads.state.collectAsState()
     val library by graph.library.state.collectAsState()
     val settings by graph.settings.state.collectAsState()
@@ -112,8 +112,9 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
     val anime = opened.takeIf { it.title.isNotEmpty() } ?: items.firstOrNull()?.anime ?: (detail.value as? Load.Ready)?.value?.anime ?: opened
     Ambient(anime.posterUrl)
     // Offline the page still works from what is saved; the source only adds what can be downloaded.
-    val source = rememberLoad(anime.key to anime.title.isNotEmpty()) { force ->
-        if (anime.title.isEmpty()) kotlinx.coroutines.awaitCancellation()
+    // The saved page needs no network at all; only adding episodes asks the source.
+    val source = rememberLoad(Triple(anime.key, anime.title.isNotEmpty(), add)) { force ->
+        if (anime.title.isEmpty() || !add) kotlinx.coroutines.awaitCancellation()
         graph.yummy.watchSource(anime, force)
     }
     val available = (source.value as? Load.Ready)?.value?.dubbings.orEmpty().filter { it.isKodik }
@@ -176,7 +177,8 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                         Column(Modifier.weight(1f)) {
                             Txt(anime.title, AniMixTheme.type.heading, maxLines = 2)
                             Txt(
-                                if (items.isEmpty()) "Скачать для просмотра без интернета"
+                                if (add) "Скачать серии для просмотра без интернета"
+                                else if (items.isEmpty()) "Серий в загрузках нет"
                                 else "В загрузках ${items.count { it.status == DownloadStatus.Completed }} из ${items.size} · ${megabytes(items.sumOf { it.downloadedBytes })}",
                                 AniMixTheme.type.caption,
                             )
@@ -193,11 +195,11 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                         }
                     }
                     // Offer to continue right away, before any choices.
-                    continueOffline(items, library.entry(anime))?.let { next ->
+                    if (!add) continueOffline(items, library.entry(anime))?.let { next ->
                         Spacer(Modifier.height(20.dp))
                         ContinueOffline(next, library.entry(anime)?.episodePositions?.get(next.episode.number) ?: 0) { navigator.push(Route.Offline(next.id)) }
                     }
-                    if (dubbingKeys.isNotEmpty()) {
+                    if (add && dubbingKeys.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         SelectionList("Озвучка", dubbingKeys.map { key ->
                             val option = available.firstOrNull { it.key == key }
@@ -210,7 +212,7 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                             ).joinToString(" · "))
                         }, dubbingKey, AniMixIcons.Mic) { selectedKey = it }
                     }
-                    if (dubbing != null) {
+                    if (add && dubbing != null) {
                         Spacer(Modifier.height(24.dp))
                         Txt("Качество", AniMixTheme.type.heading)
                         Spacer(Modifier.height(8.dp))
@@ -229,25 +231,56 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                     }
                 }
             }
-            // One list from the first episode to the last: saved ones with their actions, the rest to pick.
             val wideSpan: (Int) -> Int = { line -> if (line >= 8) line / 2 else line }
-            when {
+            if (!add) {
+                val groups = items.groupBy { it.studio to it.quality }
+                if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                    MessageState("Серий в загрузках нет", message = "Скачайте их со страницы аниме", icon = AniMixIcons.Download,
+                        actionLabel = "Скачать серии", onAction = { navigator.push(Route.Downloads(anime, add = true)) })
+                }
+                groups.entries.forEachIndexed { index, (variant, group) ->
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Txt(variant.first, AniMixTheme.type.heading, maxLines = 1)
+                                Txt("${variant.second} · ${group.size} ${episodesWord(group.size)}", AniMixTheme.type.caption)
+                            }
+                            if (index == 0 && (running || resumable)) Chip(if (running) "Пауза загрузок" else "Докачать", false, {
+                                action { items.filter { if (running) it.active || it.status == DownloadStatus.Queued
+                                    else it.status == DownloadStatus.Paused || it.status == DownloadStatus.Failed }
+                                    .forEach { if (running) graph.downloads.pause(it.id) else graph.downloads.resume(it.id) } }
+                            }, icon = if (running) AniMixIcons.Pause else AniMixIcons.Play)
+                        }
+                    }
+                    items(group.sortedBy { it.episode.sortKey }, key = { it.id }, span = { GridItemSpan(wideSpan(maxLineSpan)) }) { item ->
+                        DownloadEpisodeCard(item, library.entry(anime),
+                            onPlay = { navigator.push(Route.Offline(item.id)) },
+                            onPause = { action { graph.downloads.pause(item.id) } },
+                            onResume = { action { graph.downloads.resume(item.id) } },
+                            onRemove = { action { graph.downloads.remove(item.id) } })
+                    }
+                }
+                if (items.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                        SecondaryButton("Скачать ещё серии", { navigator.push(Route.Downloads(anime, add = true)) }, icon = AniMixIcons.Download)
+                    }
+                }
+            } else when {
                 episodes.isNotEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Txt("Серии · ${episodes.size}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-                                if (running || resumable) Chip(if (running) "Пауза загрузок" else "Докачать", false, {
-                                    action { group.filter { if (running) it.active || it.status == DownloadStatus.Queued
-                                        else it.status == DownloadStatus.Paused || it.status == DownloadStatus.Failed }
-                                        .forEach { if (running) graph.downloads.pause(it.id) else graph.downloads.resume(it.id) } }
-                                }, icon = if (running) AniMixIcons.Pause else AniMixIcons.Play)
+                                if (pickable.isNotEmpty()) {
+                                    val all = picked.containsAll(pickable)
+                                    Txt(if (all) "Снять выбор" else "Выбрать все", AniMixTheme.type.label, color = colors.accent,
+                                        modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable { picked = if (all) emptySet() else pickable.toSet() }
+                                            .padding(horizontal = 8.dp, vertical = 10.dp))
+                                }
                             }
                             if (pickable.isNotEmpty()) {
                                 Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    val all = picked.containsAll(pickable)
-                                    Chip(if (all) "Снять" else "Выбрать все", all, { picked = if (all) emptySet() else pickable.toSet() }, icon = AniMixIcons.Check)
+                                Row {
                                     PrimaryButton(
                                         when {
                                             picked.isEmpty() -> "Скачать"
@@ -257,7 +290,7 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                                         onClick = ::download,
                                         enabled = picked.isNotEmpty() && quality != null,
                                         icon = AniMixIcons.Download,
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
