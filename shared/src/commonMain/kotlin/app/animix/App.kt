@@ -181,7 +181,8 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
                 Modifier.fillMaxWidth().height(statusBar + 12.dp)
                     .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.85f), Color.Transparent))),
             )
-            BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            // «Итоги года» are full screen, like stories.
+            if (navigator.current !is Route.YearInReview) BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             AchievementToastHost(graph, Modifier.align(Alignment.TopCenter))
         }
     }
@@ -220,6 +221,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Settings -> SettingsScreen(graph, navigator, padding)
                     route is Route.EditProfile -> EditProfileScreen(graph, navigator, padding)
                     route is Route.WatchFlow -> WatchFlowScreen(graph, navigator, padding, route.anime, route.episode)
+                    route is Route.YearInReview -> app.animix.ui.screens.wrapped.YearInReviewScreen(graph, navigator, route.year)
                     route is Route.SettingsSection -> SettingsSectionScreen(graph, navigator, padding, route.id)
                     route == Route.Lists -> ListsScreen(graph, navigator, padding, showBack = true)
                     route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)

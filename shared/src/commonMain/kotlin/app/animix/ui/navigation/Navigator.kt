@@ -74,6 +74,10 @@ sealed interface Route {
         override val key get() = "settings:$id"
     }
 
+    data class YearInReview(val year: Int) : Route {
+        override val key get() = "wrapped:$year"
+    }
+
     data object Settings : Route {
         override val key get() = "settings"
     }
@@ -145,6 +149,7 @@ class Navigator {
             "lists", "favorites" -> tab = Tab.Lists
             "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
             "watch-flow" -> push(Route.WatchFlow())
+            "wrapped" -> push(Route.YearInReview(path.getOrNull(1)?.toIntOrNull() ?: app.animix.data.library.dayToDate(app.animix.core.localDayIndex()).year))
             "edit-profile" -> { tab = Tab.Profile; push(Route.EditProfile()) }
             "history" -> { tab = Tab.Profile; push(Route.History) }
             "support" -> { tab = Tab.Profile; push(Route.Support) }

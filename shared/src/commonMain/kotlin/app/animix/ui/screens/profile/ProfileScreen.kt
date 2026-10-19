@@ -3,6 +3,7 @@ package app.animix.ui.screens.profile
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -60,6 +61,8 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
             ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
         }
+        Spacer(Modifier.height(32.dp))
+        YearInReviewEntry { year -> navigator.push(Route.YearInReview(year)) }
         Spacer(Modifier.height(32.dp))
         CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) })
         Spacer(Modifier.height(32.dp))
@@ -271,4 +274,27 @@ private fun profileJoinedLabel(millis: Long): String {
     val months = listOf("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
     val month = date.substring(5, 7).toIntOrNull()?.minus(1)?.let(months::getOrNull) ?: return ""
     return "В AniMix с $month ${date.take(4)}"
+}
+
+/** The way into «Итоги года»: always there, the year so far until it ends. */
+@Composable
+private fun YearInReviewEntry(onOpen: (Int) -> Unit) {
+    val colors = AniMixTheme.colors
+    val today = remember { app.animix.data.library.dayToDate(app.animix.core.localDayIndex()) }
+    Row(
+        Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.accentSoft)
+            .border(1.dp, colors.accent.copy(alpha = 0.3f), AniMixTheme.shapes.large)
+            .clickable { onOpen(today.year) }.padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+            Icon(AniMixIcons.Star, null, Modifier.size(20.dp), tint = colors.onAccent)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt("Итоги ${today.year}", AniMixTheme.type.heading)
+            Txt(if (today.month == 12) "Ваш год в AniMix" else "Ваш год в AniMix, пока он идёт", AniMixTheme.type.caption)
+        }
+        Icon(AniMixIcons.ChevronRight, null, Modifier.size(18.dp), tint = colors.textMuted)
+    }
 }
