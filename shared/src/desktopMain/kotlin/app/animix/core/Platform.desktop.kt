@@ -33,3 +33,5 @@ actual fun createHttpEngine(): HttpClientEngine = OkHttp.create()
 
 actual fun localDayIndex(millis: Long): Long =
     Math.floorDiv(millis + java.util.TimeZone.getDefault().getOffset(millis), 86_400_000L)
+
+actual fun utcOffsetMillis(millis: Long): Long = java.util.TimeZone.getDefault().getOffset(millis).toLong()

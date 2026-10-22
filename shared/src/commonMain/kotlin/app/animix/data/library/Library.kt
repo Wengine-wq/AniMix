@@ -55,6 +55,8 @@ data class LibraryData(
     /** Seconds watched per local day (see [app.animix.core.localDayIndex]), for streaks and the activity chart. */
     val watchDays: Map<Long, Int> = emptyMap(),
     val watchRemainderMs: Int = 0,
+    /** Usage by calendar year for «Итоги года» (hours, weekdays, studios, sessions, skips). */
+    val usage: Map<Int, YearUsage> = emptyMap(),
 ) {
     fun entry(anime: Anime): LibraryEntry? = entries[anime.key]
 
@@ -148,7 +150,8 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     fun setScore(anime: Anime, score: Int?) = change(anime) { it.copy(score = score?.coerceIn(1, 10)) }
 
     fun recordPlayback(anime: Anime, number: String, credit: PlaybackCredit, durationMs: Long,
-        opening: app.animix.model.SkipRange?, ending: app.animix.model.SkipRange?, reachedEnd: Boolean) {
+        opening: app.animix.model.SkipRange?, ending: app.animix.model.SkipRange?, reachedEnd: Boolean,
+        context: PlaybackContext? = null) {
         if (durationMs <= 0 || (credit.ranges.isEmpty() && !reachedEnd)) return
         val now = nowMillis()
         val key = viewingKey(number)
@@ -173,8 +176,23 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
             val elapsed = (credit.elapsedMs.coerceAtLeast(0) + data.watchRemainderMs)
             val seconds = (elapsed / 1000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val day = app.animix.core.localDayIndex(now)
+            val year = dayToDate(day).year
+            val usage = if (seconds > 0) data.usage + (year to (data.usage[year] ?: YearUsage()).add(
+                seconds, now, app.animix.core.localHour(now), app.animix.core.weekdayOf(day), day, anime.key, context)) else data.usage
             data.copy(entries = data.entries + (anime.key to updated), watchRemainderMs = (elapsed % 1000).toInt(),
-                watchDays = if (seconds > 0) data.watchDays + (day to ((data.watchDays[day] ?: 0) + seconds)) else data.watchDays)
+                watchDays = if (seconds > 0) data.watchDays + (day to ((data.watchDays[day] ?: 0) + seconds)) else data.watchDays,
+                usage = usage)
+        }
+        save()
+    }
+
+    /** An opening or ending skipped in the player, and the seconds it saved, for «Итоги года». */
+    fun recordSkip(seconds: Int) {
+        if (seconds <= 0) return
+        val year = dayToDate(app.animix.core.localDayIndex()).year
+        _state.update { data ->
+            val current = data.usage[year] ?: YearUsage()
+            data.copy(usage = data.usage + (year to current.copy(skips = current.skips + 1, skippedSeconds = current.skippedSeconds + seconds)))
         }
         save()
     }

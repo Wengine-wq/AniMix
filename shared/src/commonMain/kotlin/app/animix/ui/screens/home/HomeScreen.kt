@@ -64,6 +64,8 @@ import app.animix.ui.components.rim
 import app.animix.data.library.ContinueItem
 import app.animix.data.library.continueWatching
 import app.animix.data.library.tasteGenres
+import app.animix.data.library.reviewAccess
+import app.animix.ui.components.ProgressLine
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import app.animix.data.shikimori.CatalogOrder
@@ -133,6 +135,9 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                     d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
                 navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
             }) { navigator.push(Route.History) }
+        }
+        item(key = "year-review") {
+            YearReviewCard(library) { year -> navigator.push(Route.YearInReview(year)) }
         }
         if (taste.isNotEmpty()) item(key = "recommendations") {
             LoadingShelf("Подобрано для вас", picksState, open, picks::refresh)
@@ -396,6 +401,64 @@ internal fun HomeHeroPlaceholder() {
                         Shimmer(Modifier.width(if (index == 0) 22.dp else 6.dp).height(6.dp), AniMixTheme.shapes.pill)
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * «Итоги года» on the home screen: open from 20 December, or earlier after three titles
+ * watched in AniMix; until then the card says when and how far along the viewer is.
+ */
+@Composable
+private fun YearReviewCard(library: app.animix.data.library.LibraryData, onOpen: (Int) -> Unit) {
+    val colors = AniMixTheme.colors
+    val access = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
+    val posters = remember(library, access.year) {
+        library.entries.values.sortedByDescending { entry ->
+            entry.viewing.values.count { v -> v.completedAt?.let { app.animix.data.library.dayToDate(app.animix.core.localDayIndex(it)).year == access.year } == true }
+        }.take(3).map { it.anime.posterUrl }
+    }
+    Box(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+        Row(
+            Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large)
+                .background(if (access.open) colors.accentGradient else Brush.linearGradient(listOf(colors.surfaceRaised, colors.surfaceRaised)))
+                .rim(AniMixTheme.shapes.large, accent = !access.open)
+                .then(if (access.open) Modifier.clickable { onOpen(access.year) } else Modifier)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                val text = if (access.open) colors.onAccent else colors.textPrimary
+                Txt("Итоги ${access.year}", AniMixTheme.type.title, color = text)
+                Spacer(Modifier.height(4.dp))
+                Txt(
+                    when {
+                        access.early -> "Открыты досрочно: вы посмотрели ${access.titlesWatched} тайтла в AniMix"
+                        access.open -> "Ваш год в AniMix готов — смотрите"
+                        else -> "Откроются ${access.opensOn.day} декабря. Досрочно — после ${access.titlesNeeded} тайтлов"
+                    },
+                    AniMixTheme.type.caption, color = if (access.open) colors.onAccent.copy(alpha = 0.85f) else colors.textSecondary,
+                )
+                if (!access.open) {
+                    Spacer(Modifier.height(10.dp))
+                    ProgressLine(access.titlesWatched.toFloat() / access.titlesNeeded)
+                    Txt("${access.titlesWatched} из ${access.titlesNeeded} тайтлов", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+            if (access.open && posters.isNotEmpty()) {
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.width(96.dp).height(80.dp), contentAlignment = Alignment.Center) {
+                    posters.forEachIndexed { i, url ->
+                        RemoteImage(url, Modifier.width(52.dp).aspectRatio(0.7f).graphicsLayer {
+                            rotationZ = (i - (posters.size - 1) / 2f) * 10f
+                            translationX = (i - (posters.size - 1) / 2f) * 22.dp.toPx()
+                        }, shape = AniMixTheme.shapes.small)
+                    }
+                }
+            } else if (!access.open) {
+                Spacer(Modifier.width(12.dp))
+                Icon(AniMixIcons.Star, null, Modifier.size(28.dp), tint = colors.textMuted)
             }
         }
     }

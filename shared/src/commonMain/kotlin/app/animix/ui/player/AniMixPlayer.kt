@@ -111,6 +111,8 @@ fun AniMixPlayer(
     onAutoNextChoice: (Boolean) -> Unit = {},
     onFillScreenChange: (Boolean) -> Unit = {},
     onPlayback: (PlaybackUpdate) -> Unit = {},
+    /** An opening or ending was skipped; the argument is the seconds saved. */
+    onSkip: (Int) -> Unit = {},
     /** Session controls can block playback and bind the decoder to a background-safe deadline. */
     playbackAllowed: Boolean = true,
     onPlaybackRequest: () -> Unit = {},
@@ -182,6 +184,7 @@ fun AniMixPlayer(
     val tracker = remember(player) { PlaybackTracker() }
     val playbackClock = remember(player) { TimeSource.Monotonic.markNow() }
     val playbackCallback by rememberUpdatedState(onPlayback)
+    val skipCallback by rememberUpdatedState(onSkip)
     val currentPlan by rememberUpdatedState(plan)
     var endReported by remember { mutableStateOf(false) }
     fun flushViewing(forceEnd: Boolean = false) {
@@ -261,6 +264,8 @@ fun AniMixPlayer(
         player.seekTo(target.coerceIn(0, state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE))
     }
     fun jump(target: Long) {
+        // jump() serves only opening and ending skips: report the time it saves.
+        skipCallback(((target - state.positionMs) / 1000).toInt().coerceAtLeast(0))
         flushViewing(false)
         tracker.discontinuity()
         // An ending that runs to the last seconds finishes the episode instead of seeking into nothing.

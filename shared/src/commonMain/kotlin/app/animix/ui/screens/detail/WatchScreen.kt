@@ -308,7 +308,9 @@ private fun PlayerArea(
                 },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                 onPlayback = { update -> graph.library.recordPlayback(anime, episode.number, update.credit,
-                    update.durationMs, update.opening, update.ending, update.reachedEnd) },
+                    update.durationMs, update.opening, update.ending, update.reachedEnd,
+                    app.animix.data.library.PlaybackContext(dubbing.studio, offline = false, platform = app.animix.core.Platform.name)) },
+                onSkip = graph.library::recordSkip,
                 maxStartQuality = graph.connection.playbackCap(),
                 onApproachingEnd = {
                     // Умное соединение: resolve the next episode now, so autoplay starts without waiting.

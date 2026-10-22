@@ -41,9 +41,59 @@ data class YearInReview(
     val topTitles: List<TitleOfYear>,
     val topGenres: List<Pair<String, Int>>,
     val achievements: List<AchievementProgress>,
+    /** Seconds watched on every day of the year, for the year heatmap. */
+    val days: Map<Long, Int> = emptyMap(),
+    val usage: YearUsage = YearUsage(),
+    /** Top titles by watched time, with seconds. */
+    val titlesByTime: List<Pair<Anime, Int>> = emptyList(),
 ) {
     val empty: Boolean get() = minutes == 0 && episodes == 0
+    val peakHour: Int? get() = usage.hours.withIndex().maxByOrNull { it.value }?.takeIf { it.value > 0 }?.index
+    val peakWeekday: Int? get() = usage.weekdays.withIndex().maxByOrNull { it.value }?.takeIf { it.value > 0 }?.index
+    val favoriteStudio: Pair<String, Int>? get() = usage.studios.maxByOrNull { it.value }?.toPair()
+    val offlineShare: Float get() = (usage.offlineSeconds + usage.onlineSeconds).takeIf { it > 0 }?.let { usage.offlineSeconds.toFloat() / it } ?: 0f
+    val newTitles: Int get() = usage.firstPlayed.size
+
+    /** A name for when the viewer watches most: by the busiest hour, then by weekend or weekday. */
+    val persona: String? get() = when (peakHour) {
+        null -> null
+        in 0..4 -> "Ночной зритель"
+        in 5..10 -> "Утренний зритель"
+        in 11..16 -> "Дневной зритель"
+        in 17..20 -> "Вечерний зритель"
+        else -> "Полуночник"
+    }
 }
+
+/** When «Итоги года» open: at the end of December for everyone, earlier after a few titles. */
+data class ReviewAccess(
+    val year: Int,
+    val open: Boolean,
+    val early: Boolean,
+    val titlesWatched: Int,
+    val titlesNeeded: Int,
+    val opensOn: LocalDay,
+)
+
+/** From 20 December through January the review of the ending year is open; three titles watched in AniMix open it early. */
+fun LibraryData.reviewAccess(today: LocalDay, offsetDay: (Long) -> Long = { localDayIndex(it) }): ReviewAccess {
+    val year = if (today.month == 1) today.year - 1 else today.year
+    val season = (today.month == 12 && today.day >= REVIEW_OPENS_DAY) || today.month == 1
+    val titles = entries.values.count { entry ->
+        entry.viewing.values.any { viewing -> viewing.completedAt?.let { dayToDate(offsetDay(it)).year == year } == true }
+    }
+    return ReviewAccess(
+        year = year,
+        open = season || titles >= EARLY_TITLES,
+        early = !season && titles >= EARLY_TITLES,
+        titlesWatched = titles,
+        titlesNeeded = EARLY_TITLES,
+        opensOn = LocalDay(year, 12, REVIEW_OPENS_DAY),
+    )
+}
+
+const val REVIEW_OPENS_DAY = 20
+const val EARLY_TITLES = 3
 
 fun LibraryData.yearInReview(year: Int, achievements: List<AchievementProgress>, offsetDay: (Long) -> Long = { localDayIndex(it) }): YearInReview {
     val days = watchDays.filterKeys { dayToDate(it).year == year }.filterValues { it > 0 }
@@ -87,5 +137,9 @@ fun LibraryData.yearInReview(year: Int, achievements: List<AchievementProgress>,
         topTitles = perTitle.entries.sortedByDescending { it.value }.take(3).mapNotNull { (key, count) -> entries[key]?.let { TitleOfYear(it.anime, count) } },
         topGenres = genres.entries.sortedByDescending { it.value }.take(5).map { it.key to it.value },
         achievements = achievements.filter { progress -> progress.unlockedAt?.let { dayToDate(offsetDay(it)).year == year } == true },
+        days = days,
+        usage = usage[year] ?: YearUsage(),
+        titlesByTime = (usage[year]?.titleSeconds ?: emptyMap()).entries.sortedByDescending { it.value }.take(5)
+            .mapNotNull { (key, seconds) -> entries[key]?.let { it.anime to seconds } },
     )
 }
