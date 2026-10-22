@@ -1,11 +1,6 @@
 package app.animix.ui.components
 
 import app.animix.ui.theme.animateMotionColorAsState as animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -68,7 +65,6 @@ import app.animix.ui.theme.animateMotionFloatAsState as animateFloatAsState
 import app.animix.ui.theme.LocalUiPerformance
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.RectangleShape
@@ -81,6 +77,7 @@ fun Txt(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
     align: TextAlign = TextAlign.Unspecified,
 ) {
     BasicText(
@@ -91,6 +88,7 @@ fun Txt(
             textAlign = align,
         ),
         maxLines = maxLines,
+        minLines = minLines,
         overflow = TextOverflow.Ellipsis,
     )
 }
@@ -99,7 +97,7 @@ fun Txt(
 @Composable
 fun PageHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconCircle(AniMixIcons.Back, onClick = onBack)
+        IconCircle(AniMixIcons.Back, onClick = onBack, contentDescription = "Назад")
         Spacer(Modifier.width(12.dp))
         BoxWithConstraints(Modifier.weight(1f)) {
             val type = AniMixTheme.type
@@ -128,7 +126,9 @@ fun RemoteImage(
         animationSpec = tween(if (state is AsyncImagePainter.State.Success) 260 else 0),
     )
     Box(modifier.clip(shape).then(if (placeholder) Modifier.background(colors.surfaceRaised) else Modifier)) {
-        if (placeholder && state is AsyncImagePainter.State.Loading) Shimmer(Modifier.fillMaxSize(), RectangleShape)
+        if (placeholder && !url.isNullOrBlank() && (state is AsyncImagePainter.State.Empty || state is AsyncImagePainter.State.Loading)) {
+            Shimmer(Modifier.fillMaxSize(), RectangleShape)
+        }
         if (url != null) {
             AsyncImage(
                 model = url,
@@ -139,22 +139,6 @@ fun RemoteImage(
             )
         }
     }
-}
-
-@Composable
-fun Shimmer(modifier: Modifier = Modifier, shape: Shape = AniMixTheme.shapes.medium) {
-    val colors = AniMixTheme.colors
-    if (!LocalUiPerformance.current.animations) {
-        Box(modifier.clip(shape).background(colors.surfaceRaised))
-        return
-    }
-    val transition = rememberInfiniteTransition()
-    val alpha by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
-    )
-    Box(modifier.clip(shape).background(colors.surfaceRaised.copy(alpha = alpha)))
 }
 
 @Composable
@@ -207,13 +191,14 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
 fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val type = AniMixTheme.type
     val interaction = remember { MutableInteractionSource() }
-    Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)) {
+    Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)
+        .focusOutline(interaction, AniMixTheme.shapes.large)) {
         Box {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
         }
         Spacer(Modifier.height(10.dp))
-        Txt(anime.title, type.label, maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
+        Txt(anime.title, type.label, maxLines = 2, minLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
         Spacer(Modifier.height(2.dp))
         Txt(anime.metaLine(), type.micro, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
     }
@@ -221,12 +206,14 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
 
 @Composable
 fun AnimeCardPlaceholder(modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Shimmer(Modifier.fillMaxWidth().aspectRatio(0.7f), AniMixTheme.shapes.large)
-        Spacer(Modifier.height(8.dp))
-        Shimmer(Modifier.fillMaxWidth(0.8f).height(12.dp), AniMixTheme.shapes.small)
-        Spacer(Modifier.height(6.dp))
-        Shimmer(Modifier.fillMaxWidth(0.5f).height(10.dp), AniMixTheme.shapes.small)
+    SkeletonGroup("Загружается тайтл", modifier) {
+        Column {
+            Shimmer(Modifier.fillMaxWidth().aspectRatio(0.7f), AniMixTheme.shapes.large)
+            Spacer(Modifier.height(10.dp))
+            SkeletonText(AniMixTheme.type.label, Modifier.padding(horizontal = 2.dp), lines = 2)
+            Spacer(Modifier.height(2.dp))
+            SkeletonText(AniMixTheme.type.micro, Modifier.padding(horizontal = 2.dp), fraction = 0.6f)
+        }
     }
 }
 
@@ -235,11 +222,14 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt(title, AniMixTheme.type.heading, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
+            val interaction = remember { MutableInteractionSource() }
             Txt(
                 action,
                 AniMixTheme.type.label,
                 color = AniMixTheme.colors.accent,
-                modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onAction)
+                modifier = Modifier.clip(AniMixTheme.shapes.pill)
+                    .clickable(interaction, indication = null, role = Role.Button, onClick = onAction)
+                    .focusOutline(interaction, AniMixTheme.shapes.pill)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
@@ -260,6 +250,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifie
             .background(background)
             .rim(shape, accent = selected)
             .clickable(interaction, indication = null, onClick = onClick)
+            .focusOutline(interaction, shape)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -291,6 +282,7 @@ fun PrimaryButton(
             .background(if (enabled) colors.accentGradient else SolidColor(colors.surfaceRaised))
             .then(if (enabled) Modifier.highlight(shape) else Modifier)
             .clickable(interaction, indication = null, enabled = enabled, onClick = onClick)
+            .focusOutline(interaction, shape)
             .padding(horizontal = 22.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -305,16 +297,19 @@ fun PrimaryButton(
 }
 
 @Composable
-fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
     val shape = AniMixTheme.shapes.pill
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier
             .height(50.dp)
+            .alpha(if (enabled) 1f else 0.45f)
             .clip(shape)
             .background(colors.chip)
             .rim(shape, accent = false)
-            .clickable(onClick = onClick)
+            .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .focusOutline(interaction, shape)
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -338,12 +333,14 @@ fun IconCircle(
     tint: Color = Color.Unspecified,
     active: Boolean = false,
     contentDescription: String? = null,
+    enabled: Boolean = true,
 ) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .size(size)
+            .alpha(if (enabled) 1f else 0.45f)
             .pressScale(interaction, pressed = 0.92f)
             .then(
                 when {
@@ -352,7 +349,8 @@ fun IconCircle(
                     else -> Modifier.clip(CircleShape).background(colors.chip).rim(CircleShape, accent = false)
                 },
             )
-            .clickable(interaction, indication = null, onClick = onClick),
+            .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .focusOutline(interaction, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         val iconTint = when {
@@ -360,7 +358,8 @@ fun IconCircle(
             active -> colors.accent
             else -> colors.textPrimary
         }
-        Icon(icon, contentDescription, Modifier.size(if (size >= 50.dp) 24.dp else 20.dp), tint = iconTint)
+        Icon(icon, contentDescription ?: if (icon == AniMixIcons.Back) "Назад" else null,
+            Modifier.size(if (size >= 50.dp) 24.dp else 20.dp), tint = iconTint)
     }
 }
 
@@ -427,9 +426,11 @@ fun MessageState(
 @Composable
 fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon: ImageVector? = null, subtitle: String? = null, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
+    val interaction = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().toggleable(checked, interactionSource = remember { MutableInteractionSource() },
+        Modifier.fillMaxWidth().toggleable(checked, interactionSource = interaction,
             indication = null, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            .focusOutline(interaction, AniMixTheme.shapes.medium)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -455,8 +456,10 @@ fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon
 @Composable
 fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: String? = null) {
     val colors = AniMixTheme.colors
+    val interaction = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = colors.textSecondary)

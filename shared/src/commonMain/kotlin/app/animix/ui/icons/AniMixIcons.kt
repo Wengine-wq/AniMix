@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
  * so every icon in the app shares one stroke weight.
  */
 object AniMixIcons {
+    val Grip = outline("Grip", "M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01")
     val Battery = outline("Battery", "M3 7h15a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM22 10v4M6 10v4M10 10v4")
     val Home = outline("Home", "M3 10.5 12 3l9 7.5V19a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z")
     val Catalog = outline(

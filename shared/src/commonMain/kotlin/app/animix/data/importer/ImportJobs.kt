@@ -1,5 +1,6 @@
 package app.animix.data.importer
 
+import app.animix.core.AppLog
 import app.animix.data.library.Library
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,7 @@ class ImportJobs(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
+                AppLog.failure("Import", "list_import", error)
                 ImportState.Failed(error.message?.takeIf { it.length < 160 && "http" !in it } ?: "Не удалось импортировать. Проверьте соединение.")
             }
         }
@@ -59,8 +61,10 @@ class ImportJobs(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: AnixartUnavailable) {
+                AppLog.failure("Import", "anixart_unavailable", error)
                 ImportState.Failed(error.message!!)
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                AppLog.failure("Import", "anixart_import", error)
                 ImportState.Failed("Не удалось импортировать. Проверьте соединение и попробуйте ещё раз.")
             }
         }

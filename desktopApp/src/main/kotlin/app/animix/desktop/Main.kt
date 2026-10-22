@@ -34,7 +34,7 @@ fun main(args: Array<String>) {
         }
         val exit: () -> Unit = {
             graph.watchFlow.pause()
-            runBlocking { graph.downloads.shutdown(); graph.watchFlow.flush(); graph.library.flush() }
+            runBlocking { graph.downloads.shutdown(); graph.flushUserData() }
             exitApplication()
         }
         Window(onCloseRequest = exit, state = state, title = "AniMix", icon = icon) {

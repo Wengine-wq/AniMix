@@ -4,7 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.sync.Mutex
@@ -46,27 +46,84 @@ data class Settings(
     val animationsAllowed: Boolean get() = animationsEnabled && !batterySaver
 }
 
-/** User preferences, loaded once at start and saved on every change. */
+/** Optimistic UI state backed by ordered, transactional DataStore edits. */
 class AppSettings(private val store: DiskStore, private val scope: CoroutineScope) {
-
     private val _state = MutableStateFlow(Settings())
     val state: StateFlow<Settings> = _state.asStateFlow()
-    private val writeLock = Mutex()
+    private val dataStore by lazy { settingsDataStore(store) }
+    private val loadLock = Mutex()
+    private val guard = SettingsGuard()
+    private var loaded = false
+    private var base = Settings()
+    private var sequence = 0L
+    private data class Change(val id: Long, val transform: (Settings) -> Settings)
+    private val pending = mutableListOf<Change>()
+    private data class Save(val through: Long, val done: kotlinx.coroutines.CompletableDeferred<Unit>? = null)
+    private val saves = kotlinx.coroutines.channels.Channel<Save>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
-    suspend fun load() {
-        val text = store.read(FILE) ?: return
-        runCatching { AppJson.decodeFromString(Settings.serializer(), text) }
-            .onSuccess { _state.value = it }
+    init {
+        scope.launch {
+            for (save in saves) {
+                try {
+                    load()
+                    persistThrough(save.through)
+                    save.done?.complete(Unit)
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    save.done?.completeExceptionally(cancel)
+                    throw cancel
+                } catch (error: Exception) {
+                    // Keep pending changes for retry; a failed write must never roll the UI back.
+                    AppLog.failure("Settings", "preferences_save", error)
+                    save.done?.completeExceptionally(error)
+                }
+            }
+        }
+    }
+
+    suspend fun load() = loadLock.withLock {
+        if (guard.locked { loaded }) return@withLock
+        try {
+            val saved = SettingsPreferences.decode(dataStore.data.first())
+            guard.locked {
+                base = saved
+                _state.value = pending.fold(base) { value, change -> change.transform(value) }
+                loaded = true
+            }
+        } catch (error: Exception) {
+            if (error !is kotlinx.coroutines.CancellationException) AppLog.failure("Settings", "preferences_load", error)
+            throw error
+        }
     }
 
     fun update(transform: (Settings) -> Settings) {
-        _state.update(transform)
-        scope.launch { writeLock.withLock { store.write(FILE, AppJson.encodeToString(Settings.serializer(), _state.value)) } }
+        guard.locked {
+            val updated = transform(_state.value)
+            val change = Change(++sequence, transform)
+            pending += change
+            _state.value = updated
+            saves.trySend(Save(change.id))
+        }
     }
 
-    suspend fun flush() = writeLock.withLock { store.write(FILE, AppJson.encodeToString(Settings.serializer(), _state.value)) }
+    /** Wait for all edits submitted before this call, including edits made during startup. */
+    suspend fun flush() {
+        val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+        guard.locked { saves.trySend(Save(sequence, done)) }
+        done.await()
+    }
 
-    private companion object {
-        const val FILE = "settings.json"
+    private suspend fun persistThrough(sequence: Long) {
+        while (true) {
+            val change = guard.locked { pending.firstOrNull()?.takeIf { it.id <= sequence } } ?: return
+            val stored = dataStore.updateData { preferences ->
+                SettingsPreferences.encode(change.transform(SettingsPreferences.decode(preferences)), preferences)
+            }
+            val committed = SettingsPreferences.decode(stored)
+            guard.locked {
+                pending.removeAll { it.id == change.id }
+                base = committed
+                _state.value = pending.fold(base) { value, edit -> edit.transform(value) }
+            }
+        }
     }
 }

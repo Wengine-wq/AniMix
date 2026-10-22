@@ -1,5 +1,7 @@
 package app.animix.data.playback
 
+import app.animix.core.AppLog
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -58,6 +60,7 @@ internal class AndroidNativePlayer : NativePlayer {
         engine.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) = publish()
             override fun onPlayerError(error: PlaybackException) {
+                AppLog.failure("Playback", "exo_error_${error.errorCode}", error)
                 mutable.update { it.copy(playing = false, buffering = false, error = "Не удалось воспроизвести видео. Обновите ссылку или выберите другое качество.") }
             }
         })

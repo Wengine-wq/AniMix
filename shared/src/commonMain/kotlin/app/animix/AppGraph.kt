@@ -23,6 +23,31 @@ import kotlinx.coroutines.SupervisorJob
 /** Everything the app needs, built once at start. */
 class AppGraph {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var initialized = false
+
+    suspend fun initialize() {
+        if (initialized) return
+        settings.load()
+        library.load()
+        achievements.load()
+        watchFlow.load()
+        downloads.load()
+        initialized = true
+    }
+
+    /** A failed startup must not flush uninitialized default state over files on disk. */
+    suspend fun flushUserData() {
+        if (!initialized) return
+        val stores = listOf<Pair<String, suspend () -> Unit>>(
+            "WatchFlow" to watchFlow::flush, "Library" to library::flush,
+            "Achievements" to achievements::flush, "Settings" to settings::flush,
+        )
+        for ((name, flush) in stores) {
+            try { flush() }
+            catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+            catch (error: Exception) { app.animix.core.AppLog.failure(name, "flush_failed", error) }
+        }
+    }
 
     val http = createHttpClient()
 
@@ -52,7 +77,7 @@ class AppGraph {
     val kodik = KodikResolver(http)
     /** «Умное соединение» and «Экономия трафика». */
     val connection = app.animix.data.ConnectionPolicy(settings)
-    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"), parallelism = { connection.downloadParallelism() })
+    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"), parallelism = { connection.downloadParallelism() }, onCompleted = achievements::downloadCompleted)
 
     /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
     val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)

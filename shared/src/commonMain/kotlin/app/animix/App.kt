@@ -22,6 +22,12 @@ import app.animix.ui.components.AmbientBackdrop
 import app.animix.ui.components.LocalHaze
 import app.animix.ui.components.glass
 import app.animix.ui.components.pressScale
+import app.animix.ui.components.focusOutline
+import app.animix.ui.components.MessageState
+import app.animix.ui.components.LoadingIndicator
+import app.animix.ui.icons.AniMixIcons
+import app.animix.core.AppLog
+import kotlinx.coroutines.CancellationException
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.animation.AnimatedContent
@@ -108,12 +114,20 @@ import okio.Path.Companion.toPath
 @Composable
 fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startLink: String? = null, onExit: () -> Unit = {}) {
     val settings by graph.settings.state.collectAsState()
-    LaunchedEffect(Unit) {
-        graph.settings.load()
-        graph.library.load()
-        graph.achievements.load()
-        graph.watchFlow.load()
-        graph.downloads.load()
+    var initialized by remember(graph) { mutableStateOf(false) }
+    var startupError by remember(graph) { mutableStateOf<Throwable?>(null) }
+    var retry by remember(graph) { mutableStateOf(0) }
+    LaunchedEffect(graph, retry) {
+        startupError = null
+        try {
+            graph.initialize()
+            initialized = true
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Exception) {
+            AppLog.failure("Startup", "data_load_failed", error)
+            startupError = error
+        }
     }
     LaunchedEffect(startLink) { startLink?.let(navigator::openLink) }
 
@@ -132,7 +146,13 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     }
 
     AniMixTheme(settings.themeMode, settings.animationsEnabled, settings.batterySaver) {
-        AppShell(graph, navigator, onExit)
+        if (initialized) AppShell(graph, navigator, onExit)
+        else Box(Modifier.fillMaxSize().background(AniMixTheme.colors.background).padding(20.dp), contentAlignment = Alignment.Center) {
+            if (startupError == null) LoadingIndicator()
+            else MessageState("Не удалось загрузить данные",
+                message = "Сохранённые файлы не сброшены. Проверьте доступ к хранилищу или восстановите резервную копию и повторите загрузку.",
+                icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = { retry++ })
+        }
     }
 }
 
@@ -272,7 +292,8 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
                 Box(
                     Modifier.weight(1f).height(48.dp)
                         .pressScale(interaction, pressed = 0.9f)
-                        .selectable(selected, interaction, indication = null, role = Role.Tab) { navigator.select(tab) },
+                        .selectable(selected, interaction, indication = null, role = Role.Tab) { navigator.select(tab) }
+                        .focusOutline(interaction, shape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(tab.icon, tab.label, Modifier.size(22.dp).graphicsLayer {

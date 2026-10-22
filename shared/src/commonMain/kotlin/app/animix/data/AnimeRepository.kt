@@ -21,11 +21,12 @@ class AnimeRepository(
     private val yummy: YummyRepository,
 ) {
     /** A catalog page. Searches also include YummyAnime-only titles on the first page. */
-    suspend fun catalog(query: CatalogQuery, forceRefresh: Boolean = false): List<Anime> = coroutineScope {
+    suspend fun catalog(query: CatalogQuery, forceRefresh: Boolean = false, onBase: ((List<Anime>) -> Unit)? = null): List<Anime> = coroutineScope {
         val text = query.search?.trim()
         val extra = if (text != null && query.page == 1) {
             async {
-                // Yummy-only results are a bonus: Shikimori results still show if Yummy is down.
+                // Yummy completes the catalog. A slow response must still join the same search;
+                // use the shared HTTP retry/timeout policy, with no shorter source-specific cutoff.
                 try {
                     yummy.searchOnlyOnYummy(text)
                 } catch (e: CancellationException) {
@@ -38,6 +39,8 @@ class AnimeRepository(
             null
         }
         val base = shikimori.catalog(query, forceRefresh)
+        // Show the ready base immediately, then merge Yummy's complementary results when ready.
+        onBase?.invoke(base)
         val needle = TitleMatcher.normalize(text.orEmpty())
         val (close, rest) = extra?.await().orEmpty().partition {
             TitleMatcher.normalize(it.title).startsWith(needle) || TitleMatcher.score(needle, it.title) >= 70

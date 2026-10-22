@@ -62,6 +62,7 @@ import app.animix.ui.components.SelectionList
 import app.animix.ui.components.SelectionOption
 import app.animix.ui.components.EpisodeCardSurface
 import app.animix.ui.components.RemoteImage
+import app.animix.ui.components.SelectionPlaceholder
 import app.animix.ui.components.Shimmer
 import app.animix.ui.components.Txt
 import app.animix.ui.components.episodesWord
@@ -210,10 +211,12 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                 }
             }
             when (val state = source.value) {
-                Load.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        repeat(3) { Shimmer(Modifier.fillMaxWidth().height(56.dp), AniMixTheme.shapes.medium) }
+                Load.Loading -> {
+                    item(span = { GridItemSpan(maxLineSpan) }) { SelectionPlaceholder() }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Txt("Серии", AniMixTheme.type.heading, Modifier.padding(top = 16.dp, bottom = 4.dp))
                     }
+                    items(15) { Shimmer(Modifier.fillMaxWidth().height(48.dp), AniMixTheme.shapes.medium) }
                 }
                 is Load.Failed -> item(span = { GridItemSpan(maxLineSpan) }) {
                     if (state.error is WatchSourceNotFound) {
@@ -299,7 +302,10 @@ private fun PlayerArea(
                 onQualityChange = { quality -> graph.settings.update { it.copy(preferredQuality = quality) } },
                 fullscreen = fullscreen,
                 onFullscreenChange = { fullscreen = it },
-                onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
+                onAutoNextChoice = { yes ->
+                    graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) }
+                    if (yes) graph.achievements.settingEnabled("autoNextEpisode")
+                },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                 onPlayback = { update -> graph.library.recordPlayback(anime, episode.number, update.credit,
                     update.durationMs, update.opening, update.ending, update.reachedEnd) },

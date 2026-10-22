@@ -8,9 +8,14 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Density
 import app.animix.App
 import app.animix.AppGraph
+import androidx.compose.runtime.CompositionLocalProvider
+import app.animix.ui.components.LocalLoadPreviewDelay
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -22,6 +27,8 @@ import java.io.File
  * `--frames=6000,6100,6200` captures intermediate animation frames; `--scroll=400` checks lower content.
  * `--hover=200,200 --leave=4000` checks mouse pause and resume without opening a window.
  * `--click=1000:Начать сессию` invokes a visible button by its semantic label after 1 second; repeat for a sequence.
+ * `--load-delay-ms=60000` holds network loading states for deterministic skeleton previews.
+ * `--drag=1000:description:0:250` drags a semantic target over 700 ms; `--touch` uses touch input.
  * Nothing is shown on screen and no window takes focus.
  */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -32,6 +39,7 @@ object Snapshot {
             .split('x').map { it.toInt() }
         val seconds = args.firstOrNull { it.startsWith("--wait=") }?.substringAfter('=')?.toLong() ?: 8
         val fontScale = args.firstOrNull { it.startsWith("--font-scale=") }?.substringAfter('=')?.toFloat() ?: 1f
+        val loadDelay = args.firstOrNull { it.startsWith("--load-delay-ms=") }?.substringAfter('=')?.toLong()?.coerceAtLeast(0) ?: 0L
         val link = args.firstOrNull { it.startsWith("animix://") }
         val frames = args.firstOrNull { it.startsWith("--frames=") }?.substringAfter('=')?.split(',')
             ?.map { it.toLong() }?.filter { it >= 0 }?.sorted().orEmpty()
@@ -43,11 +51,11 @@ object Snapshot {
             action[0].toLong() to action[1]
         }.sortedBy { it.first }
 
-        runBlocking {
-            graph.settings.load()
-            graph.library.load()
+        val drag = args.firstOrNull { it.startsWith("--drag=") }?.substringAfter('=')?.split(':', limit = 4)
+        val touch = "--touch" in args
+        val scene = ImageComposeScene(width, height, Density(1f, fontScale)) {
+            CompositionLocalProvider(LocalLoadPreviewDelay provides loadDelay) { App(graph, startLink = link) }
         }
-        val scene = ImageComposeScene(width, height, Density(1f, fontScale)) { App(graph, startLink = link) }
         try {
             val started = System.nanoTime()
             val duration = maxOf(seconds * 1000, (frames.lastOrNull() ?: 0) + 100)
@@ -56,6 +64,8 @@ object Snapshot {
             var hovered = false
             var left = false
             var clickIndex = 0
+            var dragStart: Offset? = null
+            var dragEnded = false
             while ((System.nanoTime() - started) / 1_000_000 < duration) {
                 val rendered = scene.render(System.nanoTime())
                 val elapsed = (System.nanoTime() - started) / 1_000_000
@@ -66,6 +76,28 @@ object Snapshot {
                             nodes(node).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == label } == true }
                     }
                     if (target?.config?.getOrNull(SemanticsActions.OnClick)?.action?.invoke() == true) clickIndex++
+                }
+                if (drag != null && !dragEnded && elapsed >= drag[0].toLong()) {
+                    if (dragStart == null) {
+                        val target = scene.semanticsOwners.asSequence().flatMap { nodes(it.rootSemanticsNode) }.firstOrNull {
+                            it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(drag[1]) == true
+                        }
+                        target?.let {
+                            dragStart = it.boundsInRoot.center
+                            scene.sendPointerEvent(PointerEventType.Press, dragStart!!,
+                                type = if (touch) PointerType.Touch else PointerType.Mouse,
+                                buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                        }
+                    }
+                    dragStart?.let { origin ->
+                        val progress = ((elapsed - drag[0].toLong()).toFloat() / 700f).coerceIn(0f, 1f)
+                        val point = origin + Offset(drag[2].toFloat(), drag[3].toFloat()) * progress
+                        scene.sendPointerEvent(if (progress < 1f) PointerEventType.Move else PointerEventType.Release, point,
+                            type = if (touch) PointerType.Touch else PointerType.Mouse,
+                            buttons = PointerButtons(isPrimaryPressed = progress < 1f),
+                            button = if (progress == 1f) PointerButton.Primary else null)
+                        dragEnded = progress == 1f
+                    }
                 }
                 if (hover != null && !hovered && elapsed >= 800) {
                     scene.sendPointerEvent(PointerEventType.Move, Offset(hover[0], hover[1]))
@@ -89,12 +121,13 @@ object Snapshot {
                 }
                 Thread.sleep(16)
             }
+            if (drag != null) check(dragEnded) { "Drag target was not found or gesture did not finish" }
             val png = scene.render(System.nanoTime()).encodeToData(EncodedImageFormat.PNG)
                 ?: error("Could not encode the snapshot")
             File(out).apply { parentFile?.mkdirs() }.writeBytes(png.bytes)
         } finally {
             scene.close()
-            runBlocking { graph.watchFlow.flush(); graph.library.flush() }
+            runBlocking { graph.flushUserData() }
         }
         return true
     }

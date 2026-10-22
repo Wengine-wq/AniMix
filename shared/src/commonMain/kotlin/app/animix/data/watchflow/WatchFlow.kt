@@ -167,6 +167,18 @@ class WatchFlow(
         save()
     }
 
+    /** Move by stable identities: lazy-grid indices also include headers and controls. */
+    fun moveTo(key: String, targetKey: String) {
+        mutable.update { current ->
+            if (current.active) return@update current
+            val from = current.queue.indexOfFirst { it.key == key }
+            val to = current.queue.indexOfFirst { it.key == targetKey }
+            if (from < 0 || to < 0 || from == to) current
+            else current.copy(queue = current.queue.toMutableList().apply { add(to, removeAt(from)) })
+        }
+        save()
+    }
+
     fun reset() {
         if (state.value.active) return
         val old = state.value

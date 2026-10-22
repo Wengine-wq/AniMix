@@ -25,6 +25,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.AppJson
+import app.animix.core.characterCount
+import app.animix.core.takeCharacters
 import app.animix.data.library.ProfileDraft
 import app.animix.data.library.ProfileMedia
 import app.animix.data.library.ProfileNameLimit
@@ -80,11 +82,11 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
         Txt(if (picked.busy) "Подготавливаем изображение…" else "Фото обрезается по центру. Предпросмотр показывает результат.", AniMixTheme.type.micro)
         problem?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(24.dp))
-        ProfileField("Имя", draft.name, { draft = draft.copy(name = it.take(ProfileNameLimit)) })
-        Txt("${draft.name.length} / $ProfileNameLimit", AniMixTheme.type.micro, modifier = Modifier.align(Alignment.End).padding(top = 6.dp))
+        ProfileField("Имя", draft.name, { draft = draft.copy(name = it.takeCharacters(ProfileNameLimit)) })
+        Txt("${draft.name.characterCount()} / $ProfileNameLimit", AniMixTheme.type.micro, modifier = Modifier.align(Alignment.End).padding(top = 6.dp))
         Spacer(Modifier.height(20.dp))
-        ProfileField("О себе", draft.about, { draft = draft.copy(about = it.take(160)) }, multiline = true)
-        Txt("${draft.about.length} / 160", AniMixTheme.type.micro, modifier = Modifier.align(Alignment.End).padding(top = 6.dp))
+        ProfileField("О себе", draft.about, { draft = draft.copy(about = it.takeCharacters(160)) }, multiline = true)
+        Txt("${draft.about.characterCount()} / 160", AniMixTheme.type.micro, modifier = Modifier.align(Alignment.End).padding(top = 6.dp))
         Spacer(Modifier.height(24.dp))
         Txt("Значок рядом с именем", AniMixTheme.type.heading)
         Spacer(Modifier.height(6.dp))

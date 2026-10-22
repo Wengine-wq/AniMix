@@ -198,4 +198,22 @@ class WatchFlowTest {
         override fun setVolume(volume: Float) = Unit
         override fun release() = Unit
     }
+    @Test fun draggingUsesStableKeysPersistsOrderAndCannotChangeActiveSession() = runTest {
+        val disk = DiskStore("build/test-flow-drag-${kotlin.random.Random.nextInt(1_000_000_000)}")
+        val flow = WatchFlow(disk, backgroundScope).apply { load() }
+        val one = episode(1); val two = episode(2); val three = episode(3)
+        flow.add(listOf(one, two, three))
+        flow.moveTo(one.key, three.key)
+        assertEquals(listOf(two.key, three.key, one.key), flow.state.value.queue.map { it.key })
+        flow.moveTo("missing", two.key)
+        flow.moveTo(one.key, "header")
+        flow.flush()
+        val restored = WatchFlow(disk, backgroundScope).apply { load() }
+        assertEquals(flow.state.value.queue, restored.state.value.queue)
+        assertTrue(restored.start())
+        val activeOrder = restored.state.value.queue
+        restored.moveTo(one.key, two.key)
+        assertEquals(activeOrder, restored.state.value.queue)
+    }
+
 }

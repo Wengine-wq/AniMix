@@ -70,6 +70,9 @@ import app.animix.data.shikimori.CatalogOrder
 import app.animix.data.shikimori.CatalogQuery
 import app.animix.model.Anime
 import app.animix.ui.components.AnimeCard
+import app.animix.ui.components.AnimeShelfPlaceholder
+import app.animix.ui.components.SkeletonGroup
+import app.animix.ui.components.SkeletonText
 import app.animix.ui.components.AnimeCardPlaceholder
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
@@ -87,24 +90,16 @@ import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 
-private class HomeData(val ongoing: List<Anime>, val popular: List<Anime>, val top: List<Anime>)
 
 internal fun carouselStartPage(count: Int): Int = if (count <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % count }
 internal fun carouselItem(page: Int, count: Int): Int = if (count <= 1) 0 else ((page % count) + count) % count
 
 @Composable
 fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
-    val load = rememberLoad(Unit) { force ->
-        coroutineScope {
-            val ongoing = async { graph.shikimori.ongoing(force) }
-            val popular = async { graph.shikimori.popular(force) }
-            val top = async { graph.shikimori.topRated(force) }
-            HomeData(ongoing.await(), popular.await(), top.await())
-        }
-    }
+    val ongoing = rememberLoad(Unit) { force -> graph.shikimori.ongoing(force) }
+    val popular = rememberLoad(Unit) { force -> graph.shikimori.popular(force) }
+    val top = rememberLoad(Unit) { force -> graph.shikimori.topRated(force) }
     val open: (Anime) -> Unit = { navigator.push(Route.Detail(it)) }
     var heroImage by remember { mutableStateOf<String?>(null) }
     Ambient(heroImage)
@@ -113,56 +108,67 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     // Recomputed only when the taste changes, not on every saved position.
     val taste = remember(library) { library.tasteGenres().take(3).joinToString { it.first } }
     val picks = rememberLoad(taste) { if (taste.isEmpty()) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
-    val homeState = load.value
-    val recommended = (picks.value as? Load.Ready)?.value.orEmpty()
+    // Read before building lazy items: each request updates only its own section.
+    val ongoingState = ongoing.value
+    val popularState = popular.value
+    val topState = top.value
+    val picksState = picks.value
 
-    LazyColumn(
-        state = rememberLazyListState(),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding,
-    ) {
-        item { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
-        when (val state = homeState) {
-            Load.Loading -> item { HomePlaceholder() }
-            is Load.Failed -> item {
-                MessageState(
-                    title = "Не удалось загрузить",
-                    message = state.error.userMessage(),
-                    icon = AniMixIcons.Refresh,
-                    actionLabel = "Повторить",
-                    onAction = load::refresh,
-                    modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
-                )
+    LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
+        item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
+        item(key = "hero") {
+            when (val state = ongoingState) {
+                Load.Loading -> HomeHeroPlaceholder()
+                is Load.Failed -> MessageState("Не удалось загрузить онгоинги", message = state.error.userMessage(),
+                    icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = ongoing::refresh)
+                is Load.Ready -> HeroCarousel(state.value.take(5), open, onShown = { heroImage = it.posterUrl })
             }
-            is Load.Ready -> {
-                val data = state.value
-                item { HeroCarousel(data.ongoing.take(5), open, onShown = { heroImage = it.posterUrl }) }
-                item {
-                    QuickFilters(
-                        onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
-                    )
-                }
-                item {
-                    ContinueShelf(continueItems, onOpen = { item ->
-                        // A downloaded episode opens offline: it starts at once and works without a network.
-                        val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key && d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
-                        navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
-                    }) { navigator.push(Route.History) }
-                }
-                recommended.takeIf { it.isNotEmpty() }?.let { recommended ->
-                    item { Shelf("Подобрано для вас", recommended, open, onMore = null) }
-                }
-                item { Shelf("Сейчас на экранах", data.ongoing.drop(5), open) {
-                    navigator.push(Route.Catalog(CatalogQuery(status = "ongoing"), "Сейчас на экранах"))
-                } }
-                item { Shelf("Популярное", data.popular, open) {
-                    navigator.push(Route.Catalog(CatalogQuery(kinds = listOf("tv", "movie")), "Популярное"))
-                } }
-                item { Shelf("Лучшее по рейтингу", data.top, open) {
-                    navigator.push(Route.Catalog(CatalogQuery(order = CatalogOrder.Ranked), "Лучшее по рейтингу"))
-                } }
-                item { Spacer(Modifier.height(24.dp)) }
+        }
+        item(key = "filters") {
+            QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) })
+        }
+        item(key = "continue") {
+            ContinueShelf(continueItems, onOpen = { item ->
+                val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&
+                    d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
+                navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
+            }) { navigator.push(Route.History) }
+        }
+        if (taste.isNotEmpty()) item(key = "recommendations") {
+            LoadingShelf("Подобрано для вас", picksState, open, picks::refresh)
+        }
+        item(key = "ongoing") {
+            // The request error is already shown by the hero; don't repeat it on the same screen.
+            if (ongoingState !is Load.Failed) LoadingShelf("Сейчас на экранах",
+                if (ongoingState is Load.Ready) Load.Ready(ongoingState.value.drop(5)) else ongoingState,
+                open, ongoing::refresh) {
+                navigator.push(Route.Catalog(CatalogQuery(status = "ongoing"), "Сейчас на экранах"))
             }
+        }
+        item(key = "popular") {
+            LoadingShelf("Популярное", popularState, open, popular::refresh) {
+                navigator.push(Route.Catalog(CatalogQuery(kinds = listOf("tv", "movie")), "Популярное"))
+            }
+        }
+        item(key = "top") {
+            LoadingShelf("Лучшее по рейтингу", topState, open, top::refresh) {
+                navigator.push(Route.Catalog(CatalogQuery(order = CatalogOrder.Ranked), "Лучшее по рейтингу"))
+            }
+        }
+        item(key = "bottom") { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun LoadingShelf(title: String, state: Load<List<Anime>>, onOpen: (Anime) -> Unit,
+    onRetry: () -> Unit, onMore: (() -> Unit)? = null) {
+    when (state) {
+        Load.Loading -> AnimeShelfPlaceholder(title, Modifier.padding(bottom = 32.dp), showMore = onMore != null)
+        is Load.Ready -> Shelf(title, state.value, onOpen, onMore)
+        is Load.Failed -> Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+            SectionHeader(title)
+            MessageState("Раздел не загрузился", message = state.error.userMessage(), icon = AniMixIcons.Refresh,
+                actionLabel = "Повторить", onAction = onRetry)
         }
     }
 }
@@ -360,18 +366,37 @@ private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, on
     }
 }
 
+/** Matches the real hero at both breakpoints, including the pager's reserved height. */
 @Composable
-private fun HomePlaceholder() {
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Shimmer(Modifier.fillMaxWidth().height(220.dp), AniMixTheme.shapes.large)
-        Spacer(Modifier.height(24.dp))
-        repeat(2) {
-            Shimmer(Modifier.width(160.dp).height(18.dp), AniMixTheme.shapes.small)
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                repeat(4) { AnimeCardPlaceholder(Modifier.width(132.dp)) }
+internal fun HomeHeroPlaceholder() {
+    SkeletonGroup("Загружается главный баннер") {
+        Column {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                val wide = maxWidth > 700.dp
+                val height = if (wide) 320.dp else 230.dp
+                val inset = if (wide) 24.dp else 16.dp
+                Row(Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large)
+                    .background(AniMixTheme.colors.surface).padding(inset), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).fillMaxHeight().padding(start = if (wide) 8.dp else 2.dp, end = 12.dp)) {
+                        SkeletonText(AniMixTheme.type.micro, fraction = 0.8f)
+                        Spacer(Modifier.weight(1f))
+                        SkeletonText(if (wide) AniMixTheme.type.display else AniMixTheme.type.heading, lines = 2)
+                        Spacer(Modifier.height(6.dp))
+                        SkeletonText(AniMixTheme.type.caption, fraction = 0.65f)
+                        Spacer(Modifier.height(if (wide) 18.dp else 12.dp))
+                        Shimmer(Modifier.size(if (wide) 52.dp else 44.dp), CircleShape)
+                    }
+                    Shimmer(Modifier.fillMaxHeight().aspectRatio(0.7f), AniMixTheme.shapes.medium)
+                }
             }
-            Spacer(Modifier.height(24.dp))
+            Row(Modifier.fillMaxWidth().height(38.dp), horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically) {
+                repeat(5) { index ->
+                    Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+                        Shimmer(Modifier.width(if (index == 0) 22.dp else 6.dp).height(6.dp), AniMixTheme.shapes.pill)
+                    }
+                }
+            }
         }
     }
 }

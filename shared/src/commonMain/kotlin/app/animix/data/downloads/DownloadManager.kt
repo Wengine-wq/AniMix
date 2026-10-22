@@ -1,5 +1,6 @@
 package app.animix.data.downloads
 
+import app.animix.core.AppLog
 import app.animix.core.AppJson
 import app.animix.core.nowMillis
 import app.animix.data.playback.KodikResolver
@@ -44,6 +45,7 @@ class DownloadManager(
     /** Pauses between attempts after a network drop (screen off, Wi-Fi switching): about four minutes in all. */
     private val retryDelaysMs: List<Long> = listOf(3_000, 8_000, 15_000, 30_000, 60_000, 120_000),
     parallelism: () -> Int = { 3 },
+    private val onCompleted: (String) -> Unit = {},
 ) {
     private val pipeline = HlsDownload(http, files, assembler, parallelism)
     private val mutable = MutableStateFlow<List<DownloadItem>>(emptyList())
@@ -114,6 +116,7 @@ class DownloadManager(
                 }
             }
             persist()
+            mutable.value.filter { it.status == DownloadStatus.Completed }.forEach { onCompleted(it.id) }
             ready.complete(Unit)
             wake.trySend(Unit)
         }
@@ -213,6 +216,8 @@ class DownloadManager(
             downloadActivity(true) { scope.launch { pauseAll() } }
             if (files.exists("${item.id}.mp4") && files.size("${item.id}.mp4") > 0) {
                 update(item.id, true) { it.copy(status = DownloadStatus.Completed, file = "${item.id}.mp4") }
+                onCompleted(item.id)
+                AppLog.info("Downloads", "episode_completed")
                 return
             }
             downloadProgress(item.title, null)
@@ -233,6 +238,8 @@ class DownloadManager(
             currentCoroutineContext().ensureActive()
             check(output != null) { "Не удалось сохранить серию." }
             update(item.id, true) { it.copy(status = DownloadStatus.Completed, file = output, downloadedBytes = files.size(output), error = null) }
+            onCompleted(item.id)
+            AppLog.info("Downloads", "episode_completed")
         } catch (cancel: CancellationException) {
             withContext(NonCancellable + Dispatchers.IO) {
                 try { update(item.id, true) { if (it.status != DownloadStatus.Completed) it.copy(status = DownloadStatus.Paused) else it } }
@@ -240,6 +247,7 @@ class DownloadManager(
             }
             throw cancel
         } catch (error: Exception) {
+            AppLog.failure("Downloads", "episode_failed", error)
             try {
                 update(item.id, true) { it.copy(status = DownloadStatus.Failed, error = when (error) {
                     is IllegalArgumentException, is IllegalStateException -> error.message?.takeIf { message -> "http" !in message && message.length < 180 } ?: "Не удалось скачать серию. Повторите попытку."

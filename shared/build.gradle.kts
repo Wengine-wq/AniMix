@@ -28,6 +28,10 @@ kotlin {
         }
         commonMain.dependencies {
             implementation(libs.kotlinx.io.core)
+            implementation(libs.kermit)
+            implementation(libs.kermit.io)
+            implementation(libs.datastore.preferences)
+            implementation(libs.reorderable)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)

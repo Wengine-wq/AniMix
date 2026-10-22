@@ -3,6 +3,8 @@ package app.animix.data.library
 import app.animix.core.AppJson
 import app.animix.core.DiskStore
 import app.animix.core.nowMillis
+import app.animix.core.AppLog
+import app.animix.core.takeCharacters
 import app.animix.model.Anime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,22 +78,52 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     private val _state = MutableStateFlow(LibraryData())
     val state: StateFlow<LibraryData> = _state.asStateFlow()
     private val writeLock = Mutex()
+    private val loadLock = Mutex()
+    private var loaded = false
+    private var persistedText: String? = null
 
-    suspend fun load() {
-        val text = store.read(FILE)
-        val loaded = text?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) }.getOrNull() }
-        _state.value = loaded?.copy(profile = loaded.profile.copy(name = loaded.profile.name.take(ProfileNameLimit)))
+    // Reward processing must see every committed snapshot; StateFlow may conflate quick edits.
+    internal var onAchievementChange: ((LibraryData) -> Unit)? = null
+    internal var onAchievementStatusChange: ((StatusChange) -> Unit)? = null
+
+    suspend fun load() = loadLock.withLock {
+        if (loaded) return@withLock
+        // Unreadable data must never become a new empty library, including on exit/flush.
+        val text = store.readChecked(FILE)
+        val decoded = text?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) } }
+        val backup = if (text == null || decoded?.isFailure == true) store.readChecked(BACKUP) else null
+        val restored = backup?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) }.getOrNull() }
+        if (decoded?.isFailure == true && restored == null) {
+            throw IllegalStateException("Не удалось прочитать библиотеку. Исходный файл сохранён без изменений.", decoded.exceptionOrNull())
+        }
+        if (text == null && backup != null && restored == null) {
+            throw IllegalStateException("Не удалось прочитать резервную копию библиотеки. Файл сохранён без изменений.")
+        }
+        if (restored != null && text != null) {
+            // Archive the incompatible original before recovering; failure here blocks replacement.
+            store.writeChecked("library.recovery-${nowMillis()}.json", text)
+        }
+        val data = decoded?.getOrNull() ?: restored
+        persistedText = if (restored != null) backup else text
+        _state.value = data?.copy(profile = data.profile.copy(name = data.profile.name.takeCharacters(ProfileNameLimit)))
             ?: LibraryData(profile = LocalProfile(createdAt = nowMillis()))
-        if (loaded == null || loaded != _state.value) save()
+        this.loaded = true
+        if (restored != null) AppLog.info("Library", "backup_restored")
+        if (text == null || restored != null || data != _state.value) save()
     }
 
     /** Every list status change as it happens, so listeners never miss a quick In-between step. */
     val statusChanges = kotlinx.coroutines.flow.MutableSharedFlow<StatusChange>(extraBufferCapacity = 64)
 
     fun setStatus(anime: Anime, status: ListStatus?) {
+        if (anime.title.isBlank()) return
         val before = _state.value.entries[anime.key]?.status
         change(anime) { it.copy(status = status) }
-        if (before != status) statusChanges.tryEmit(StatusChange(anime.key, before, status))
+        if (before != status) {
+            val change = StatusChange(anime.key, before, status)
+            statusChanges.tryEmit(change)
+            onAchievementStatusChange?.invoke(change)
+        }
     }
 
     fun toggleFavorite(anime: Anime) = change(anime) { it.copy(favorite = !it.favorite) }
@@ -156,7 +188,7 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     }
 
     fun renameProfile(name: String) {
-        val clean = name.trim().take(ProfileNameLimit)
+        val clean = name.trim().takeCharacters(ProfileNameLimit)
         if (clean.isEmpty()) return
         _state.update { it.copy(profile = it.profile.copy(name = clean, updatedAt = nowMillis())) }
         save()
@@ -208,6 +240,7 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     }
 
     private fun change(anime: Anime, transform: (LibraryEntry) -> LibraryEntry) {
+        if (anime.title.isBlank()) return
         _state.update { data ->
             val current = data.entries[anime.key] ?: LibraryEntry(anime)
             // Keep the freshest copy of the anime so lists show current titles and posters.
@@ -217,20 +250,51 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         save()
     }
 
+    /** Refresh cached metadata without changing list state, rewards or the user's sort order. */
+    fun refreshMetadata(anime: Anime) {
+        if (anime.title.isBlank()) return
+        val entry = _state.value.entries[anime.key] ?: return
+        if (entry.anime == anime) return
+        _state.update { data ->
+            val current = data.entries[anime.key] ?: return@update data
+            data.copy(entries = data.entries + (anime.key to current.copy(anime = anime)))
+        }
+        save()
+    }
+
     /** Writes the current state now; call before the app exits. */
     suspend fun flush() {
-        writeLock.withLock { store.write(FILE, AppJson.encodeToString(LibraryData.serializer(), _state.value)) }
+        load()
+        writeLock.withLock { persist() }
     }
 
     private fun save() {
+        if (!loaded) return
+        onAchievementChange?.invoke(_state.value)
         scope.launch {
             // Always write the latest state, so out-of-order launches can't save an older one.
-            writeLock.withLock { store.write(FILE, AppJson.encodeToString(LibraryData.serializer(), _state.value)) }
+            try {
+                writeLock.withLock { persist() }
+            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                AppLog.failure("Library", "save_failed", error)
+            }
         }
+    }
+
+    private suspend fun persist() {
+        check(loaded) { "Library has not loaded successfully" }
+        val text = AppJson.encodeToString(LibraryData.serializer(), _state.value)
+        // A flush with no edits must not rotate the last useful recovery copy away.
+        if (text != persistedText) persistedText?.let { store.writeChecked(BACKUP, it) }
+        store.writeChecked(FILE, text)
+        persistedText = text
     }
 
     private companion object {
         const val FILE = "library.json"
+        const val BACKUP = "library.backup.json"
     }
 }
 

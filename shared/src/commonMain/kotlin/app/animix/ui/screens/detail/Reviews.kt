@@ -49,6 +49,7 @@ import app.animix.ui.components.Load
 import app.animix.ui.components.MessageState
 import app.animix.ui.components.Panel
 import app.animix.ui.components.RemoteImage
+import app.animix.ui.components.ReviewPlaceholder
 import app.animix.ui.components.Shimmer
 import app.animix.ui.components.Txt
 import app.animix.ui.components.formatScore
@@ -60,7 +61,6 @@ import app.animix.ui.theme.AniMixTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.awaitCancellation
 
 /** One review or comment. Long texts fold to a few lines until tapped. */
 @Composable
@@ -112,8 +112,7 @@ fun ReviewCard(review: Review, modifier: Modifier = Modifier, collapsedLines: In
 fun ReviewsPreview(graph: AppGraph, anime: Anime, detail: AnimeDetail?, onOpenAll: () -> Unit) {
     // Wait for the titles: a deep link starts with only an id, and YummyAnime is searched by title.
     val reviews = rememberLoad(anime.key to anime.title.isNotEmpty()) {
-        if (anime.title.isEmpty()) awaitCancellation()
-        graph.anime.yummyReviews(anime)
+        if (anime.title.isBlank()) emptyList() else graph.anime.yummyReviews(anime)
     }
     val type = AniMixTheme.type
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -127,8 +126,9 @@ fun ReviewsPreview(graph: AppGraph, anime: Anime, detail: AnimeDetail?, onOpenAl
     }
     Spacer(Modifier.height(12.dp))
     when (val state = reviews.value) {
-        Load.Loading -> Shimmer(Modifier.fillMaxWidth().height(120.dp), AniMixTheme.shapes.large)
-        is Load.Failed -> Txt("Отзывы YummyAnime не загрузились: ${state.error.userMessage()}", type.caption)
+        Load.Loading -> ReviewPlaceholder()
+        is Load.Failed -> MessageState("Отзывы не загрузились", message = state.error.userMessage(),
+            icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = reviews::refresh)
         is Load.Ready -> {
             val list = state.value
             if (list.isEmpty()) {
@@ -156,8 +156,7 @@ fun ReviewsScreen(graph: AppGraph, navigator: Navigator, anime: Anime, contentPa
     // A link may only carry the id; YummyAnime lookup needs the titles, so use the loaded entry.
     val full = ready?.anime ?: anime.takeIf { it.title.isNotEmpty() }
     val yummy = rememberLoad(full?.key) {
-        if (full == null) awaitCancellation()
-        graph.anime.yummyReviews(full)
+        if (full == null) emptyList() else graph.anime.yummyReviews(full)
     }
     val discussion = remember(anime.key) { DiscussionPaging(graph) }
     val list = rememberLazyListState()
@@ -212,9 +211,15 @@ fun ReviewsScreen(graph: AppGraph, navigator: Navigator, anime: Anime, contentPa
                     }
                 }
             }
-            when (source) {
+            if (full == null) {
+                val error = detail.value as? Load.Failed
+                if (error != null) item {
+                    MessageState("Не удалось загрузить аниме", message = error.error.userMessage(),
+                        icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
+                } else items(3) { ReviewPlaceholder() }
+            } else when (source) {
                 ReviewSource.Yummy -> when (val state = yummy.value) {
-                    Load.Loading -> items(3) { Shimmer(Modifier.fillMaxWidth().height(140.dp), AniMixTheme.shapes.large) }
+                    Load.Loading -> items(3) { ReviewPlaceholder() }
                     is Load.Failed -> item { MessageState("Не удалось загрузить", message = state.error.userMessage(), icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = yummy::refresh) }
                     is Load.Ready -> if (state.value.isEmpty()) {
                         item { MessageState("На YummyAnime отзывов пока нет", icon = AniMixIcons.Help) }
@@ -228,7 +233,7 @@ fun ReviewsScreen(graph: AppGraph, navigator: Navigator, anime: Anime, contentPa
                         discussion.error != null && discussion.items.isEmpty() -> item {
                             MessageState("Не удалось загрузить", message = discussion.error?.userMessage(), icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = { scope.launch { discussion.loadNext() } })
                         }
-                        discussion.loading -> items(2) { Shimmer(Modifier.fillMaxWidth().height(110.dp), AniMixTheme.shapes.large) }
+                        discussion.loading -> items(2) { ReviewPlaceholder() }
                         discussion.endReached && discussion.items.isEmpty() -> item { MessageState("Комментариев пока нет", icon = AniMixIcons.Help) }
                     }
                 }

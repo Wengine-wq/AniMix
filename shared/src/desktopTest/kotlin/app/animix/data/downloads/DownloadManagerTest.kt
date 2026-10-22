@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.Channel
 import org.junit.Test
 import kotlin.test.*
 
@@ -53,6 +54,7 @@ class DownloadManagerTest {
         val folder = Files.createTempDirectory("animix-queue-").toFile()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         var captureCount = 0
+        val completions = Channel<String>(Channel.UNLIMITED)
         val http = HttpClient(MockEngine { request ->
             if (request.url.encodedPath.contains("720.mp4")) respond(if (request.method == HttpMethod.Head) "" else "offline-video", headers = headersOf(HttpHeaders.ContentType, "video/mp4"))
             else respond("", HttpStatusCode.NotFound)
@@ -64,16 +66,20 @@ class DownloadManagerTest {
                 "https://cdn.test/${url.substringAfterLast('/')}/720.mp4?sig=secret"
             })
             val files = OfflineFiles(folder.absolutePath)
-            val manager = DownloadManager(scope, resolver, http, files, assembler, retryDelaysMs = emptyList())
+            val manager = DownloadManager(scope, resolver, http, files, assembler, retryDelaysMs = emptyList(), onCompleted = { completions.trySend(it) })
             manager.load(); manager.enqueueSeason(anime, dub)
             val done = awaitQueue(manager) { it.size == 3 && it.none { item -> item.active || item.status == DownloadStatus.Queued } }
             assertEquals(listOf(DownloadStatus.Failed, DownloadStatus.Completed, DownloadStatus.Completed), done.map { it.status })
             assertEquals(3, captureCount)
+            val expectedAwards = done.filter { it.status == DownloadStatus.Completed }.map { it.id }.toSet()
+            assertEquals(expectedAwards, withTimeout(5_000) { setOf(completions.receive(), completions.receive()) })
+            assertTrue(completions.tryReceive().isFailure, "A failed download must not award anything")
             assertEquals("offline-video", File(java.net.URI(manager.offlineUri(done[1])!!)).readText())
             assertFalse(File(folder, "queue.json").readText().contains("sig=secret"))
             http.close()
-            val recovered = DownloadManager(scope, resolver, http, files, assembler)
+            val recovered = DownloadManager(scope, resolver, http, files, assembler, onCompleted = { completions.trySend(it) })
             recovered.load()
+            assertEquals(expectedAwards, withTimeout(5_000) { setOf(completions.receive(), completions.receive()) })
             assertNotNull(recovered.offlineUri(recovered.state.value[1]))
         } finally { scope.coroutineContext[Job]!!.cancelAndJoin(); http.close(); folder.deleteRecursively() }
     }

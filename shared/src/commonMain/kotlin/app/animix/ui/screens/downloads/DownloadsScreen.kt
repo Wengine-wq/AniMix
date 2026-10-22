@@ -199,6 +199,10 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                         Spacer(Modifier.height(20.dp))
                         ContinueOffline(next, library.entry(anime)?.episodePositions?.get(next.episode.number) ?: 0) { navigator.push(Route.Offline(next.id)) }
                     }
+                    if (add && dubbingKeys.isEmpty() && source.value is Load.Loading) {
+                        Spacer(Modifier.height(24.dp))
+                        SelectionPlaceholder()
+                    }
                     if (add && dubbingKeys.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         SelectionList("Озвучка", dubbingKeys.map { key ->
@@ -458,8 +462,9 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
         Spacer(Modifier.height(16.dp))
         if (item == null || uri == null) MessageState("Файл недоступен", message = "Скачайте серию заново на вкладке «Загрузки»", icon = AniMixIcons.Download)
         else {
-            val next = downloads.filter { it.status == DownloadStatus.Completed && it.anime.key == item.anime.key && it.dubbingKey == item.dubbingKey && it.quality == item.quality && it.episode.sortKey > item.episode.sortKey }
-                .minByOrNull { it.episode.sortKey }
+            val next = app.animix.data.downloads.nextDownloadedEpisode(downloads, item) {
+                graph.downloads.offlineUri(it) != null
+            }
             val stream = remember(uri) { ResolvedStream(mapOf(item.quality to uri), emptyMap()) }
             key(item.id) {
                 AniMixPlayer(stream, item.episode, settings,
@@ -476,7 +481,10 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     onNext = next?.let { { currentId = it.id } },
                     fullscreen = fullscreen,
                     onFullscreenChange = { fullscreen = it },
-                    onAutoNextChoice = { yes -> graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) } },
+                    onAutoNextChoice = { yes ->
+                        graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) }
+                        if (yes) graph.achievements.settingEnabled("autoNextEpisode")
+                    },
                     onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                     onPlayback = { update -> graph.library.recordPlayback(item.anime, item.episode.number, update.credit,
                         update.durationMs, update.opening, update.ending, update.reachedEnd) },

@@ -61,6 +61,6 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         val graph = (application as AniMixApplication).graph
         graph.watchFlow.pause()
-        graph.scope.launch { graph.watchFlow.flush(); graph.library.flush() }
+        graph.scope.launch { graph.flushUserData() }
     }
 }

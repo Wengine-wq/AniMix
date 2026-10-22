@@ -1,5 +1,7 @@
 package app.animix.data.playback
 
+import app.animix.core.AppLog
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
@@ -167,7 +169,7 @@ internal class DesktopNativePlayer : NativePlayer {
                 mutable.update { it.copy(positionMs = newTime.coerceAtLeast(0), seeking = false) }
             }
             override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) { mutable.update { it.copy(durationMs = newLength.coerceAtLeast(0)) } }
-            override fun error(mediaPlayer: MediaPlayer) { mutable.update { it.copy(playing = false, buffering = false, error = "Не удалось воспроизвести видео. Обновите ссылку или выберите другое качество.") } }
+            override fun error(mediaPlayer: MediaPlayer) { AppLog.failure("Playback", "vlc_decoder", IllegalStateException()); mutable.update { it.copy(playing = false, buffering = false, error = "Не удалось воспроизвести видео. Обновите ссылку или выберите другое качество.") } }
         })
     }
     override fun load(url: String, headers: Map<String, String>, startPositionMs: Long, playWhenReady: Boolean) {
@@ -184,7 +186,10 @@ internal class DesktopNativePlayer : NativePlayer {
         commands.launch {
             if (released) return@launch
             val started = runCatching { engine.media().play(url, *options.toTypedArray()) }.getOrDefault(false)
-            if (!started) mutable.update { it.copy(playing = false, playRequested = false, buffering = false, error = "Не удалось открыть видео.") }
+            if (!started) {
+                AppLog.failure("Playback", "vlc_open", IllegalStateException())
+                mutable.update { it.copy(playing = false, playRequested = false, buffering = false, error = "Не удалось открыть видео.") }
+            }
         }
     }
     override fun play() {

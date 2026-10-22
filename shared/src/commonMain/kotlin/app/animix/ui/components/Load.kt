@@ -8,7 +8,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import app.animix.core.AppLog
+
+/** Off-screen preview hook; production always uses zero and never delays requests. */
+val LocalLoadPreviewDelay = staticCompositionLocalOf { 0L }
 
 sealed interface Load<out T> {
     data object Loading : Load<Nothing>
@@ -33,6 +39,7 @@ class LoadState<T> internal constructor() {
 /** Runs [block] when [key] changes and exposes Loading / Ready / Failed. */
 @Composable
 fun <T> rememberLoad(key: Any?, block: suspend (forceRefresh: Boolean) -> T): LoadState<T> {
+    val previewDelay = LocalLoadPreviewDelay.current
     val state = remember(key) { LoadState<T>() }
     LaunchedEffect(state, state.generation) {
         val force = state.force
@@ -40,10 +47,12 @@ fun <T> rememberLoad(key: Any?, block: suspend (forceRefresh: Boolean) -> T): Lo
         if (state.value !is Load.Ready || force) {
             if (state.value is Load.Failed) state.value = Load.Loading
             state.value = try {
+                if (previewDelay > 0) delay(previewDelay)
                 Load.Ready(block(force))
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
+                AppLog.failure("Loading", "request_failed", error)
                 if (state.value is Load.Ready && force) state.value else Load.Failed(error)
             }
         }

@@ -35,6 +35,11 @@ import app.animix.ui.navigation.Route
 import app.animix.ui.player.AniMixPlayer
 import app.animix.ui.screens.detail.resumeEpisode
 import app.animix.ui.theme.AniMixTheme
+import app.animix.ui.theme.LocalUiPerformance
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyGridState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -103,8 +108,16 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
             finally { busy = false }
         }
     }
+    val grid = rememberLazyGridState()
+    val performance = LocalUiPerformance.current
+    val reorder = rememberReorderableLazyGridState(grid,
+        scrollThresholdPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())) { from, to ->
+        val fromKey = (from.key as? String)?.takeIf { it.startsWith("queue:") }?.removePrefix("queue:")
+        val toKey = (to.key as? String)?.takeIf { it.startsWith("queue:") }?.removePrefix("queue:")
+        if (!busy && fromKey != null && toKey != null) graph.watchFlow.moveTo(fromKey, toKey)
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        LazyVerticalGrid(GridCells.Adaptive(56.dp), modifier = Modifier.widthIn(max = 1000.dp).fillMaxSize(),
+        LazyVerticalGrid(GridCells.Adaptive(56.dp), state = grid, modifier = Modifier.widthIn(max = 1000.dp).fillMaxSize(),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = padding.calculateTopPadding() + 12.dp,
                 bottom = padding.calculateBottomPadding() + 24.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -143,9 +156,20 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                 }
             }
             items(state.queue, key = { "queue:${it.key}" }, span = { GridItemSpan(maxLineSpan) }) { item ->
-                FlowQueueRow(item, state.options, onRemove = { if (!busy) graph.watchFlow.remove(item.key) },
-                    onUp = state.queue.indexOf(item).takeIf { it > 0 }?.let { { if (!busy) graph.watchFlow.move(item.key, -1) } },
-                    onDown = state.queue.indexOf(item).takeIf { it < state.queue.lastIndex }?.let { { if (!busy) graph.watchFlow.move(item.key, 1) } })
+                ReorderableItem(reorder, key = "queue:${item.key}", enabled = !busy,
+                    animateItemModifier = if (performance.animations) Modifier.animateItem() else Modifier) { dragging ->
+                    FlowQueueRow(item, state.options, dragging = dragging,
+                        dragHandle = {
+                            Box(Modifier.size(44.dp).draggableHandle(enabled = !busy)
+                                .semantics { contentDescription = "Перетащить серию ${item.episode.number} в очереди" },
+                                contentAlignment = Alignment.Center) {
+                                Icon(AniMixIcons.Grip, null, Modifier.size(20.dp), tint = AniMixTheme.colors.textMuted)
+                            }
+                        },
+                        onRemove = { if (!busy) graph.watchFlow.remove(item.key) },
+                        onUp = state.queue.indexOf(item).takeIf { it > 0 }?.let { { if (!busy) graph.watchFlow.move(item.key, -1) } },
+                        onDown = state.queue.indexOf(item).takeIf { it < state.queue.lastIndex }?.let { { if (!busy) graph.watchFlow.move(item.key, 1) } })
+                }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
@@ -181,7 +205,7 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                         }
                         Spacer(Modifier.height(12.dp))
                         when (val loaded = sourceState) {
-                            Load.Loading -> Shimmer(Modifier.fillMaxWidth().height(56.dp), AniMixTheme.shapes.medium)
+                            Load.Loading -> SelectionPlaceholder()
                             is Load.Failed -> MessageState("Не удалось получить серии", message = loaded.error.userMessage(), icon = AniMixIcons.Refresh,
                                 actionLabel = "Повторить", onAction = source::refresh)
                             is Load.Ready -> {
@@ -194,7 +218,8 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                         Spacer(Modifier.height(16.dp))
                         if (state.queue.isEmpty()) PrimaryButton(if (busy) "Готовим очередь…" else "Подобрать на ${state.options.minutes} минут",
                             { prepare(true) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock, enabled = !busy && dubbing != null && from != null)
-                        else SecondaryButton(if (busy) "Готовим очередь…" else "Добавить в оставшееся время", { prepare(true) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock)
+                        else SecondaryButton(if (busy) "Готовим очередь…" else "Добавить в оставшееся время", { prepare(true) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock,
+                            enabled = !busy && dubbing != null && from != null)
                         problem?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
                         Spacer(Modifier.height(20.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -263,10 +288,12 @@ private fun FlowTimeline(queue: List<FlowEpisode>, options: FlowOptions) {
 
 @Composable
 private fun FlowQueueRow(item: FlowEpisode, options: FlowOptions, status: String? = null,
-    onRemove: (() -> Unit)? = null, onUp: (() -> Unit)? = null, onDown: (() -> Unit)? = null) {
-    EpisodeCardSurface(selected = status == "Сейчас", onClick = null) {
+    onRemove: (() -> Unit)? = null, onUp: (() -> Unit)? = null, onDown: (() -> Unit)? = null,
+    dragHandle: (@Composable () -> Unit)? = null, dragging: Boolean = false) {
+    EpisodeCardSurface(selected = status == "Сейчас" || dragging, onClick = null) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                dragHandle?.invoke()
                 RemoteImage(item.anime.posterUrl, Modifier.size(width = 40.dp, height = 56.dp), shape = AniMixTheme.shapes.small)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {

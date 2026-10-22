@@ -1,5 +1,7 @@
 package app.animix.ui.screens.catalog
 
+import app.animix.core.AppLog
+
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -139,7 +141,9 @@ fun CatalogScreen(
         snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .distinctUntilChanged()
             .collect { last ->
-                if (last >= grid.layoutInfo.totalItemsCount - 8) scope.launch { paging.loadNext() }
+                if ((!searchMode || query.search != null) && paging.error == null && last >= grid.layoutInfo.totalItemsCount - 8) {
+                    scope.launch { paging.loadNext() }
+                }
             }
     }
 
@@ -247,6 +251,13 @@ fun CatalogScreen(
             })
         }
 
+        if (paging.loading && paging.items.isNotEmpty()) {
+            items(6) { AnimeCardPlaceholder() }
+        }
+        if (paging.error != null && paging.items.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+            MessageState("Не удалось загрузить следующую страницу", message = paging.error?.userMessage(),
+                icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = { scope.launch { paging.loadNext() } })
+        }
         when {
             searchMode && query.search == null -> item(span = { GridItemSpan(maxLineSpan) }) {
                 MessageState(
@@ -333,14 +344,23 @@ private class CatalogPaging(private val graph: AppGraph, private val query: Cata
         loading = true
         error = null
         try {
-            val result = graph.anime.catalog(query.copy(page = page))
+            val start = items.size
+            var baseCount = 0
+            val result = graph.anime.catalog(query.copy(page = page), onBase = { base ->
+                baseCount = base.size
+                val known = items.mapTo(HashSet()) { it.key }
+                items += base.filter { known.add(it.key) }
+            })
+            // Replace only this page to keep relevance ordering when Yummy completes the search.
+            while (items.size > start) items.removeAt(items.lastIndex)
             val known = items.mapTo(HashSet()) { it.key }
-            items += result.filter { it.key !in known }
-            if (result.size < query.limit) endReached = true
+            items += result.filter { known.add(it.key) }
+            if (baseCount < query.limit) endReached = true
             page++
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (e: Throwable) {
+            AppLog.failure("Catalog", "next_page", e)
             error = e
         } finally {
             loading = false

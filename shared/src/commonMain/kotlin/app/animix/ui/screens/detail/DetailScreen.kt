@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,7 +47,6 @@ import app.animix.Ambient
 import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
 import androidx.compose.runtime.collectAsState
-import kotlinx.coroutines.awaitCancellation
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
 import app.animix.model.AnimeSource
@@ -55,9 +55,13 @@ import app.animix.ui.components.Expandable
 import app.animix.ui.components.RichTextView
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
+import app.animix.ui.components.MessageState
 import app.animix.ui.components.PrimaryButton
 import app.animix.ui.components.RemoteImage
 import app.animix.ui.components.SectionHeader
+import app.animix.ui.components.AnimeShelfPlaceholder
+import app.animix.ui.components.SkeletonGroup
+import app.animix.ui.components.SkeletonText
 import app.animix.ui.components.Shimmer
 import app.animix.ui.components.Txt
 import app.animix.ui.components.episodesWord
@@ -79,9 +83,9 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     val anime = ready?.anime ?: opened
 
     val similar = rememberLoad(anime.key to anime.title.isNotEmpty()) {
-        if (anime.title.isEmpty()) awaitCancellation()
-        graph.anime.similar(anime)
+        if (anime.title.isBlank()) emptyList() else graph.anime.similar(anime)
     }
+    LaunchedEffect(ready?.anime) { ready?.anime?.let(graph.library::refreshMetadata) }
     Ambient(null)
     val library by graph.library.state.collectAsState()
     val settings by graph.settings.state.collectAsState()
@@ -94,7 +98,9 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     }
     var notice by remember { mutableStateOf<String?>(null) }
     val actions: @Composable () -> Unit = {
-        WatchActions(
+        if (anime.title.isBlank()) {
+            PrimaryButton("Смотреть", {}, icon = AniMixIcons.Play, enabled = false, modifier = Modifier.fillMaxWidth())
+        } else WatchActions(
             entry = entry,
             onWatch = { navigator.push(Route.Watch(anime)) },
             onLists = { sheet = DetailSheet.Lists },
@@ -143,7 +149,8 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                 Spacer(Modifier.height(24.dp))
                 when (val state = detail.value) {
                     Load.Loading -> DescriptionPlaceholder()
-                    is Load.Failed -> Txt(state.error.userMessage(), AniMixTheme.type.caption)
+                    is Load.Failed -> MessageState("Не удалось загрузить аниме", message = state.error.userMessage(),
+                        icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
                     is Load.Ready -> Description(state.value)
                 }
                 ready?.screenshots?.takeIf { it.isNotEmpty() }?.let { shots ->
@@ -159,11 +166,16 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                 ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
                     AnimeShelf("Связанное", related, navigator)
                 }
+                if (anime.title.isNotBlank() && similar.value is Load.Loading) {
+                    AnimeShelfPlaceholder("Похожее", Modifier.padding(top = 28.dp), cardWidth = 120.dp, horizontalPadding = 0.dp)
+                }
                 (similar.value as? Load.Ready)?.value?.takeIf { it.isNotEmpty() }?.let { items ->
                     AnimeShelf("Похожее", items, navigator)
                 }
                 Spacer(Modifier.height(28.dp))
-                ReviewsPreview(graph, anime, ready, onOpenAll = { navigator.push(Route.Reviews(anime)) })
+                if (anime.title.isNotBlank()) {
+                    ReviewsPreview(graph, anime, ready, onOpenAll = { navigator.push(Route.Reviews(anime)) })
+                }
             }
         }
         IconCircle(
@@ -254,7 +266,8 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValue
 private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = true, compact: Boolean = false) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
-    Txt(anime.title, if (compact) type.title else type.display, maxLines = 3)
+    Txt(anime.title.ifBlank { "Аниме" }, if (compact) type.title else type.display, maxLines = 3)
+    if (anime.title.isBlank()) return
     if (anime.originalTitle != anime.title) {
         Spacer(Modifier.height(4.dp))
         Txt(anime.originalTitle, type.caption, maxLines = 1)
@@ -429,8 +442,8 @@ private fun Description(detail: AnimeDetail) {
 
 @Composable
 private fun DescriptionPlaceholder() {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        repeat(4) { Shimmer(Modifier.fillMaxWidth(if (it == 3) 0.6f else 1f).height(12.dp), AniMixTheme.shapes.small) }
+    SkeletonGroup("Загружается описание") {
+        SkeletonText(AniMixTheme.type.body, lines = 4)
     }
 }
 

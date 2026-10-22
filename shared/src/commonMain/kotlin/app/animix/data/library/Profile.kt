@@ -1,6 +1,7 @@
 package app.animix.data.library
 
 import app.animix.core.Platform
+import app.animix.core.takeCharacters
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.serialization.Serializable
@@ -36,8 +37,8 @@ data class LocalProfile(
     fun draft() = ProfileDraft(name, about, avatar, banner, badgeAchievementId)
 
     fun edited(draft: ProfileDraft, unlockedBadges: Set<String>, now: Long): LocalProfile = copy(
-        name = draft.name.trim().replace(Regex("\\s+"), " ").take(ProfileNameLimit).ifBlank { name.take(ProfileNameLimit) },
-        about = draft.about.trim().take(160),
+        name = draft.name.trim().replace(Regex("\\s+"), " ").takeCharacters(ProfileNameLimit).ifBlank { name.takeCharacters(ProfileNameLimit) },
+        about = draft.about.trim().takeCharacters(160),
         avatar = draft.avatar,
         banner = draft.banner,
         badgeAchievementId = draft.badgeAchievementId?.takeIf { it in unlockedBadges },

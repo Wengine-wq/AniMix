@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -94,6 +96,8 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
 @Composable
 internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?, onEdit: (() -> Unit)? = null, onBadge: (() -> Unit)? = null) {
     val colors = AniMixTheme.colors
+    val avatarInteraction = remember { MutableInteractionSource() }
+    val badgeInteraction = remember { MutableInteractionSource() }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val wide = maxWidth >= 600.dp
         val avatarSize = if (wide) 104.dp else 88.dp
@@ -103,14 +107,17 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                 ProfileBanner(profile.banner, Modifier.fillMaxWidth().height(bannerHeight))
                 ProfileAvatar(profile, avatarSize, Modifier.align(Alignment.BottomStart).padding(start = 16.dp)
                     .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
-                        .clickable(onClick = onEdit) else Modifier))
+                        .clickable(avatarInteraction, indication = null, role = Role.Button, onClick = onEdit)
+                        .focusOutline(avatarInteraction, CircleShape) else Modifier))
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Txt(profile.name, AniMixTheme.type.title, modifier = Modifier.weight(1f, fill = false))
                 if (badge != null) {
                     Box(Modifier.size(44.dp).semantics { contentDescription = "Значок профиля: ${badge.achievement.name}" }
-                        .then(if (onBadge != null) Modifier.clip(CircleShape).clickable(onClick = onBadge) else Modifier), contentAlignment = Alignment.Center) {
+                        .then(if (onBadge != null) Modifier.clip(CircleShape)
+                            .clickable(badgeInteraction, indication = null, role = Role.Button, onClick = onBadge)
+                            .focusOutline(badgeInteraction, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
                         AchievementIcon(badge.achievement, true, 32.dp)
                     }
                 }

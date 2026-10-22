@@ -91,7 +91,7 @@ internal val AchievementCatalog: List<Achievement> = listOf(
     Achievement(
         id = "first_completed", number = 15, category = AchievementCategory.Library,
         name = "Ну всё, теперь можно жить",
-        description = "Отметить первый тайтл как просмотренный.",
+        description = "Досмотреть первый тайтл в AniMix или импортировать его из истории просмотров.",
         trigger = Trigger(metric = "titles_completed", threshold = 1),
     ),
     Achievement(

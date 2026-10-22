@@ -1,5 +1,6 @@
 package app.animix.data.achievements
 
+import app.animix.core.AppLog
 import app.animix.core.AppJson
 import app.animix.core.AppSettings
 import app.animix.core.DiskStore
@@ -12,6 +13,10 @@ import app.animix.data.library.verifiedEpisodes
 import app.animix.data.library.completedWithHistory
 import app.animix.data.library.episodesWithHistory
 import app.animix.core.localDayIndex
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,8 +24,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -94,7 +97,24 @@ class Achievements(
     private val _progress = MutableStateFlow<List<AchievementProgress>>(emptyList())
     private val _unlockedNow = MutableSharedFlow<Achievement>(extraBufferCapacity = 8)
     private val writeLock = Mutex()
+    private val loadLock = Mutex()
     private var loaded = false
+    private data class Event(
+        val library: LibraryData,
+        val transform: (AchievementState) -> AchievementState = { it },
+        val flushed: CompletableDeferred<Unit>? = null,
+    )
+    // Every action is retained, including actions before load and intermediate list states.
+    // Only this queue's consumer may change award state; disk writers only read it.
+    private val events = Channel<Event>(Channel.UNLIMITED)
+    private val writes = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        library.onAchievementChange = { data -> events.trySend(Event(data)); Unit }
+        library.onAchievementStatusChange = { change ->
+            if (change.from == ListStatus.OnHold && change.to == ListStatus.Watching) record("hold_to_watching")
+        }
+    }
 
     val progress: StateFlow<List<AchievementProgress>> = _progress.asStateFlow()
 
@@ -103,24 +123,45 @@ class Achievements(
 
     val all: List<Achievement> get() = catalog
 
-    suspend fun load() {
-        if (loaded) return
-        store.read(FILE)?.let { text ->
-            runCatching { AppJson.decodeFromString(AchievementState.serializer(), text) }.onSuccess { _state.value = it }
+    suspend fun load() = loadLock.withLock {
+        if (loaded) return@withLock
+        val primary = store.readChecked(FILE)
+        val decoded = primary?.let { runCatching { AppJson.decodeFromString<AchievementState>(it) } }
+        _state.value = decoded?.getOrNull() ?: store.readChecked(BACKUP)?.let {
+            AppJson.decodeFromString<AchievementState>(it)
+        } ?: run {
+            // Never overwrite unrecognised saved progress with an empty award collection.
+            decoded?.exceptionOrNull()?.let { throw it }
+            AchievementState()
         }
         loaded = true
+        observeLibrary(library.state.value)
+        evaluate(library.state.value)
+        save()
         scope.launch {
-            library.statusChanges.collect { change ->
-                if (change.from == ListStatus.OnHold && change.to == ListStatus.Watching) {
-                    _state.update { it.copy(counters = it.counters + ("hold_to_watching" to ((it.counters["hold_to_watching"] ?: 0) + 1))) }
-                    save()
-                }
+            for (signal in writes) {
+                try { persist() }
+                catch (cancel: CancellationException) { throw cancel }
+                // Keep the in-memory awards; the next event/flush retries the write.
+                catch (error: Exception) { AppLog.failure("Achievements", "awards_save", error) }
             }
         }
-        scope.launch {
-            combine(library.state, settings.state, _state) { lib, _, _ -> lib }.collect { lib ->
-                observeLibrary(lib)
-                evaluate(lib)
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            for (event in events) {
+                val before = _state.value
+                _state.value = event.transform(before)
+                observeLibrary(event.library)
+                evaluate(event.library)
+                if (_state.value != before) save()
+                event.flushed?.let { done ->
+                    try {
+                        persist()
+                        done.complete(Unit)
+                    } catch (error: Exception) {
+                        done.completeExceptionally(error)
+                        if (error is CancellationException) throw error
+                    }
+                }
             }
         }
     }
@@ -140,16 +181,20 @@ class Achievements(
     fun openedFromFilter(animeKey: String) = addToSet("filtered", animeKey)
 
     /** Adds to a non-playback event counter, such as completed downloads or published reviews. */
-    fun record(counter: String, amount: Long = 1) = _state.update {
-        it.copy(counters = it.counters + (counter to ((it.counters[counter] ?: 0L) + amount)))
-    }.also { save() }
+    fun record(counter: String, amount: Long = 1) {
+        if (amount <= 0) return
+        events.trySend(Event(library.state.value, { state ->
+            state.copy(counters = state.counters + (counter to ((state.counters[counter] ?: 0L) + amount)))
+        }))
+    }
+
+    /** A completed download identity is counted once, including restoration on startup. */
+    fun downloadCompleted(id: String) = addToSet("downloads_completed", id)
 
     // --- Internals ---------------------------------------------------------------------------
 
     private fun addToSet(name: String, value: String) {
-        if (_state.value.sets[name]?.contains(value) == true) return
-        _state.update { it.copy(sets = it.sets + (name to (it.sets[name].orEmpty() + value))) }
-        save()
+        events.trySend(Event(library.state.value, { it.withSet(name, value) }))
     }
 
     /** Remembers list history that the current library snapshot alone can't tell. */
@@ -166,7 +211,6 @@ class Achievements(
         }
         if (state != _state.value) {
             _state.value = state
-            save()
         }
     }
 
@@ -206,7 +250,7 @@ class Achievements(
                 "filtered_catalog_titles_opened" -> set("filtered").size
                 "unique_titles_opened_from_search" -> set("search").size
                 "watch_seconds" -> lib.watchDays.values.sumOf { it.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                "episode_downloads_completed" -> (state.counters["episode_downloads_completed"] ?: 0).toInt()
+                "episode_downloads_completed" -> maxOf(state.sets["downloads_completed"].orEmpty().size, (state.counters["episode_downloads_completed"] ?: 0).toInt())
                 "reviews_published" -> (state.counters["reviews_published"] ?: 0).toInt()
                 "episodes_per_day" -> verifiedDays.values.maxOrNull() ?: 0
                 "daily_episode_streak" -> {
@@ -228,8 +272,10 @@ class Achievements(
             else -> current(a)
         }
 
-        // Two passes so the completionist sees both earned and historical dependencies.
-        repeat(2) {
+        // Resolve dependencies to a fixed point, independent of catalog order/depth.
+        do {
+            val earnedBefore = unlocked.size
+            val historyBefore = historical.size
             for (a in catalog) {
                 if (a.id in unlocked) continue
                 if (current(a) >= a.trigger.threshold) {
@@ -240,9 +286,9 @@ class Achievements(
                 }
             }
         }
+        while (unlocked.size != earnedBefore || historical.size != historyBefore)
         if (fresh.isNotEmpty() || historical != state.historical) {
-            _state.update { it.copy(unlocked = unlocked, historical = historical) }
-            save()
+            _state.value = _state.value.copy(unlocked = unlocked, historical = historical)
             fresh.forEach { _unlockedNow.tryEmit(it) }
         }
         _progress.value = catalog.map { AchievementProgress(it, maxOf(current(it), withHistory(it)), unlocked[it.id], historical[it.id]) }
@@ -250,15 +296,26 @@ class Achievements(
 
     private fun save() {
         if (!loaded) return
-        scope.launch {
-            writeLock.withLock { store.write(FILE, AppJson.encodeToString(AchievementState.serializer(), _state.value)) }
-        }
+        writes.trySend(Unit)
     }
 
-    suspend fun flush() = writeLock.withLock { store.write(FILE, AppJson.encodeToString(AchievementState.serializer(), _state.value)) }
+    /** A barrier: evaluate all earlier actions before writing, even on immediate shutdown. */
+    suspend fun flush() {
+        load()
+        val done = CompletableDeferred<Unit>()
+        events.send(Event(library.state.value, flushed = done))
+        done.await()
+    }
+
+    private suspend fun persist() = writeLock.withLock {
+        val text = AppJson.encodeToString(AchievementState.serializer(), _state.value)
+        store.writeChecked(FILE, text)
+        store.writeChecked(BACKUP, text)
+    }
 
     internal companion object {
         const val FILE = "achievements.json"
+        const val BACKUP = "achievements.backup.json"
 
         /** "yyyy-MM" in UTC; close enough for "three titles in one month". */
         fun monthOf(millis: Long): String = Instant.fromEpochMilliseconds(millis).toString().take(7)
