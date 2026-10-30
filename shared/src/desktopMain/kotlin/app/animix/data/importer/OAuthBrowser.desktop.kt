@@ -31,7 +31,16 @@ import java.time.Duration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
+import java.net.http.WebSocket
+import java.util.concurrent.CompletionStage
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -40,23 +49,45 @@ import kotlinx.serialization.json.jsonPrimitive
  * profile of the user) and watches it through the loopback DevTools port until it reaches the redirect.
  */
 @Composable
-actual fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit) {
+actual fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit, service: String) {
     val redirect by rememberUpdatedState(onRedirect)
     val cancel by rememberUpdatedState(onCancel)
     var problem by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(url) {
-        val result = withContext(Dispatchers.IO) { runCatching { watch(url, redirectPrefix) } }
+        val result = withContext(Dispatchers.IO) { runCatching { watch(url, redirectPrefix, if (service == "Shikimori") "shikimori-login" else "animix-login") } }
         result.onSuccess { if (it != null) redirect(it) else cancel() }
             .onFailure { problem = it.message ?: "Не удалось открыть окно входа." }
     }
     Dialog(onDismissRequest = onCancel) {
         Column(Modifier.widthIn(max = 380.dp).clip(AniMixTheme.shapes.large).background(AniMixTheme.colors.surfaceRaised).padding(20.dp)) {
-            Txt("Вход в Shikimori", AniMixTheme.type.heading)
+            Txt("Вход в $service", AniMixTheme.type.heading)
             Spacer(Modifier.height(6.dp))
-            Txt(problem ?: "Войдите в открывшемся окне. Оно закроется само, когда Shikimori подтвердит вход.", AniMixTheme.type.caption)
+            Txt(problem ?: "Войдите в открывшемся окне. Оно закроется само, когда $service подтвердит вход.", AniMixTheme.type.caption)
             Spacer(Modifier.height(16.dp))
             SecondaryButton("Отмена", onCancel)
         }
+    }
+}
+
+/** Looks for [prefix] in every string of every DevTools event (redirect requests and their Location headers). */
+private class RedirectListener(private val prefix: String, private val captured: AtomicReference<String?>) : WebSocket.Listener {
+    private val text = StringBuilder()
+
+    override fun onText(webSocket: WebSocket, data: CharSequence, last: Boolean): CompletionStage<*>? {
+        text.append(data)
+        if (last) {
+            val message = text.toString()
+            text.setLength(0)
+            if (prefix in message) runCatching { find(AppJson.parseToJsonElement(message)) }.getOrNull()?.let { captured.compareAndSet(null, it) }
+        }
+        webSocket.request(1)
+        return null
+    }
+
+    private fun find(element: JsonElement): String? = when (element) {
+        is JsonPrimitive -> element.contentOrNull?.takeIf { it.startsWith(prefix) }
+        is JsonObject -> element.values.firstNotNullOfOrNull(::find)
+        is JsonArray -> element.firstNotNullOfOrNull(::find)
     }
 }
 
@@ -67,10 +98,10 @@ private fun browser(): File? {
 }
 
 /** The redirect URL, or null when the window was closed. */
-private suspend fun watch(url: String, redirectPrefix: String): String? {
+private suspend fun watch(url: String, redirectPrefix: String, profileName: String): String? {
     val executable = browser() ?: throw IllegalStateException("Для входа установите Microsoft Edge или Google Chrome.")
-    // A separate, persistent profile: Shikimori remembers the login next time, the usual browser is untouched.
-    val profile = File(Platform.cacheDir, "shikimori-login").apply { mkdirs() }
+    // A separate, persistent profile: the service remembers the login next time, the usual browser is untouched.
+    val profile = File(Platform.cacheDir, profileName).apply { mkdirs() }
     File(profile, "DevToolsActivePort").delete()
     val process = ProcessBuilder(
         executable.absolutePath, "--app=$url", "--user-data-dir=${profile.absolutePath}",
@@ -78,6 +109,9 @@ private suspend fun watch(url: String, redirectPrefix: String): String? {
         "--no-first-run", "--no-default-browser-check", "--window-size=520,780",
     ).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
     val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
+    // A redirect to a custom scheme (animix://) never becomes a page URL; it shows up in network events.
+    val captured = AtomicReference<String?>(null)
+    val sockets = mutableMapOf<String, WebSocket>()
     try {
         var port: Int? = null
         val deadline = System.currentTimeMillis() + 10 * 60_000
@@ -91,16 +125,25 @@ private suspend fun watch(url: String, redirectPrefix: String): String? {
                         HttpRequest.newBuilder(URI("http://127.0.0.1:$port/json/list")).timeout(Duration.ofSeconds(2)).build(),
                         HttpResponse.BodyHandlers.ofString(),
                     )
-                    AppJson.parseToJsonElement(response.body()).jsonArray.mapNotNull { it.jsonObject["url"]?.jsonPrimitive?.content }
+                    AppJson.parseToJsonElement(response.body()).jsonArray.map { it.jsonObject }
                 }.getOrNull()
                 // The window was closed.
-                if (pages == null && !process.isAlive) return null
-                pages?.firstOrNull { it.startsWith(redirectPrefix) }?.let { return it }
+                if (pages == null && !process.isAlive) return captured.get()
+                pages?.mapNotNull { it["url"]?.jsonPrimitive?.content }?.firstOrNull { it.startsWith(redirectPrefix) }?.let { return it }
+                captured.get()?.let { return it }
+                if (!redirectPrefix.startsWith("http")) pages?.forEach { page ->
+                    val id = page["id"]?.jsonPrimitive?.content ?: return@forEach
+                    val socket = page["webSocketDebuggerUrl"]?.jsonPrimitive?.content ?: return@forEach
+                    if (page["type"]?.jsonPrimitive?.content != "page" || id in sockets) return@forEach
+                    runCatching { client.newWebSocketBuilder().buildAsync(URI(socket), RedirectListener(redirectPrefix, captured)).get(3, TimeUnit.SECONDS) }
+                        .getOrNull()?.let { ws -> sockets[id] = ws; ws.sendText("{\"id\":1,\"method\":\"Network.enable\"}", true) }
+                }
             }
             delay(300)
         }
         return null
     } finally {
+        sockets.values.forEach { runCatching { it.abort() } }
         process.descendants().use { children -> children.forEach { it.destroy() } }
         process.destroy()
     }

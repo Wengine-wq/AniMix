@@ -24,6 +24,10 @@ class ShikimoriRepository internal constructor(
             api.anime(id)?.toDetail() ?: throw ShikimoriException("Аниме не найдено")
         }
 
+    /** Live cards for known ids, 50 per request; unknown ids are simply missing from the result. */
+    suspend fun byIds(ids: List<Int>): List<Anime> =
+        ids.distinct().filter { it > 0 }.chunked(50).flatMap { chunk -> api.animesByIds(chunk).map { it.toAnime() }.filter { it.id > 0 } }
+
     /** Digest snapshots must distinguish a live catalog response from stale offline cache. */
     suspend fun liveDetail(id: Int): AnimeDetail = api.anime(id)?.toDetail()
         ?: throw ShikimoriException("Аниме не найдено")

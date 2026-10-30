@@ -53,7 +53,7 @@ fun LibraryData.stats(dayCount: Int = 14, today: Long = localDayIndex()): WatchS
         previous = d
     }
     return WatchStats(
-        totalMinutes = (confirmedWatchSeconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        totalMinutes = (totalWatchSeconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
         episodes = entries.values.sumOf { it.watchedEpisodeCount },
         completed = entries.values.count { it.status == ListStatus.Completed },
         streak = streak,

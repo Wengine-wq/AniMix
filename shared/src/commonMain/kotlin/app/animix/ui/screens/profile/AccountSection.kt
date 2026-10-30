@@ -13,6 +13,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.Platform
+import app.animix.data.importer.OAuthBrowser
+import app.animix.data.legacy.LegacyMigration
+import androidx.compose.ui.platform.LocalUriHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.animix.ui.components.*
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
@@ -47,6 +52,9 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         PrimaryButton("Войти в AniMix", {}, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = false)
         Unavailable("Аккаунты AniMix появятся вместе с серверной частью. Профиль и списки перенесутся в аккаунт.")
 
+        Section("Миграция с AniMix 2.x")
+        LegacyMigrationSection(graph)
+
         Section("Сессии и устройства")
         Panel {
             AccountRow(AniMixIcons.Monitor, "Это устройство", "${Platform.name} · активно сейчас", trailing = "Текущее")
@@ -72,6 +80,54 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         }
         Unavailable("Сессии, Horizon Link и вход через Яндекс и Google заработают с серверной частью AniMix.")
     }
+}
+
+@Composable
+private fun LegacyMigrationSection(graph: AppGraph) {
+    val colors = AniMixTheme.colors
+    val state by graph.legacy.state.collectAsState()
+    val library by graph.library.state.collectAsState()
+    val uri = LocalUriHandler.current
+    var browserUrl by remember { mutableStateOf<String?>(null) }
+    var local by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { local = withContext(Dispatchers.Default) { graph.legacy.hasLocalData() } }
+    browserUrl?.let { url ->
+        OAuthBrowser(url, LegacyMigration.CALLBACK, service = "Google",
+            onRedirect = { redirect -> browserUrl = null; graph.legacy.completeSignIn(redirect) },
+            onCancel = { browserUrl = null; graph.legacy.cancelSignIn() })
+    }
+    Txt("Списки, оценки, просмотренные серии, часы просмотра и достижения из AniMix 2.x. Списки попадают в историю просмотров, достижения — в коллекцию с обычным XP.",
+        AniMixTheme.type.caption)
+    Spacer(Modifier.height(12.dp))
+    Panel {
+        AccountRow(AniMixIcons.User, "Войти в аккаунт AniMix 2.x", "Через Google, как в прежней версии. Сессия закроется после переноса",
+            trailing = "Войти", enabled = !state.busy, onClick = {
+                val url = graph.legacy.signInUrl()
+                if (Platform.name == "Android") runCatching { uri.openUri(url) } else browserUrl = url
+            })
+        if (local) {
+            Divider()
+            AccountRow(AniMixIcons.Monitor, "Перенести с этого компьютера", "Найдены данные AniMix 2.x, в том числе без аккаунта",
+                trailing = "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
+        }
+    }
+    val done = state.result ?: library.legacyMigration
+    when {
+        state.busy -> Row(Modifier.padding(top = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            LoadingIndicator(Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Txt(state.stage, AniMixTheme.type.caption)
+        }
+        state.waitingForBrowser && Platform.name == "Android" ->
+            Unavailable("Завершите вход в браузере — AniMix продолжит перенос сам.")
+        state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
+            modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+        done != null -> Txt(
+            "Перенесено${done.accountName?.let { " из аккаунта «$it»" } ?: if (done.source == "device") " с этого компьютера" else ""}: " +
+                "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
+            AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+    }
+    if (Platform.name == "Android") Unavailable("Без аккаунта данные 2.x хранятся внутри прежнего приложения, поэтому на телефоне перенос идёт через вход в аккаунт.")
 }
 
 @Composable

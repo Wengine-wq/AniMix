@@ -87,6 +87,9 @@ val LibraryEntry.watchedEpisodeCount: Int get() = episodesWatched + viewing.coun
 val LibraryData.confirmedWatchSeconds: Long get() =
     entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs.coerceIn(0, it.durationMs.coerceAtLeast(0)) } } / 1000
 
+/** Confirmed AniMix playback plus the time AniMix 2.x measured, for hours in the profile and time awards. */
+val LibraryData.totalWatchSeconds: Long get() = confirmedWatchSeconds + legacyWatchSeconds
+
 /** Daily playback seconds that can be real: no future days and at most 24 hours per day. */
 fun LibraryData.plausibleWatchDays(today: Long = app.animix.core.localDayIndex()): Map<Long, Int> =
     watchDays.filter { (day, seconds) -> day in EarliestWatchDay..today + 1 && seconds > 0 }

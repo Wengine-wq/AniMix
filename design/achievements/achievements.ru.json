@@ -2,7 +2,7 @@
   "version": 5,
   "status": "design_proposal",
   "brand": "AniMix 3.0 New Horizons",
-  "totalAchievements": 54,
+  "totalAchievements": 55,
   "atlases": {
     "core": {
       "file": "animix-achievements-atlas-v3.png",
@@ -1048,6 +1048,19 @@
         "value": "healer"
       },
       "iconConcept": "Лупа поиска с зелёным крестом лекаря; временная иконка собрана из «Найдётся всё. Кроме сна».",
+      "icon": "derived"
+    },
+    {
+      "id": "legacy_lists",
+      "number": 55,
+      "category": "profile",
+      "name": "Новый AniMix — а списки-то старые",
+      "description": "Перенести данные AniMix 2.x: войти в свой аккаунт или зарегистрировать онлайн-профиль.",
+      "trigger": {
+        "metric": "legacy_account",
+        "threshold": 1
+      },
+      "iconConcept": "Значок завершённого тайтла с наклейкой «2.x»; временная иконка.",
       "icon": "derived"
     }
   ],

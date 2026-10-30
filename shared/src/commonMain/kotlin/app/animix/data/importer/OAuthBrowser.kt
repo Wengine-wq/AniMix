@@ -7,4 +7,4 @@ import androidx.compose.runtime.Composable
  * Android uses an in-app WebView; Windows opens a separate Edge/Chrome window with its own profile.
  */
 @Composable
-expect fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit)
+expect fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit, service: String = "Shikimori")

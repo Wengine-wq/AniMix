@@ -12,7 +12,7 @@ import app.animix.data.library.ListStatus
 import app.animix.data.library.hasVerifiedCompletion
 import app.animix.data.library.verifiedEpisodes
 import app.animix.data.library.completedWithHistory
-import app.animix.data.library.confirmedWatchSeconds
+import app.animix.data.library.totalWatchSeconds
 import app.animix.data.library.episodesWithHistory
 import app.animix.core.localDayIndex
 import kotlinx.coroutines.CancellationException
@@ -64,6 +64,8 @@ data class AchievementProgress(
     val current: Int,
     val unlockedAt: Long?,
     val historyUnlockedAt: Long? = null,
+    /** How an award with several paths was earned, e.g. "signin" or "register" for the 2.x account award. */
+    val variant: String? = null,
 ) {
     val target: Int get() = achievement.trigger.threshold
     val earned: Boolean get() = unlockedAt != null
@@ -205,6 +207,27 @@ class Achievements(
      */
     fun downloadCompleted(animeKey: String, episode: String) = addToSet("downloaded_episodes", "$animeKey|${viewingKey(episode)}")
 
+    /**
+     * Awards earned in AniMix 2.x, already translated to these ids, with their original dates. They
+     * become ordinary awards with the usual XP; the earliest date wins and nothing is granted twice.
+     * [accountVariant] ("signin" or "register") records the 2.x account path for «Новый AniMix — а списки-то старые».
+     */
+    fun migrateLegacy(awards: Map<String, Long>, accountVariant: String?) {
+        val known = catalog.associateBy { it.id }
+        events.trySend(Event(library.state.value, { state ->
+            var next = state
+            for ((id, at) in awards) {
+                if (id !in known) continue
+                val date = at.takeIf { it in 1..TrustedClock.now() } ?: TrustedClock.now()
+                next = next.copy(unlocked = next.unlocked + (id to minOf(next.unlocked[id] ?: Long.MAX_VALUE, date)),
+                    historical = next.historical - id)
+                next = next.withSet("legacy_awards", id)
+            }
+            if (accountVariant != null && next.sets["legacy_account"].isNullOrEmpty()) next = next.withSet("legacy_account", accountVariant)
+            next
+        }))
+    }
+
     // --- Internals ---------------------------------------------------------------------------
 
     private fun addToSet(name: String, value: String) {
@@ -265,7 +288,8 @@ class Achievements(
                 "unique_titles_opened_from_search" -> set("search").size
                 "secret_genre_selected" -> if (t.value in set("secret_genres")) 1 else 0
                 "secret_search" -> if (t.value in set("secret_searches")) 1 else 0
-                "watch_seconds" -> lib.confirmedWatchSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                "legacy_account" -> if (set("legacy_account").isNotEmpty()) 1 else 0
+                "watch_seconds" -> lib.totalWatchSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 // Older builds counted download IDs (one per quality); their progress is kept, never added to.
                 "episode_downloads_completed" -> maxOf(set("downloaded_episodes").size, set("downloads_completed").size,
                     (state.counters["episode_downloads_completed"] ?: 0).toInt())
@@ -309,7 +333,11 @@ class Achievements(
             _state.value = _state.value.copy(unlocked = unlocked, historical = historical)
             fresh.forEach { _unlockedNow.tryEmit(it) }
         }
-        _progress.value = catalog.map { AchievementProgress(it, maxOf(current(it), withHistory(it)), unlocked[it.id], historical[it.id]) }
+        val accountPath = state.sets["legacy_account"]?.firstOrNull()
+        _progress.value = catalog.map {
+            AchievementProgress(it, maxOf(current(it), withHistory(it)), unlocked[it.id], historical[it.id],
+                variant = accountPath.takeIf { _ -> it.trigger.metric == "legacy_account" })
+        }
     }
 
     private fun save() {
@@ -342,7 +370,7 @@ class Achievements(
          */
         fun repairWatchTimeAwards(state: AchievementState, lib: LibraryData, catalog: List<Achievement>): AchievementState {
             if (WATCH_TIME_REPAIR in state.counters) return state
-            val confirmed = lib.confirmedWatchSeconds
+            val confirmed = lib.totalWatchSeconds
             val revoked = catalog.filter { it.trigger.metric == "watch_seconds" && confirmed < it.trigger.threshold }.map { it.id }.toSet()
             if (revoked.any { it in state.unlocked || it in state.historical }) AppLog.info("Achievements", "watch_time_awards_revoked")
             return state.copy(unlocked = state.unlocked - revoked, historical = state.historical - revoked,

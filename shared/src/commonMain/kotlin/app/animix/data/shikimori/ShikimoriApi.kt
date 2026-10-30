@@ -40,6 +40,15 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
         return response.data?.animes?.firstOrNull()
     }
 
+    /** Cards for up to 50 known ids in one request (lists brought over from elsewhere). */
+    suspend fun animesByIds(ids: List<Int>): List<AnimeDto> {
+        if (ids.isEmpty()) return emptyList()
+        val variables = JsonObject(mapOf("ids" to JsonPrimitive(ids.take(50).joinToString(","))))
+        val response = AppJson.decodeFromString(AnimesResponse.serializer(), post(BY_IDS_QUERY, variables))
+        response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
+        return response.data?.animes.orEmpty()
+    }
+
     /**
      * Several searches in one GraphQL request (aliased fields), with the extra names and dates
      * that matching titles from other services needs. Keeps the import within Shikimori's rate limit.
@@ -123,6 +132,9 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
             "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
                 "description descriptionHtml duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
                 "related { relationKind relationText anime { $CARD_FIELDS } } topic { id commentsCount } } }"
+
+        private const val BY_IDS_QUERY =
+            "query(\$ids: String) { animes(ids: \$ids, limit: 50, censored: false) { $CARD_FIELDS } }"
 
         private const val GENRES_QUERY = "{ genres(entryType: Anime) { id russian name kind } }"
     }

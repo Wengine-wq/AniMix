@@ -20,7 +20,7 @@ class AchievementsTest {
 
     @Test
     fun catalogHasUniqueIdsAndConsecutiveNumbers() {
-        assertEquals(54, AchievementCatalog.size)
+        assertEquals(55, AchievementCatalog.size)
         assertEquals(AchievementCatalog.size, AchievementCatalog.map { it.id }.toSet().size)
         assertEquals((1..AchievementCatalog.size).toList(), AchievementCatalog.map { it.number })
     }

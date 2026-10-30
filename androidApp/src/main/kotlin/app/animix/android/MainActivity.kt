@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val graph = (application as AniMixApplication).graph
-        pendingLink = intent?.dataString
+        pendingLink = intent?.dataString?.let { link -> link.takeUnless { graph.legacy.handlesCallback(it) } }
         setContent {
             val settings by graph.settings.state.collectAsState()
             val dark = when (settings.themeMode) {
@@ -54,7 +54,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pendingLink = intent.dataString
+        val graph = (application as AniMixApplication).graph
+        // The AniMix 2.x sign-in returns here from the browser; the account screen shows the progress.
+        pendingLink = intent.dataString?.let { link -> link.takeUnless { graph.legacy.handlesCallback(it) } }
     }
 
     override fun onStop() {

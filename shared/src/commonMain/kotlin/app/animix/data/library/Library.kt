@@ -57,6 +57,9 @@ data class LibraryData(
     val watchRemainderMs: Int = 0,
     /** Usage by calendar year for «Итоги года» (hours, weekdays, studios, sessions, skips). */
     val usage: Map<Int, YearUsage> = emptyMap(),
+    /** Playback time measured by AniMix 2.x and brought over once; see [LegacyMigrationRecord]. */
+    val legacyWatchSeconds: Long = 0,
+    val legacyMigration: LegacyMigrationRecord? = null,
 ) {
     fun entry(anime: Anime): LibraryEntry? = entries[anime.key]
 
@@ -206,6 +209,21 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         save()
     }
 
+    /**
+     * Playback time and the record of a migration from AniMix 2.x. Time is the larger of what was
+     * already brought over and the new value, so migrating twice never adds the same hours again.
+     * A default profile name takes the 2.x name.
+     */
+    fun applyLegacy(watchSeconds: Long, record: LegacyMigrationRecord, profileName: String?) {
+        _state.update { data ->
+            val name = profileName?.trim()?.takeCharacters(ProfileNameLimit)?.takeIf { it.isNotEmpty() }
+            val profile = if (name != null && data.profile.name == LocalProfile().name) data.profile.copy(name = name, updatedAt = nowMillis()) else data.profile
+            data.copy(legacyWatchSeconds = maxOf(data.legacyWatchSeconds, watchSeconds.coerceAtLeast(0)),
+                legacyMigration = record.copy(watchSeconds = maxOf(data.legacyWatchSeconds, watchSeconds.coerceAtLeast(0))), profile = profile)
+        }
+        save()
+    }
+
     fun renameProfile(name: String) {
         val clean = name.trim().takeCharacters(ProfileNameLimit)
         if (clean.isEmpty()) return
@@ -316,6 +334,18 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         const val BACKUP = "library.backup.json"
     }
 }
+
+/** What the last migration from AniMix 2.x brought over, shown in Settings → «Аккаунт». */
+@Serializable
+data class LegacyMigrationRecord(
+    /** "account" (AniMix 2.x account) or "device" (2.x data on this computer). */
+    val source: String,
+    val at: Long,
+    val titles: Int,
+    val achievements: Int,
+    val watchSeconds: Long,
+    val accountName: String? = null,
+)
 
 /** One title brought in from Shikimori or Anixart. */
 data class ImportedTitle(

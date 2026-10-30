@@ -170,6 +170,11 @@ private fun AchievementRow(progress: AchievementProgress) {
                     color = if (progress.unlocked) colors.textPrimary else colors.textSecondary, maxLines = 2)
                 Spacer(Modifier.height(2.dp))
                 Txt(if (hidden) "Условие откроется вместе с наградой." else a.description, AniMixTheme.type.caption, maxLines = 3)
+                if (progress.earned && progress.variant != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Txt(if (progress.variant == "register") "Получено регистрацией онлайн-профиля" else "Получено входом в аккаунт",
+                        AniMixTheme.type.micro, color = colors.textSecondary)
+                }
                 if (progress.fromHistory) {
                     Spacer(Modifier.height(4.dp))
                     Txt("Из истории просмотров · без XP", AniMixTheme.type.micro, color = colors.textSecondary)

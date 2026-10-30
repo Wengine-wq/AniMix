@@ -14,6 +14,7 @@ DERIVED = {
     "secret_hentai_filter": ("catalog_filter_discovery", "18+", (255, 136, 157)),
     "secret_ecchi_filter": ("catalog_filter_discovery", "16+", (255, 180, 200)),
     "secret_redo_healer": ("ten_search_discoveries", "+", (110, 200, 140)),
+    "legacy_lists": ("first_completed", "2.x", (255, 158, 198)),
 }
 
 

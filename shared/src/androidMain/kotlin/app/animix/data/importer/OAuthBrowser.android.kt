@@ -16,7 +16,7 @@ import androidx.compose.ui.window.DialogProperties
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-actual fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit) {
+actual fun OAuthBrowser(url: String, redirectPrefix: String, onRedirect: (String) -> Unit, onCancel: () -> Unit, service: String) {
     val redirect by rememberUpdatedState(onRedirect)
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         AndroidView(
