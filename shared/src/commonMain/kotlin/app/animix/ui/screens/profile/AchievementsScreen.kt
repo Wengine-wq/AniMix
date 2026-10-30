@@ -160,14 +160,16 @@ fun AchievementIcon(achievement: Achievement, unlocked: Boolean, size: androidx.
 private fun AchievementRow(progress: AchievementProgress) {
     val colors = AniMixTheme.colors
     val a = progress.achievement
+    val hidden = a.secret && !progress.unlocked
     Panel {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AchievementIcon(a, progress.unlocked, 64.dp)
+            if (hidden) SecretIcon(64.dp) else AchievementIcon(a, progress.unlocked, 64.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Txt(a.name, AniMixTheme.type.bodyStrong, color = if (progress.unlocked) colors.textPrimary else colors.textSecondary, maxLines = 2)
+                Txt(if (hidden) "Секретное достижение" else a.name, AniMixTheme.type.bodyStrong,
+                    color = if (progress.unlocked) colors.textPrimary else colors.textSecondary, maxLines = 2)
                 Spacer(Modifier.height(2.dp))
-                Txt(a.description, AniMixTheme.type.caption, maxLines = 3)
+                Txt(if (hidden) "Условие откроется вместе с наградой." else a.description, AniMixTheme.type.caption, maxLines = 3)
                 if (progress.fromHistory) {
                     Spacer(Modifier.height(4.dp))
                     Txt("Из истории просмотров · без XP", AniMixTheme.type.micro, color = colors.textSecondary)
@@ -182,6 +184,14 @@ private fun AchievementRow(progress: AchievementProgress) {
                 }
             }
         }
+    }
+}
+
+/** A locked secret: a quiet circle with a question mark instead of the badge that would give it away. */
+@Composable
+private fun SecretIcon(size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape).background(AniMixTheme.colors.chip), contentAlignment = Alignment.Center) {
+        Txt("?", AniMixTheme.type.title, color = AniMixTheme.colors.textMuted)
     }
 }
 

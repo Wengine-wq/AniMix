@@ -35,7 +35,9 @@ for a in sorted(data["achievements"], key=lambda x: x["number"]):
     lines.append(
         f"    Achievement(\n        id = {q(a['id'])}, number = {a['number']}, category = AchievementCategory.{categories[a['category']]},\n"
         f"        name = {q(a['name'])},\n        description = {q(a['description'])},\n"
-        f"        trigger = Trigger({', '.join(args)}),\n    ),"
+        f"        trigger = Trigger({', '.join(args)}),\n"
+        + ("        secret = true,\n" if a.get("secret") else "")
+        + "    ),"
     )
 
 out = f'''package app.animix.data.achievements

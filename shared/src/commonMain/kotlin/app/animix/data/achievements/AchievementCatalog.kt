@@ -310,4 +310,25 @@ internal val AchievementCatalog: List<Achievement> = listOf(
         description = "Досмотреть полнометражный фильм «Пять невест» (2022).",
         trigger = Trigger(metric = "anime_release_completed", threshold = 1, animeId = 48548),
     ),
+    Achievement(
+        id = "secret_hentai_filter", number = 52, category = AchievementCategory.Discovery,
+        name = "Я просто проверял, работает ли фильтр",
+        description = "Секретное: впервые выбрать жанр «Хентай» в фильтрах каталога.",
+        trigger = Trigger(metric = "secret_genre_selected", threshold = 1, value = "hentai"),
+        secret = true,
+    ),
+    Achievement(
+        id = "secret_ecchi_filter", number = 53, category = AchievementCategory.Discovery,
+        name = "Это ради сюжета, честно",
+        description = "Секретное: впервые выбрать жанр «Этти» в фильтрах каталога.",
+        trigger = Trigger(metric = "secret_genre_selected", threshold = 1, value = "ecchi"),
+        secret = true,
+    ),
+    Achievement(
+        id = "secret_redo_healer", number = 54, category = AchievementCategory.Discovery,
+        name = "Я за исцелением. Только за ним",
+        description = "Секретное: найти в поиске «Маг-целитель».",
+        trigger = Trigger(metric = "secret_search", threshold = 1, value = "healer"),
+        secret = true,
+    ),
 )

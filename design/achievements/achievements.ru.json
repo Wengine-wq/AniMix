@@ -2,7 +2,7 @@
   "version": 5,
   "status": "design_proposal",
   "brand": "AniMix 3.0 New Horizons",
-  "totalAchievements": 51,
+  "totalAchievements": 54,
   "atlases": {
     "core": {
       "file": "animix-achievements-atlas-v3.png",
@@ -1004,6 +1004,51 @@
         "row": 0,
         "column": 2
       }
+    },
+    {
+      "id": "secret_hentai_filter",
+      "number": 52,
+      "category": "discovery",
+      "secret": true,
+      "name": "Я просто проверял, работает ли фильтр",
+      "description": "Секретное: впервые выбрать жанр «Хентай» в фильтрах каталога.",
+      "trigger": {
+        "metric": "secret_genre_selected",
+        "threshold": 1,
+        "value": "hentai"
+      },
+      "iconConcept": "Воронка фильтра каталога с розовой наклейкой «18+»; временная иконка собрана из «Я не душный, я с фильтрами».",
+      "icon": "derived"
+    },
+    {
+      "id": "secret_ecchi_filter",
+      "number": 53,
+      "category": "discovery",
+      "secret": true,
+      "name": "Это ради сюжета, честно",
+      "description": "Секретное: впервые выбрать жанр «Этти» в фильтрах каталога.",
+      "trigger": {
+        "metric": "secret_genre_selected",
+        "threshold": 1,
+        "value": "ecchi"
+      },
+      "iconConcept": "Воронка фильтра каталога с наклейкой «16+»; временная иконка собрана из «Я не душный, я с фильтрами».",
+      "icon": "derived"
+    },
+    {
+      "id": "secret_redo_healer",
+      "number": 54,
+      "category": "discovery",
+      "secret": true,
+      "name": "Я за исцелением. Только за ним",
+      "description": "Секретное: найти в поиске «Маг-целитель».",
+      "trigger": {
+        "metric": "secret_search",
+        "threshold": 1,
+        "value": "healer"
+      },
+      "iconConcept": "Лупа поиска с зелёным крестом лекаря; временная иконка собрана из «Найдётся всё. Кроме сна».",
+      "icon": "derived"
     }
   ],
   "referenceSources": [
@@ -1073,4 +1118,3 @@
     }
   ]
 }
-

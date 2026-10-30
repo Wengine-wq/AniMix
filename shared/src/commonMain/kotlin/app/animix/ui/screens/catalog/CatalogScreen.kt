@@ -137,6 +137,7 @@ fun CatalogScreen(
     LaunchedEffect(paging) {
         if (searchMode && query.search == null) return@LaunchedEffect
         delay(if (query.search != null) 350 else 0) // let typing settle before searching
+        query.search?.let(graph.achievements::searched)
         paging.loadNext()
     }
     LaunchedEffect(grid, paging) {
@@ -227,7 +228,10 @@ fun CatalogScreen(
                                 is Load.Ready -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     state.value.filterNot { it.isDemographic }.forEach { genre ->
                                         val on = genre.id in genres
-                                        Chip(genre.title, selected = on, onClick = { genres = if (on) genres - genre.id else genres + genre.id })
+                                        Chip(genre.title, selected = on, onClick = {
+                                            genres = if (on) genres - genre.id else genres + genre.id
+                                            if (!on) graph.achievements.genreChosen(genre.id, genre.title)
+                                        })
                                     }
                                 }
                                 is Load.Failed -> Txt(state.error.userMessage(), AniMixTheme.type.caption)

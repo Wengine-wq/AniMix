@@ -19,10 +19,10 @@ class AchievementsTest {
     private fun anime(id: Int) = Anime.placeholder(id).copy(title = "Тайтл $id", episodes = 12)
 
     @Test
-    fun catalogHasAll51UniqueIdsAndIcons() {
-        assertEquals(51, AchievementCatalog.size)
-        assertEquals(51, AchievementCatalog.map { it.id }.toSet().size)
-        assertEquals((1..51).toList(), AchievementCatalog.map { it.number })
+    fun catalogHasUniqueIdsAndConsecutiveNumbers() {
+        assertEquals(54, AchievementCatalog.size)
+        assertEquals(AchievementCatalog.size, AchievementCatalog.map { it.id }.toSet().size)
+        assertEquals((1..AchievementCatalog.size).toList(), AchievementCatalog.map { it.number })
     }
 
     @Test
@@ -41,7 +41,7 @@ class AchievementsTest {
         achievements.themeChosen("Dusk")
         testScheduler.runCurrent()
 
-        assertEquals(51, achievements.progress.value.size, "progress never evaluated")
+        assertEquals(AchievementCatalog.size, achievements.progress.value.size, "progress never evaluated")
         val unlocked = achievements.progress.value.filter { it.unlocked }.map { it.achievement.id }.toSet()
         assertTrue("first_favorite" in unlocked, "missing first_favorite, got $unlocked")
         assertFalse("attack_on_titan" in unlocked, "a manual list mark is not verified playback")

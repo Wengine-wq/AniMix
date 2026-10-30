@@ -53,6 +53,8 @@ data class Achievement(
     val name: String,
     val description: String,
     val trigger: Trigger,
+    /** Hidden until earned: the list shows neither the name nor the condition. */
+    val secret: Boolean = false,
 )
 
 /** Progress of one achievement right now. */
@@ -176,6 +178,12 @@ class Achievements(
     /** The user switched a setting on by hand. */
     fun settingEnabled(name: String) = addToSet("setting", name)
 
+    /** A genre switched on in the catalog filters; only the secret genres are remembered. */
+    fun genreChosen(id: String, title: String) { secretGenre(id, title)?.let { addToSet("secret_genres", it) } }
+
+    /** A search the catalog actually ran (after typing settled). */
+    fun searched(text: String) { if (isHealerSearch(text)) addToSet("secret_searches", "healer") }
+
     /** A title was opened from search results. */
     fun openedFromSearch(animeKey: String) = addToSet("search", animeKey)
 
@@ -251,6 +259,8 @@ class Achievements(
                 "setting_enabled_by_user" -> if (t.value in set("setting")) 1 else 0
                 "filtered_catalog_titles_opened" -> set("filtered").size
                 "unique_titles_opened_from_search" -> set("search").size
+                "secret_genre_selected" -> if (t.value in set("secret_genres")) 1 else 0
+                "secret_search" -> if (t.value in set("secret_searches")) 1 else 0
                 "watch_seconds" -> lib.confirmedWatchSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 "episode_downloads_completed" -> maxOf(state.sets["downloads_completed"].orEmpty().size, (state.counters["episode_downloads_completed"] ?: 0).toInt())
                 "reviews_published" -> (state.counters["reviews_published"] ?: 0).toInt()
@@ -332,6 +342,17 @@ class Achievements(
             return state.copy(unlocked = state.unlocked - revoked, historical = state.historical - revoked,
                 counters = state.counters + (WATCH_TIME_REPAIR to 1L))
         }
+
+        /** Shikimori genre ids 12 (Hentai) and 9 (Ecchi), or their names. */
+        fun secretGenre(id: String, title: String): String? = when {
+            id == "12" || title.trim().lowercase() in setOf("хентай", "hentai") -> "hentai"
+            id == "9" || title.trim().lowercase() in setOf("этти", "эччи", "ecchi") -> "ecchi"
+            else -> null
+        }
+
+        /** «Маг целитель», «маг-целитель», «МАГ  ЦЕЛИТЕЛЬ: новый старт» — letters only, any case. */
+        fun isHealerSearch(text: String): Boolean =
+            "магцелитель" in text.lowercase().replace('ё', 'е').filter { it.isLetter() }
 
         /** "yyyy-MM" in UTC; close enough for "three titles in one month". */
         fun monthOf(millis: Long): String = Instant.fromEpochMilliseconds(millis).toString().take(7)
