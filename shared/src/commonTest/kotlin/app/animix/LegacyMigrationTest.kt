@@ -1,6 +1,7 @@
 package app.animix
 
 import app.animix.core.*
+import app.animix.data.account.*
 import app.animix.data.achievements.*
 import app.animix.data.legacy.*
 import app.animix.data.library.*
@@ -9,9 +10,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.random.Random
 import kotlin.test.*
@@ -40,15 +39,6 @@ class LegacyMigrationTest {
         }
     """.trimIndent()
 
-    /** Disk writes run on real threads; wait for the migration itself, not only the test scheduler. */
-    private suspend fun kotlinx.coroutines.test.TestScope.finished(migration: LegacyMigration) {
-        testScheduler.advanceUntilIdle()
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            kotlinx.coroutines.withTimeout(10_000) { migration.state.first { !it.busy } }
-        }
-        testScheduler.advanceUntilIdle()
-    }
-
     @Test fun preferencesAreReadDefensively() {
         val snapshot = LegacyFormat.parsePreferences(preferences)
         assertEquals(setOf(16498, 5114), snapshot.entries.map { it.shikimoriId }.toSet())
@@ -67,9 +57,9 @@ class LegacyMigrationTest {
         val disk = disk()
         val library = Library(disk, backgroundScope).apply { load() }
         val rewards = Achievements(disk, backgroundScope, library, AppSettings(disk, backgroundScope)).apply { load() }
-        val migration = LegacyMigration(HttpClient(MockEngine { respond("", HttpStatusCode.NotFound) }), backgroundScope, library, rewards,
+        val migration = LegacyMigration(backgroundScope, library, rewards, account = null,
             titles = { ids -> ids.map { anime(it, if (it == 16498) 25 else 12) } }, localText = { preferences })
-        repeat(2) { migration.apply(LegacyFormat.parsePreferences(preferences), "device", null, null) }
+        repeat(2) { migration.apply(LegacyFormat.parsePreferences(preferences)) }
         val data = library.state.value
         assertEquals(3, data.entries.size)
         assertEquals(ListStatus.Completed, data.entries.getValue("s16498").status)
@@ -86,7 +76,7 @@ class LegacyMigrationTest {
         assertEquals(3600L + 86_400L, data.legacyMigration?.watchSeconds)
     }
 
-    @Test fun accountSignInMigratesAndGrantsTheAccountAwardOnce() = runTest {
+    @Test fun localDataGoesIntoTheOnlineAccountAndEarnsTheAccountAwardOnce() = runTest {
         val disk = disk()
         val library = Library(disk, backgroundScope).apply { load() }
         val rewards = Achievements(disk, backgroundScope, library, AppSettings(disk, backgroundScope)).apply { load() }
@@ -95,41 +85,55 @@ class LegacyMigrationTest {
             requests += "${request.method.value} ${request.url.encodedPath}"
             val json = headersOf(HttpHeaders.ContentType, "application/json")
             when (request.url.encodedPath) {
-                "/v1/auth/google/exchange" -> respond("""{"access_token":"a","refresh_token":"r","user":{"display_name":"Ilya","created_at":"2025-01-01T00:00:00.000Z"}}""", headers = json)
-                "/v1/library" -> respond("""{"entries":[{"shikimori_id":38000,"status":"completed","score":8,"episodes_watched":26,"updated_at":1}]}""", headers = json)
-                "/v1/usage" -> respond("""{"stats":{"watch_seconds":7200,"activity":[{"created_at":1790000000,"action":"watch_seconds","anime_id":1,"metadata":{"seconds":3600}},{"created_at":1790000100,"action":"watch_seconds","anime_id":1,"metadata":{"seconds":3600}}]}}""", headers = json)
-                "/v1/me/achievements" -> respond("""{"achievements":{"demon_blade":1790000000000,"owl":1}}""", headers = json)
+                "/v1/auth/google/exchange" -> respond("""{"access_token":"a","refresh_token":"r","user":{"id":"u1","display_name":"Ilya","created_at":"2025-01-01T00:00:00.000Z"}}""", headers = json)
                 else -> respond("{}", headers = json)
             }
         }
-        val migration = LegacyMigration(HttpClient(engine), backgroundScope, library, rewards,
-            titles = { ids -> ids.map { anime(it, 26) } }, localText = { null })
+        val account = AniMixAccount(HttpClient(engine), disk, backgroundScope, baseUrl = "https://animix.test").apply { load() }
         // A callback nobody asked for is ignored.
-        migration.completeSignIn("${LegacyMigration.CALLBACK}?ticket=t&state=s")
+        account.completeSignIn("${AniMixServer.CALLBACK}?ticket=t&state=s")
         testScheduler.advanceUntilIdle()
         assertTrue(requests.isEmpty())
 
-        migration.signInUrl()
-        migration.completeSignIn("${LegacyMigration.CALLBACK}?ticket=t&state=s")
-        finished(migration)
-        rewards.flush()
-        assertNull(migration.state.value.error, migration.state.value.error)
-        assertTrue("POST /v1/auth/logout" in requests, "the 2.x session is closed after the migration")
-        assertEquals(ListStatus.Completed, library.state.value.entries.getValue("s38000").status)
-        assertEquals(7200, library.state.value.legacyWatchSeconds)
-        val account = rewards.progress.value.first { it.achievement.id == "legacy_lists" }
-        assertTrue(account.earned)
-        assertEquals("signin", account.variant)
-        assertTrue(rewards.progress.value.first { it.achievement.id == "demon_slayer" }.earned)
+        account.signInUrl()
+        account.completeSignIn("${AniMixServer.CALLBACK}?ticket=t&state=s")
+        settle { account.state.value.user != null && !account.state.value.busy }
+        assertEquals("Ilya", account.state.value.user?.name)
+        assertEquals("signin", account.state.value.path)
 
-        // Signing in again cannot earn the award a second time or switch its path.
-        val first = account.unlockedAt
-        migration.signInUrl()
-        migration.completeSignIn("${LegacyMigration.CALLBACK}?ticket=t2&state=s2")
-        finished(migration)
-        rewards.flush()
-        val again = rewards.progress.value.first { it.achievement.id == "legacy_lists" }
-        assertEquals(first, again.unlockedAt)
-        assertEquals("signin", again.variant)
+        val migration = LegacyMigration(backgroundScope, library, rewards, account,
+            titles = { ids -> ids.map { anime(it, if (it == 16498) 25 else 12) } }, localText = { preferences })
+        migration.apply(LegacyFormat.parsePreferences(preferences))
+        assertTrue("PUT /v1/library/16498" in requests && "PUT /v1/library/5114" in requests, "$requests")
+        assertFalse("PUT /v1/library/38000" in requests, "a title without a list status is history only")
+        assertTrue("PUT /v1/me/achievements" in requests)
+        val award = rewards.progress.value.first { it.achievement.id == "legacy_lists" }
+        assertTrue(award.earned)
+        assertEquals("signin", award.variant)
+        assertEquals("Ilya", library.state.value.legacyMigration?.accountName)
+
+        // Migrating again cannot earn it twice or switch its path.
+        migration.apply(LegacyFormat.parsePreferences(preferences))
+        assertEquals(award.unlockedAt, rewards.progress.value.first { it.achievement.id == "legacy_lists" }.unlockedAt)
+
+        // The session survives a restart and ends with sign-out.
+        val restored = AniMixAccount(HttpClient(engine), disk, backgroundScope, baseUrl = "https://animix.test").apply { load() }
+        assertEquals("u1", restored.state.value.user?.id)
+        restored.signOut()
+        settle { restored.state.value.user == null }
+        assertNull(AniMixAccount(HttpClient(engine), disk, backgroundScope, baseUrl = "https://animix.test").apply { load() }.state.value.user)
+    }
+
+    /** Disk writes run on real threads; wait for the state itself, not only the test scheduler. */
+    private suspend fun kotlinx.coroutines.test.TestScope.settle(done: () -> Boolean) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(10_000) {
+                while (true) {
+                    testScheduler.advanceUntilIdle()
+                    if (done()) break
+                    kotlinx.coroutines.delay(20)
+                }
+            }
+        }
     }
 }

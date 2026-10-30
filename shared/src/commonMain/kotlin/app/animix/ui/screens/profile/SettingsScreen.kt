@@ -43,6 +43,8 @@ private enum class SettingsCategory(val title: String, val icon: ImageVector) {
 @Composable
 fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
     val settings by graph.settings.state.collectAsState()
+    val account by graph.account.state.collectAsState()
+    LaunchedEffect(Unit) { graph.account.load() }
     ScreenColumn(contentPadding) {
         PageHeader("Настройки", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
@@ -73,7 +75,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Data -> "Объём и очистка"
                     SettingsCategory.Experimental -> listOfNotNull("AniPulse".takeIf { settings.experimentalPulse },
                         "Подборки".takeIf { settings.experimentalPicks }).joinToString().ifEmpty { "Выключены" }
-                    SettingsCategory.Account -> "Локальный профиль"
+                    SettingsCategory.Account -> account.user?.name ?: "Локальный профиль"
                     SettingsCategory.About -> AppRelease.version
                 }
                 NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)

@@ -104,41 +104,9 @@ object LegacyFormat {
         return LegacySnapshot(entries, awards, seconds, name, watched)
     }
 
-    /**
-     * `GET /v1/usage` of the 2.x server: the total, with the dated rows of the last year limited to
-     * 24 hours per day. Older time (outside the rows) is kept as reported.
-     */
-    fun usageSeconds(stats: JsonObject?, offsetMillis: Long = 0): Long {
-        if (stats == null) return 0
-        val total = stats.long("watch_seconds")?.coerceAtLeast(0) ?: 0
-        val rows = (stats["activity"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-            .filter { it.text("action") == "watch_seconds" }
-        if (rows.isEmpty()) return total
-        val perDay = HashMap<Long, Long>()
-        var raw = 0L
-        for (row in rows) {
-            val seconds = ((row["metadata"] as? JsonObject)?.long("seconds") ?: 0).coerceIn(0, 3600)
-            val at = row.long("created_at") ?: continue
-            raw += seconds
-            val day = Math.floorDiv(at * 1000 + offsetMillis, 86_400_000L)
-            perDay[day] = (perDay[day] ?: 0) + seconds
-        }
-        val dated = perDay.values.sumOf { it.coerceAtMost(SECONDS_PER_DAY) }
-        return dated + (total - raw).coerceAtLeast(0)
-    }
-
-    fun achievements(element: JsonElement?): Map<String, Long> = (element as? JsonObject).orEmpty().mapNotNull { (id, value) ->
-        (value as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }?.let { id to it }
-    }.toMap()
-
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.contentOrNull?.toDoubleOrNull()?.toLong() }
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
-    private fun JsonObject?.orEmpty(): Map<String, JsonElement> = this ?: emptyMap()
 
     private const val SECONDS_PER_DAY = 86_400L
-}
-
-private object Math {
-    fun floorDiv(value: Long, divisor: Long): Long = if (value >= 0) value / divisor else -((-value + divisor - 1) / divisor)
 }

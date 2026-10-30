@@ -334,7 +334,7 @@ internal val AchievementCatalog: List<Achievement> = listOf(
     Achievement(
         id = "legacy_lists", number = 55, category = AchievementCategory.Profile,
         name = "Новый AniMix — а списки-то старые",
-        description = "Перенести данные AniMix 2.x: войти в свой аккаунт или зарегистрировать онлайн-профиль.",
+        description = "Перенести списки AniMix 2.x в онлайн-профиль: зарегистрировав его или войдя в свой аккаунт.",
         trigger = Trigger(metric = "legacy_account", threshold = 1),
     ),
 )

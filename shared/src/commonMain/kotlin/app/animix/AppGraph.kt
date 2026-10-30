@@ -99,7 +99,9 @@ class AppGraph {
     /** New versions from GitHub Releases, offered on the home screen. */
     val updates = app.animix.data.update.AppUpdates(http, scope)
     /** «Миграция с AniMix 2.x» in Settings → «Аккаунт». */
-    val legacy = app.animix.data.legacy.LegacyMigration(http, scope, library, achievements, titles = { ids -> shikimori.byIds(ids) })
+    /** The online AniMix profile on the account server. */
+    val account = app.animix.data.account.AniMixAccount(http, DiskStore(Platform.dataDir), scope)
+    val legacy = app.animix.data.legacy.LegacyMigration(scope, library, achievements, account, titles = { ids -> shikimori.byIds(ids) })
     val imports = app.animix.data.importer.ImportJobs(scope, library, shikimoriAccount, anixart, anixartMatcher)
 
     suspend fun clearCache() {

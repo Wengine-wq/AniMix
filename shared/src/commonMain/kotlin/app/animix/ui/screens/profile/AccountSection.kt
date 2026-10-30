@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.Platform
 import app.animix.data.importer.OAuthBrowser
-import app.animix.data.legacy.LegacyMigration
+import app.animix.data.account.AniMixServer
 import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,32 +25,53 @@ import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 
 /**
- * Settings → «Аккаунт», laid out for what comes with the AniMix server: sign-in, sessions on
- * other devices, Horizon Link and Yandex/Google sign-in. Everything that needs the server is
- * shown as unavailable rather than pretending to work; the Shikimori link is real.
+ * Settings → «Аккаунт»: the online AniMix profile (Google sign-in on the AniMix server), migration of
+ * the AniMix 2.x local profile into it, then what is still to come (sessions, Horizon Link, Yandex ID).
  */
 @Composable
 internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
     val colors = AniMixTheme.colors
     val library by graph.library.state.collectAsState()
     val shikimori by graph.shikimoriAccount.user.collectAsState()
-    LaunchedEffect(Unit) { graph.shikimoriAccount.load() }
+    val account by graph.account.state.collectAsState()
+    val uri = LocalUriHandler.current
+    var browserUrl by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { graph.shikimoriAccount.load(); graph.account.load() }
+    browserUrl?.let { url ->
+        OAuthBrowser(url, AniMixServer.CALLBACK, service = "Google",
+            onRedirect = { redirect -> browserUrl = null; graph.account.completeSignIn(redirect) },
+            onCancel = { browserUrl = null; graph.account.cancelSignIn() })
+    }
+    val user = account.user
     Column {
         Panel {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(48.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
-                    Txt(library.profile.name.take(1).uppercase(), AniMixTheme.type.heading, color = colors.onAccent)
+                    Txt((user?.name ?: library.profile.name).take(1).uppercase(), AniMixTheme.type.heading, color = colors.onAccent)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Txt(library.profile.name, AniMixTheme.type.bodyStrong, maxLines = 1)
-                    Txt("Локальный профиль: всё хранится на этом устройстве", AniMixTheme.type.caption)
+                    Txt(user?.name ?: library.profile.name, AniMixTheme.type.bodyStrong, maxLines = 1)
+                    Txt(if (user != null) "Онлайн-профиль AniMix" + (user.email?.let { " · $it" } ?: "")
+                        else "Локальный профиль: всё хранится на этом устройстве", AniMixTheme.type.caption, maxLines = 2)
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
-        PrimaryButton("Войти в AniMix", {}, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = false)
-        Unavailable("Аккаунты AniMix появятся вместе с серверной частью. Профиль и списки перенесутся в аккаунт.")
+        if (user == null) {
+            PrimaryButton(if (account.busy) "Входим…" else "Войти или зарегистрироваться", {
+                val url = graph.account.signInUrl()
+                if (Platform.name == "Android") runCatching { uri.openUri(url) } else browserUrl = url
+            }, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !account.busy)
+            when {
+                account.error != null -> Txt(account.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
+                    modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+                account.waitingForBrowser && Platform.name == "Android" -> Unavailable("Завершите вход в браузере — AniMix продолжит сам.")
+                else -> Unavailable("Вход через Google. При первом входе создаётся онлайн-профиль AniMix.")
+            }
+        } else {
+            SecondaryButton("Выйти из аккаунта", graph.account::signOut, Modifier.fillMaxWidth(), icon = AniMixIcons.Close)
+        }
 
         Section("Миграция с AniMix 2.x")
         LegacyMigrationSection(graph)
@@ -76,9 +97,10 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
             Divider()
             AccountRow(AniMixIcons.User, "Яндекс ID", "Вход в AniMix через Яндекс", trailing = "Недоступно", enabled = false)
             Divider()
-            AccountRow(AniMixIcons.User, "Google", "Вход в AniMix через Google", trailing = "Недоступно", enabled = false)
+            AccountRow(AniMixIcons.User, "Google", account.user?.email?.let { "Подключён: $it" } ?: "Вход в AniMix через Google",
+                trailing = if (account.user != null) "Подключён" else "Через «Войти»", enabled = account.user != null)
         }
-        Unavailable("Сессии, Horizon Link и вход через Яндекс и Google заработают с серверной частью AniMix.")
+        Unavailable("Сессии на других устройствах, Horizon Link и вход через Яндекс появятся в следующих версиях.")
     }
 }
 
@@ -86,31 +108,24 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
 private fun LegacyMigrationSection(graph: AppGraph) {
     val colors = AniMixTheme.colors
     val state by graph.legacy.state.collectAsState()
+    val account by graph.account.state.collectAsState()
     val library by graph.library.state.collectAsState()
-    val uri = LocalUriHandler.current
-    var browserUrl by remember { mutableStateOf<String?>(null) }
     var local by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { local = withContext(Dispatchers.Default) { graph.legacy.hasLocalData() } }
-    browserUrl?.let { url ->
-        OAuthBrowser(url, LegacyMigration.CALLBACK, service = "Google",
-            onRedirect = { redirect -> browserUrl = null; graph.legacy.completeSignIn(redirect) },
-            onCancel = { browserUrl = null; graph.legacy.cancelSignIn() })
-    }
-    Txt("Списки, оценки, просмотренные серии, часы просмотра и достижения из AniMix 2.x. Списки попадают в историю просмотров, достижения — в коллекцию с обычным XP.",
+    Txt("Локальный профиль AniMix 2.x: списки, оценки, просмотренные серии, часы просмотра и достижения. " +
+        "Списки попадают в историю просмотров и в онлайн-профиль, достижения — в коллекцию с обычным XP.",
         AniMixTheme.type.caption)
     Spacer(Modifier.height(12.dp))
-    Panel {
-        AccountRow(AniMixIcons.User, "Войти в аккаунт AniMix 2.x", "Через Google. Сессия закроется сразу после переноса",
-            trailing = "Войти", enabled = !state.busy, onClick = {
-                val url = graph.legacy.signInUrl()
-                if (Platform.name == "Android") runCatching { uri.openUri(url) } else browserUrl = url
-            })
-        if (local) {
-            Divider()
+    if (local) {
+        Panel {
             AccountRow(AniMixIcons.Monitor, if (Platform.name == "Android") "Перенести с этого устройства" else "Перенести с этого компьютера",
-                "Найдены данные AniMix 2.x, в том числе без аккаунта",
+                if (account.user != null) "В онлайн-профиль «${account.user?.name}» и на это устройство"
+                else "Пока только на это устройство: сначала войдите, чтобы списки попали в онлайн-профиль",
                 trailing = "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
         }
+    } else {
+        Unavailable(if (Platform.name == "Android") "Данные AniMix 2.x на этом устройстве не найдены. Они остаются, если AniMix установлен поверх версии 2.x."
+            else "Данные AniMix 2.x на этом компьютере не найдены.")
     }
     val done = state.result ?: library.legacyMigration
     when {
@@ -119,16 +134,13 @@ private fun LegacyMigrationSection(graph: AppGraph) {
             Spacer(Modifier.width(10.dp))
             Txt(state.stage, AniMixTheme.type.caption)
         }
-        state.waitingForBrowser && Platform.name == "Android" ->
-            Unavailable("Завершите вход в браузере — AniMix продолжит перенос сам.")
         state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
             modifier = Modifier.padding(top = 10.dp, start = 4.dp))
         done != null -> Txt(
-            "Перенесено${done.accountName?.let { " из аккаунта «$it»" } ?: if (done.source == "device") " с этого устройства" else ""}: " +
+            "Перенесено${done.accountName?.let { " в онлайн-профиль «$it»" } ?: " на это устройство"}: " +
                 "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
             AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
     }
-    if (Platform.name == "Android" && !local) Unavailable("Данные 2.x без аккаунта находятся, только если AniMix установлен поверх версии 2.x. Иначе перенос идёт через вход в аккаунт.")
 }
 
 @Composable
