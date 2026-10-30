@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -8,14 +10,30 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // Same id as AniMix 2.x, so a release signed with the same key installs as an update.
-        applicationId = "com.example.animix"
+        // Its own id: AniMix 2.x (com.example.animix) was signed with a debug key that no longer
+        // exists, so New Horizons installs next to it and updates only itself. Never change this
+        // id or the release key below, or installed copies stop receiving updates.
+        applicationId = "app.animix.newhorizons"
         minSdk = 26
         targetSdk = 36
         // versionCode only grows: 3000 + minor * 100 + patch of the "1.minor.patch re" line.
         versionCode = 3005
         versionName = "1.0.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // The release key lives outside the repository: %USERPROFILE%\.animixelease.properties
+    // (or ANIMIX_RELEASE_PROPERTIES) names release.jks and its passwords. Keep both backed up.
+    val releaseProperties = (System.getenv("ANIMIX_RELEASE_PROPERTIES")?.let(::File)
+        ?: File(System.getProperty("user.home"), ".animix/release.properties"))
+        .takeIf { it.isFile }?.let { file -> Properties().apply { file.inputStream().use(::load) } }
+    signingConfigs {
+        if (releaseProperties != null) create("release") {
+            storeFile = File(releaseProperties.getProperty("storeFile"))
+            storePassword = releaseProperties.getProperty("storePassword")
+            keyAlias = releaseProperties.getProperty("keyAlias")
+            keyPassword = releaseProperties.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -25,6 +43,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
