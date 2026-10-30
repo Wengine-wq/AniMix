@@ -1,42 +1,89 @@
-# AniMix New Horizons — 1.0.5 re
+# AniMix · New Horizons
 
-AniMix reborn: an anime app in Kotlin and Compose Multiplatform.
-Targets: Android and Windows desktop, from one shared codebase.
+**AniMix** — приложение для просмотра аниме на Android и Windows. New Horizons — перерождение первого AniMix: одно приложение на телефоне и ПК, свой плеер, загрузки, онлайн-профиль и синхронизация между устройствами.
 
-## Layout
+Текущая версия — **1.0.5 re**.
 
-| Module       | What it holds |
-|--------------|---------------|
-| `shared`     | All UI (Compose), theme, navigation, data layer. |
-| `desktopApp` | Windows entry point, window chrome, installer config. |
-| `androidApp` | Android entry point (included once an Android SDK is installed). |
+<p>
+  <img src="docs/screenshots/home.png" width="250" alt="Главная">
+  <img src="docs/screenshots/catalog.png" width="250" alt="Каталог">
+</p>
+<img src="docs/screenshots/home-desktop.png" width="760" alt="AniMix на Windows">
 
-Inside `shared/src/commonMain/kotlin/app/animix`:
+## Скачать
 
-- `data/shikimori` — catalog via Shikimori's public GraphQL API.
-- `data/yummy` — finds the YummyAnime release for a Shikimori id and groups its videos into dubbings (studio + player) with opening/ending skip times.
-- `data/playback` — Kodik browser capture, verified HLS/MP4 qualities and native Media3/libVLC playback with shared AniMix controls; see [resolver notes](docs/kodik-resolver.md).
-- `data/downloads` — persistent season/episode queue, resumable HLS resources, single-file MP4 assembly and offline playback; see [player and download notes](docs/native-playback-downloads.md).
-- `data/cache` — memory + disk cache: fresh entries skip the network, identical requests share one call, and stale data (up to 7 days) is shown when offline.
-- `ui/theme` — graphite + pastel pink palette, dark and light themes, Inter typeface.
-- `ui/navigation` — per-tab back stacks and `animix://` links (`animix://anime/<id>`, `animix://catalog`, `animix://settings`).
+**[Последний релиз](https://github.com/Wengine-wq/AniMix/releases/latest)**
 
-## Build
+| Платформа | Файл | Установка |
+| --- | --- | --- |
+| Android 8.0+ | `AniMix-<версия>-re-universal.apk` | Откройте APK и разрешите установку. Ставится отдельным приложением и не заменяет другие версии AniMix. |
+| Windows 10/11 (x64) | `AniMix-<версия>-re-Windows-x64.zip` | Распакуйте в постоянную папку и запустите `AniMix\AniMix.exe`. VLC устанавливать не нужно. |
 
-UI changes follow the [AniMix interface guidelines](docs/interface-guidelines.md): shared shapes, spacing, components, motion and navigation behavior.
+Новые версии приложение находит само и предлагает их на главной. На Android скачивается APK и открывается системный установщик. На Windows обновление скачивается и ставится после закрытия AniMix, затем приложение запускается снова. Настройки, списки и загрузки сохраняются.
 
-Requires JDK 21 (a portable one lives in `D:\DevTools\jdk-21.0.12.1+1`).
+## Возможности
 
+- **Каталог и поиск.** Shikimori и YummyAnime в одной выдаче. Фильтры по типу, жанрам и году сохраняются при переходах.
+- **Встроенный плеер.** Выбор озвучки и качества, полноэкранный режим, автопереход, пропуск опенингов и эндингов, продолжение с места остановки.
+- **Загрузки.** Очередь серий с выбором озвучки и качества, просмотр без сети, офлайн-автопереход.
+- **Watch flow.** Очередь серий под свободное время с прогнозом окончания и остановкой по лимиту; можно смешивать разные тайтлы.
+- **Онлайн-профиль.** Вход через Google. Списки, оценки, просмотренные серии, часы, достижения и оформление профиля синхронизируются между устройствами — без дублей и без потери записей, в том числе без сети с отправкой позже.
+- **Horizon Link.** Начали серию на одном устройстве — продолжите на другом с той же озвучкой, качеством и позицией.
+- **Друзья.** Поиск по имени, заявки в уведомлениях, онлайн-статус, профиль друга со статистикой и коллекцией (если друг её открыл).
+- **Профиль и уровень.** Аватар, баннер, описание, закреплённое достижение, уровень кольцом вокруг аватара, активность и любимые жанры.
+- **Достижения.** За подтверждённый просмотр, коллекцию и привычки, включая секретные. Перемотка, повторы и перевод часов наград не дают.
+- **Итоги года.** Истории о вашем годе в AniMix с музыкой и анимацией.
+- **Перенос данных.** Импорт списков из Shikimori и Anixart; перенос списков, часов и достижений из локального профиля AniMix 2.x.
+- **Светлая и тёмная темы**, экономия батареи и отключение анимаций.
+
+## Из чего состоит
+
+| Папка | Что внутри |
+| --- | --- |
+| `shared` | Весь интерфейс (Compose Multiplatform), тема, навигация, данные: каталог, плеер, загрузки, библиотека, достижения, аккаунт и синхронизация. |
+| `androidApp` | Точка входа Android, манифест, подпись релиза. |
+| `desktopApp` | Точка входа Windows, окно, упаковка с комплектным VLC. |
+| `server` | Сервер аккаунтов на Node.js + PostgreSQL: вход через Google, профили, синхронизация, друзья, Horizon Link. Развёртывание на VPS — `server/deploy`. |
+| `docs` | Правила интерфейса и описания подсистем. |
+
+## Сборка
+
+Нужны JDK 21 и Android SDK (путь в `local.properties`).
+
+```powershell
+$env:JAVA_HOME = 'D:\DevTools\jdk-21.0.12.1+1'
+.\gradlew :desktopApp:run                         # запустить на Windows
+.\gradlew :shared:desktopTest                     # тесты
+.\gradlew :androidApp:assembleDebug               # отладочный APK (ставится отдельно: app.animix.newhorizons.v3dev)
+.\gradlew :androidApp:assembleRelease             # релизный APK, подписанный ключом из %USERPROFILE%\.animix\release.properties
+.\gradlew :desktopApp:createReleaseDistributable  # папка AniMix для zip-релиза
 ```
-set JAVA_HOME=D:\DevTools\jdk-21.0.12.1+1
-gradlew :desktopApp:run                    # run on Windows
-gradlew :desktopApp:createDistributable    # AniMix.exe in desktopApp/build/compose/binaries
-gradlew :shared:desktopTest                # unit tests
+
+Первая сборка для Windows скачивает и проверяет по контрольной сумме среду VLC (около 82 МБ).
+
+Сервер:
+
+```powershell
+cd server
+npm install
+npm test
+powershell -File deploy\deploy.ps1 -Ip <IP сервера>
 ```
 
-The font is Inter (SIL Open Font License, see `licenses/`).
+Подробнее — [server/README.md](server/README.md).
 
-Windows builds bundle a pinned, checksum-verified VLC runtime (first build downloads about 82 MB); no VLC installation is required. See [native video notices](licenses/native-video.md).
+## Версии и релизы
 
-Enable the complete-module commit/push checks after cloning:
-`powershell -File scripts/setup-git-guards.ps1`. They are already enabled in this checkout.
+Версии линии **re** нумеруются `1.<minor>.<patch> re`, тег релиза — `v1.<minor>.<patch>-re`, versionCode = 3000 + minor × 100 + patch. Приложение предлагает обновление только из релизов с таким тегом. Как выпустить исправление — [docs/app-updates.md](docs/app-updates.md).
+
+## Документация
+
+- [Правила интерфейса](docs/interface-guidelines.md)
+- [Синхронизация онлайн-профиля](docs/account-sync.md) · [Друзья, Horizon Link, итоги года](docs/social-horizon-review.md)
+- [Просмотр, уровень и экономия батареи](docs/viewing-levels-power.md) · [Watch flow](docs/watch-flow.md)
+- [Плеер и загрузки](docs/native-playback-downloads.md) · [Онлайн-профиль и миграция с 2.x](docs/legacy-migration.md)
+- [План следующей версии](docs/roadmap.md)
+
+## Лицензия
+
+Код — [MIT](LICENSE). Шрифт Inter — SIL Open Font License ([licenses/OFL-Inter.txt](licenses/OFL-Inter.txt)). Сведения о комплектном VLC — [licenses/native-video.md](licenses/native-video.md). Названия, постеры и описания аниме принадлежат их правообладателям и загружаются из открытых каталогов.
