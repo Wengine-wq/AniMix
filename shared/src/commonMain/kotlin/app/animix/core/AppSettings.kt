@@ -46,6 +46,8 @@ data class Settings(
     val experimentalPulse: Boolean = false,
     /** «Экспериментальные функции»: «Подобрано для вас» on the home screen. */
     val experimentalPicks: Boolean = false,
+    /** The update version the viewer put off with «Позже»; a newer one is offered again. */
+    val dismissedUpdate: String? = null,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 ) {

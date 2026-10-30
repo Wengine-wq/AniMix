@@ -96,6 +96,8 @@ class AppGraph {
     val shikimoriAccount = app.animix.data.importer.ShikimoriAccount(http, DiskStore(Platform.dataDir))
     val anixart = app.animix.data.importer.AnixartClient(http)
     val anixartMatcher = app.animix.data.importer.AnixartMatcher(http, yummy, DiskStore(Platform.dataDir))
+    /** New versions from GitHub Releases, offered on the home screen. */
+    val updates = app.animix.data.update.AppUpdates(http, scope)
     /** «Миграция с AniMix 2.x» in Settings → «Аккаунт». */
     val legacy = app.animix.data.legacy.LegacyMigration(http, scope, library, achievements, titles = { ids -> shikimori.byIds(ids) })
     val imports = app.animix.data.importer.ImportJobs(scope, library, shikimoriAccount, anixart, anixartMatcher)

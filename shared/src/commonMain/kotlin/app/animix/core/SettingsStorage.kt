@@ -17,7 +17,7 @@ internal object SettingsPreferences {
     private val dubbings = stringPreferencesKey("dubbingByAnime")
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
         "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "experimentalPulse", "experimentalPicks")
-    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality")
+    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate")
 
     fun decode(preferences: Preferences): Settings {
         // Explicit preference types; the nested dubbing map remains a JSON string.

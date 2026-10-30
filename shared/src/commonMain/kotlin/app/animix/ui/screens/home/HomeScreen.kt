@@ -66,6 +66,8 @@ import app.animix.data.library.continueWatching
 import app.animix.data.library.tasteGenres
 import app.animix.data.library.reviewAccess
 import app.animix.ui.components.ProgressLine
+import app.animix.ui.components.PrimaryButton
+import app.animix.ui.components.SecondaryButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import app.animix.data.shikimori.CatalogOrder
@@ -120,6 +122,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
+        item(key = "update") { UpdateOffer(graph) }
         item(key = "hero") {
             when (val state = ongoingState) {
                 Load.Loading -> HomeHeroPlaceholder()
@@ -415,6 +418,40 @@ internal fun HomeHeroPlaceholder() {
  * «Итоги года» on the home screen: open from 20 December, or earlier after three titles
  * watched in AniMix; until then the card says when and how far along the viewer is.
  */
+/** A newer release from GitHub: one quiet card under the header until updated or put off. */
+@Composable
+private fun UpdateOffer(graph: AppGraph) {
+    val colors = AniMixTheme.colors
+    val state by graph.updates.state.collectAsState()
+    val settings by graph.settings.state.collectAsState()
+    LaunchedEffect(Unit) { graph.updates.check() }
+    val update = state.available ?: return
+    if (settings.dismissedUpdate == update.version && !state.downloading && state.message == null) return
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth()
+        .clip(AniMixTheme.shapes.large).background(colors.surfaceRaised).rim(AniMixTheme.shapes.large, accent = true).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(AniMixIcons.Download, null, Modifier.size(22.dp), tint = colors.accent)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Txt("Доступна версия ${update.label}", AniMixTheme.type.subheading)
+                Txt(update.notes.lineSequence().map { it.trim().trimStart('#', '-', '*', ' ') }.firstOrNull { it.isNotBlank() } ?: update.title,
+                    AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        if (state.downloading) {
+            Spacer(Modifier.height(12.dp))
+            ProgressLine(state.progress)
+            Txt("Скачиваем · ${(state.progress * 100).toInt()} %", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
+        }
+        state.message?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp)) }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PrimaryButton("Обновить", graph.updates::install, Modifier.weight(1f), icon = AniMixIcons.Download, enabled = !state.downloading)
+            SecondaryButton("Позже", { graph.settings.update { it.copy(dismissedUpdate = update.version) } }, Modifier.weight(1f), enabled = !state.downloading)
+        }
+    }
+}
+
 @Composable
 private fun YearReviewCard(library: app.animix.data.library.LibraryData, onOpen: (Int) -> Unit) {
     val colors = AniMixTheme.colors
