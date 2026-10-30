@@ -51,10 +51,6 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
         Txt("Коллекция", AniMixTheme.type.heading)
         Spacer(Modifier.height(12.dp))
         Panel {
-            if (settings.experimentalPulse) {
-                NavRow("AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }, trailing = "Аниме-неделя")
-                Divider()
-            }
             NavRow("История просмотров", AniMixIcons.History, { navigator.push(Route.History) })
             Divider()
             NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.Achievements) })
@@ -73,8 +69,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> if (settings.batterySaver) "Экономия" else "Обычный режим"
                     SettingsCategory.Data -> "Объём и очистка"
-                    SettingsCategory.Experimental -> listOfNotNull("AniPulse".takeIf { settings.experimentalPulse },
-                        "Подборки".takeIf { settings.experimentalPicks }).joinToString().ifEmpty { "Выключены" }
+                    SettingsCategory.Experimental -> if(settings.experimentalPicks)"Подборки" else "Выключены"
                     SettingsCategory.Account -> account.user?.name ?: "Локальный профиль"
                     SettingsCategory.About -> AppRelease.version
                 }
@@ -83,7 +78,6 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
             }
         }
         Spacer(Modifier.height(12.dp))
-        Panel { NavRow("Поддержка", AniMixIcons.Help, { navigator.push(Route.Support) }) }
         Spacer(Modifier.height(24.dp))
         Txt(AppRelease.label, AniMixTheme.type.caption, modifier = Modifier.align(Alignment.CenterHorizontally), align = TextAlign.Center)
     }
@@ -171,9 +165,9 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
             SettingsCategory.Data -> StorageSection(graph, navigator)
             SettingsCategory.Experimental -> {
                 Panel {
-                    ToggleRow("AniPulse — аниме-неделя", settings.experimentalPulse,
-                        { v -> graph.settings.update { it.copy(experimentalPulse = v) } }, AniMixIcons.Pulse,
-                        subtitle = "Еженедельный выпуск по вашим спискам: серии, новости Shikimori и ИИ-обзор со ссылками на источники")
+                    ToggleRow("AniPulse временно недоступен", false,
+                        {}, AniMixIcons.Pulse, enabled = false,
+                        subtitle = "Приостановлен до исправления сервиса. Сохранённый архив не удалён")
                     Divider()
                     ToggleRow("Подобрано для вас", settings.experimentalPicks,
                         { v -> graph.settings.update { it.copy(experimentalPicks = v) } }, AniMixIcons.Star,
@@ -181,10 +175,6 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 }
                 Txt("Функции в разработке: результаты могут ошибаться, а ИИ-обзору нужна сеть. Выключение скрывает их и ничего не удаляет — архив выпусков сохраняется.",
                     AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
-                if (settings.experimentalPulse) {
-                    Spacer(Modifier.height(12.dp))
-                    Panel { NavRow("Открыть AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }) }
-                }
             }
             SettingsCategory.Account -> AccountSection(graph, navigator)
         }

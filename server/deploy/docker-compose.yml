@@ -1,0 +1,89 @@
+# AniMix API on one small VPS (Ubuntu 24.04, 1–2 GB RAM): API, PostgreSQL,
+# automatic HTTPS (Caddy + Let's Encrypt) and a nightly database backup.
+# Lives in /opt/animix next to ./api (the server source) and ./.env.
+# Started by setup.sh: `docker compose up -d --build`.
+#
+# Outbound connections from Docker's bridge networks stall on this provider's path (npm,
+# Let's Encrypt and Google timed out while the host reached them every time). Everything that
+# talks to the internet therefore uses the host network; ufw keeps only 22/80/443 open, and
+# PostgreSQL listens on 127.0.0.1 only.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: animix
+      POSTGRES_USER: animix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Sized for a 1–2 GB machine shared with the API; raise on a bigger plan.
+    command: >
+      postgres -c shared_buffers=96MB -c effective_cache_size=256MB -c work_mem=4MB
+      -c maintenance_work_mem=32MB -c max_connections=30 -c wal_buffers=4MB
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    mem_limit: 400m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U animix -d animix"]
+      interval: 10s
+      retries: 6
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      network: host
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://animix:${POSTGRES_PASSWORD}@127.0.0.1:5432/animix
+      PORT: "8080"
+      NODE_OPTIONS: --max-old-space-size=256
+      # Avatars and banners live on this machine; Caddy passes /media/* through to the API.
+      MEDIA_DIR: /data/media
+      MEDIA_PUBLIC_BASE_URL: https://${API_DOMAIN}/media
+    volumes:
+      - ./media:/data/media
+    mem_limit: 350m
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # HTTPS for API_DOMAIN. Until a real domain exists, <ip-with-dashes>.sslip.io resolves to this VM.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host
+    command: caddy reverse-proxy --from ${API_DOMAIN:?set API_DOMAIN in .env} --to 127.0.0.1:8080
+    volumes:
+      - caddy-data:/data
+    mem_limit: 100m
+    depends_on:
+      - api
+
+  # Nightly database dump and media archive into ./backups, kept for 14 days. Copy them off with backup.ps1.
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - ./media:/media:ro
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h 127.0.0.1 -U animix -d animix -Fc -f /backups/animix-$$(date +%F).dump &&
+        tar -czf /backups/media-$$(date +%F).tgz -C /media . &&
+        find /backups \( -name "animix-*.dump" -o -name "media-*.tgz" \) -mtime +14 -delete;
+        sleep 86400; done'
+    mem_limit: 100m
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  caddy-data:

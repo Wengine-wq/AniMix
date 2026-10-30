@@ -28,7 +28,7 @@ import app.animix.ui.theme.AniMixTheme
 
 /**
  * Settings → «Аккаунт»: the online AniMix profile (Google sign-in on the AniMix server), migration of
- * the AniMix 2.x local profile into it, then what is still to come (sessions, Horizon Link, Yandex ID).
+ * the AniMix 2.x local profile into it, Horizon Link devices and external account bindings.
  */
 @Composable
 internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
@@ -36,6 +36,7 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
     val library by graph.library.state.collectAsState()
     val shikimori by graph.shikimoriAccount.user.collectAsState()
     val account by graph.account.state.collectAsState()
+    val sync by graph.accountSync.state.collectAsState()
     val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     var browserSignIn by remember { mutableStateOf<Job?>(null) }
@@ -57,15 +58,16 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         }
     }
     val user = account.user
+    val displayName = if (user != null && library.profile.accountId == user.id) library.profile.name else user?.name ?: library.profile.name
     Column {
         Panel {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(48.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
-                    Txt((user?.name ?: library.profile.name).take(1).uppercase(), AniMixTheme.type.heading, color = colors.onAccent)
+                    Txt(displayName.take(1).uppercase(), AniMixTheme.type.heading, color = colors.onAccent)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Txt(user?.name ?: library.profile.name, AniMixTheme.type.bodyStrong, maxLines = 1)
+                    Txt(displayName, AniMixTheme.type.bodyStrong, maxLines = 1)
                     Txt(if (user != null) "Онлайн-профиль AniMix" + (user.email?.let { " · $it" } ?: "")
                         else "Локальный профиль: всё хранится на этом устройстве", AniMixTheme.type.caption, maxLines = 2)
                 }
@@ -82,24 +84,29 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
                 else -> Unavailable("Вход через Google. При первом входе создаётся онлайн-профиль AniMix.")
             }
         } else {
-            SecondaryButton("Выйти из аккаунта", graph.account::signOut, Modifier.fillMaxWidth(), icon = AniMixIcons.Close)
+            Txt(when {
+                sync.syncing -> "Синхронизация…"
+                sync.error != null -> sync.error!!
+                sync.lastSuccessAt != null && !sync.pending -> "Изменения синхронизированы"
+                sync.pending -> "Есть изменения для синхронизации"
+                else -> "Ожидаем синхронизацию"
+            }, AniMixTheme.type.caption, modifier = Modifier.padding(vertical = 8.dp))
+            SecondaryButton("Синхронизировать сейчас", graph.accountSync::requestSync, Modifier.fillMaxWidth(), enabled = !sync.syncing)
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton("Выйти из аккаунта", graph.account::signOut, Modifier.fillMaxWidth(), icon = AniMixIcons.Close, enabled = !account.busy)
+            account.error?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 8.dp)) }
         }
 
         Section("Миграция с AniMix 2.x")
         LegacyMigrationSection(graph)
 
-        Section("Сессии и устройства")
-        Panel {
-            AccountRow(AniMixIcons.Monitor, "Это устройство", "${Platform.name} · активно сейчас", trailing = "Текущее")
-            Divider()
-            AccountRow(AniMixIcons.Close, "Завершить другие сессии", "Другие устройства появятся после входа", enabled = false)
-        }
-
         Section("Horizon Link")
-        Panel {
-            AccountRow(AniMixIcons.Play, "Начали на телефоне — продолжите на ПК",
-                "Серия и позиция переходят между вашими устройствами", trailing = "Скоро", enabled = false)
+        Txt("Откройте Horizon Link в плеере и выберите устройство для продолжения.",AniMixTheme.type.caption)
+        val social by graph.social.state.collectAsState()
+        social.devices.forEach { device ->
+            Txt("${device.label} · ${if(device.online())"в сети" else "не в сети"}",AniMixTheme.type.caption)
         }
+        Panel { NavRow("Друзья и заявки",AniMixIcons.User,{navigator.push(Route.Friends)}) }
 
         Section("Привязки")
         Panel {
@@ -112,7 +119,7 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
             AccountRow(AniMixIcons.User, "Google", account.user?.email?.let { "Подключён: $it" } ?: "Вход в AniMix через Google",
                 trailing = if (account.user != null) "Подключён" else "Через «Войти»", enabled = account.user != null)
         }
-        Unavailable("Сессии на других устройствах, Horizon Link и вход через Яндекс появятся в следующих версиях.")
+        Unavailable("Передача из плеера сохраняет серию, озвучку, качество и позицию. Вход через Яндекс пока недоступен.")
     }
 }
 

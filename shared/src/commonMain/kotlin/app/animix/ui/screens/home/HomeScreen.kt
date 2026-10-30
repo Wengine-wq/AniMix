@@ -134,9 +134,6 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         item(key = "filters") {
             QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) })
         }
-        if (settings.experimentalPulse) item(key = "anipulse") {
-            app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) }
-        }
         item(key = "continue") {
             ContinueShelf(continueItems, onOpen = { item ->
                 val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&
@@ -456,6 +453,12 @@ private fun UpdateOffer(graph: AppGraph) {
 private fun YearReviewCard(library: app.animix.data.library.LibraryData, onOpen: (Int) -> Unit) {
     val colors = AniMixTheme.colors
     val access = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
+    if(access.open && access.year in library.reviewedYears){
+        androidx.compose.material3.TextButton(onClick={onOpen(access.year)},modifier=Modifier.padding(horizontal=20.dp)){
+            Icon(AniMixIcons.History,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Txt("Итоги ${access.year}",AniMixTheme.type.label)
+        }
+        return
+    }
     val posters = remember(library, access.year) {
         library.entries.values.sortedByDescending { entry ->
             entry.viewing.values.count { v -> v.completedAt?.let { app.animix.data.library.dayToDate(app.animix.core.localDayIndex(it)).year == access.year } == true }

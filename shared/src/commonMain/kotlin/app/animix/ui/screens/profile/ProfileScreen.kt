@@ -39,6 +39,8 @@ import kotlin.time.Instant
 fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingValues) {
     val library by graph.library.state.collectAsState()
     val achievements by graph.achievements.progress.collectAsState()
+    val account by graph.account.state.collectAsState()
+    val social by graph.social.state.collectAsState()
     val stats = remember(library) { library.stats() }
     val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
     val badge = achievements.firstOrNull { it.unlocked && it.achievement.id == library.profile.badgeAchievementId }
@@ -52,7 +54,9 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
         Spacer(Modifier.height(20.dp))
         ProfileIdentity(library.profile, badge, onEdit = { navigator.push(Route.EditProfile()) },
             onBadge = { navigator.push(Route.Achievements) }, level = level)
+        if(account.user!=null)Txt(if(social.devices.any{it.id==graph.social.deviceId&&it.online()})"В сети" else "Онлайн-статус обновляется",AniMixTheme.type.caption,modifier=Modifier.padding(top=8.dp))
         Spacer(Modifier.height(24.dp))
+        NavRow("Друзья", AniMixIcons.User, { navigator.push(Route.Friends) })
         Row(Modifier.fillMaxWidth()) {
             ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
             ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
@@ -199,7 +203,7 @@ private fun LevelRing(level: ProfileLevel, modifier: Modifier) {
 }
 
 @Composable
-private fun ProfileStat(value: String, label: String, modifier: Modifier) {
+internal fun ProfileStat(value: String, label: String, modifier: Modifier) {
     Column(modifier.padding(end = 8.dp)) {
         Txt(value, if (value.length > 4) AniMixTheme.type.heading else AniMixTheme.type.title)
         Spacer(Modifier.height(4.dp))
@@ -208,7 +212,7 @@ private fun ProfileStat(value: String, label: String, modifier: Modifier) {
 }
 
 @Composable
-private fun CollectionDistribution(library: LibraryData, onOpen: () -> Unit) {
+internal fun CollectionDistribution(library: LibraryData, onOpen: (() -> Unit)?) {
     val colors = AniMixTheme.colors
     val statuses = listOf(ListStatus.Watching, ListStatus.Completed, ListStatus.Planned, ListStatus.OnHold, ListStatus.Dropped)
     val counts = statuses.map { status -> library.entries.values.count { it.status == status } }
@@ -217,8 +221,8 @@ private fun CollectionDistribution(library: LibraryData, onOpen: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt("Коллекция", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
         // Lists are edited where they live: the «Списки» tab, one tap from here.
-        Txt("$total тайтлов · открыть", AniMixTheme.type.label, color = colors.accent,
-            modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 8.dp))
+        Txt("$total тайтлов" + if(onOpen!=null)" · открыть" else "", AniMixTheme.type.label, color = colors.accent,
+            modifier = Modifier.clip(AniMixTheme.shapes.pill).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen) else Modifier).padding(horizontal = 8.dp, vertical = 8.dp))
     }
     Spacer(Modifier.height(20.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -256,7 +260,7 @@ private fun CollectionDistribution(library: LibraryData, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun ActivityChart(minutes: List<Int>) {
+internal fun ActivityChart(minutes: List<Int>) {
     val colors = AniMixTheme.colors
     val max = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
     Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
@@ -276,7 +280,7 @@ private fun ActivityChart(minutes: List<Int>) {
 }
 
 @Composable
-private fun GenreTaste(genres: List<Pair<String, Int>>) {
+internal fun GenreTaste(genres: List<Pair<String, Int>>) {
     val max = genres.maxOf { it.second }.coerceAtLeast(1)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         genres.forEach { (name, weight) ->
@@ -289,7 +293,7 @@ private fun GenreTaste(genres: List<Pair<String, Int>>) {
     }
 }
 
-private fun profileHours(minutes: Int): String = when {
+internal fun profileHours(minutes: Int): String = when {
     minutes == 0 -> "0"
     minutes < 600 -> "${minutes / 60},${minutes % 60 * 10 / 60}"
     else -> "${minutes / 60}"

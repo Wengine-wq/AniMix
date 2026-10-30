@@ -40,13 +40,26 @@ class DiskStore(private val root: String) {
         val target = path(name)
         val temp = path("$name.tmp")
         SystemFileSystem.sink(temp).buffered().use { it.writeString(text) }
-        SystemFileSystem.atomicMove(temp, target)
+        try {
+            SystemFileSystem.atomicMove(temp, target)
+        } catch (error: Exception) {
+            // Windows refuses to replace a file it cannot open for replacement (another owner, an
+            // odd ACL). Removing it first still works when deletion is allowed; the backup covers the gap.
+            if (!SystemFileSystem.exists(target) && !SystemFileSystem.exists(temp)) throw error
+            runCatching { SystemFileSystem.delete(target, mustExist = false) }
+            SystemFileSystem.atomicMove(temp, target)
+        }
     }
 
     suspend fun delete(name: String) = withContext(Dispatchers.IO) {
         runCatching { SystemFileSystem.delete(path(name), mustExist = false) }
             .onFailure { AppLog.failure("Storage", "file_delete", it) }
         Unit
+    }
+
+    /** Session removal must be durable before the UI reports a completed sign-out. */
+    suspend fun deleteChecked(name: String) = withContext(Dispatchers.IO) {
+        SystemFileSystem.delete(path(name), mustExist = false)
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {

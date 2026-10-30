@@ -32,6 +32,9 @@ class AppGraph {
         achievements.load()
         watchFlow.load()
         downloads.load()
+        account.load()
+        accountSync.start()
+        social.start()
         initialized = true
     }
 
@@ -74,7 +77,7 @@ class AppGraph {
         detail = { title -> if (title.source == app.animix.model.AnimeSource.Shikimori) shikimori.liveDetail(title.id)
             else anime.detail(title, forceRefresh = true) },
         editor = app.animix.data.pulse.PolzaPulseClient(),
-        topics = { title -> shikimori.topics(title.id) })
+        topics = { title -> shikimori.topics(title.id) }, available = { false })
 
     /** «Подобрано для вас» from the local library. */
     val recommendations = app.animix.data.Recommendations(shikimori, anime)
@@ -101,6 +104,9 @@ class AppGraph {
     /** «Миграция с AniMix 2.x» in Settings → «Аккаунт». */
     /** The online AniMix profile on the account server. */
     val account = app.animix.data.account.AniMixAccount(http, DiskStore(Platform.dataDir), scope)
+    val accountSync = app.animix.data.account.AccountSync(account, library, achievements, settings, DiskStore(Platform.dataDir), scope,
+        titles = { ids -> ids.chunked(50).flatMap { shikimori.byIds(it) } })
+    val social = app.animix.data.account.AccountSocial(account, DiskStore(Platform.dataDir), scope)
     val legacy = app.animix.data.legacy.LegacyMigration(scope, library, achievements, account, titles = { ids -> shikimori.byIds(ids) })
     val imports = app.animix.data.importer.ImportJobs(scope, library, shikimoriAccount, anixart, anixartMatcher)
 

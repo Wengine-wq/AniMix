@@ -23,7 +23,7 @@ import kotlinx.coroutines.sync.withLock
 class PulseRepository(private val disk: DiskStore, private val scope: CoroutineScope,
     private val detail: suspend (Anime) -> AnimeDetail, private val editor: PulseEditor,
     private val topics: suspend (Anime) -> List<AnimeTopic> = { emptyList() },
-    private val clock: () -> Long = ::nowMillis) {
+    private val available: () -> Boolean = { true }, private val clock: () -> Long = ::nowMillis) {
     private val mutable = MutableStateFlow(PulseState())
     val state = mutable.asStateFlow()
     private val loadLock = Mutex()
@@ -50,6 +50,7 @@ class PulseRepository(private val disk: DiskStore, private val scope: CoroutineS
         pulseWindow(clock()).id.let { week -> issues.firstOrNull { it.window.id == week && it.aiEdited } }
 
     fun generate(library: LibraryData) {
+        if(!available()){mutable.update{it.copy(error="AniPulse временно недоступен")};return}
         if (!generation.tryLock()) return
         // ATOMIC: the lock is released even if the scope is cancelled before the job starts.
         scope.launch(start = CoroutineStart.ATOMIC) {

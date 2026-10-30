@@ -16,7 +16,7 @@ internal object SettingsPreferences {
     private val theme = stringPreferencesKey("themeMode")
     private val dubbings = stringPreferencesKey("dubbingByAnime")
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
-        "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "experimentalPulse", "experimentalPicks")
+        "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled")
     private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate")
 
     fun decode(preferences: Preferences): Settings {

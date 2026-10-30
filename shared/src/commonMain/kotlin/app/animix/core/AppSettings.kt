@@ -44,6 +44,7 @@ data class Settings(
     val downloadQuality: String? = null,
     /** «Экспериментальные функции»: the AniPulse weekly digest, off until the viewer opts in. */
     val experimentalPulse: Boolean = false,
+    val reviewMusicEnabled: Boolean = true,
     /** «Экспериментальные функции»: «Подобрано для вас» on the home screen. */
     val experimentalPicks: Boolean = false,
     /** The update version the viewer put off with «Позже»; a newer one is offered again. */

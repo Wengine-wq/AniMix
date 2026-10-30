@@ -94,7 +94,6 @@ import app.animix.ui.screens.profile.ListsScreen
 import app.animix.ui.screens.profile.SettingsSectionScreen
 import app.animix.ui.screens.profile.AchievementsScreen
 import app.animix.ui.screens.profile.HistoryScreen
-import app.animix.ui.screens.profile.SupportScreen
 import app.animix.ui.screens.profile.AchievementToastHost
 import app.animix.ui.screens.profile.ProfileScreen
 import app.animix.ui.screens.profile.EditProfileScreen
@@ -146,7 +145,10 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     }
 
     AniMixTheme(settings.themeMode, settings.animationsEnabled, settings.batterySaver) {
-        if (initialized) AppShell(graph, navigator, onExit)
+        if (initialized) {
+            AppShell(graph, navigator, onExit)
+            app.animix.ui.screens.profile.HorizonIncoming(graph,navigator)
+        }
         else Box(Modifier.fillMaxSize().background(AniMixTheme.colors.background).padding(20.dp), contentAlignment = Alignment.Center) {
             if (startupError == null) LoadingIndicator()
             else MessageState("Не удалось загрузить данные",
@@ -210,7 +212,22 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             // «Итоги года» are full screen, like stories.
             if (showBar) BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             AchievementToastHost(graph, Modifier.align(Alignment.TopCenter))
+            SaveErrorBar(graph, Modifier.align(Alignment.TopCenter).padding(top = statusBar + 8.dp))
         }
+    }
+}
+
+/** Saving the library keeps failing: say so plainly instead of losing edits on the next start. */
+@Composable
+private fun SaveErrorBar(graph: AppGraph, modifier: Modifier = Modifier) {
+    val error by graph.library.saveError.collectAsState()
+    val text = error ?: return
+    val colors = AniMixTheme.colors
+    Row(modifier.padding(horizontal = 16.dp).widthIn(max = 560.dp).fillMaxWidth().clip(AniMixTheme.shapes.medium)
+        .background(colors.surfaceRaised).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(AniMixIcons.Info, null, Modifier.size(18.dp), tint = colors.accent)
+        Spacer(Modifier.width(10.dp))
+        Txt(text, AniMixTheme.type.caption, color = colors.textPrimary)
     }
 }
 
@@ -253,7 +270,8 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Lists -> ListsScreen(graph, navigator, padding, showBack = true)
                     route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)
                     route == Route.History -> HistoryScreen(graph, navigator, padding)
-                    route == Route.Support -> SupportScreen(graph, navigator, padding)
+                    route == Route.Friends -> app.animix.ui.screens.profile.FriendsScreen(graph,navigator,padding)
+                    route is Route.FriendProfile -> app.animix.ui.screens.profile.FriendProfileScreen(graph,navigator,route.id,padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding, route.episode)
                     route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)

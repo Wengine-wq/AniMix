@@ -1,7 +1,8 @@
-"""Temporary icons for achievements without painted art: an existing badge plus a round sticker.
+"""Fallback icons for achievements without painted art: an existing badge plus a round sticker.
 
 Run from the repository root: python scripts/derive-achievement-icons.py
-Replace a derived icon with painted art by dropping ach_<id>.png into composeResources/drawable.
+Existing icons are never overwritten. The four original placeholders were replaced
+with painted art on 2026-10-30; see design/achievements/new-icons-2026-10-30/.
 """
 from PIL import Image, ImageDraw, ImageFont
 import os
@@ -38,6 +39,10 @@ def sticker(base: Image.Image, text: str, colour) -> Image.Image:
 
 
 for target, (base, text, colour) in DERIVED.items():
+    destination = os.path.join(DRAWABLE, f"ach_{target}.png")
+    if os.path.exists(destination):
+        print("keep existing", target)
+        continue
     source = os.path.join(DRAWABLE, f"ach_{base}.png")
-    sticker(Image.open(source), text, colour).save(os.path.join(DRAWABLE, f"ach_{target}.png"), optimize=True)
+    sticker(Image.open(source), text, colour).save(destination, optimize=True)
     print("ok", target)

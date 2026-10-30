@@ -60,6 +60,11 @@ data class LibraryData(
     /** Playback time measured by AniMix 2.x and brought over once; see [LegacyMigrationRecord]. */
     val legacyWatchSeconds: Long = 0,
     val legacyMigration: LegacyMigrationRecord? = null,
+    /** Local commit receipt for crash recovery of cloud application; never part of cloud state. */
+    val syncReceipt: String? = null,
+    val reviewedYears: Set<Int> = emptySet(),
+    /** When this copy was written to disk; on start the newer of the main file and the backup wins. */
+    val savedAt: Long = 0,
 ) {
     fun entry(anime: Anime): LibraryEntry? = entries[anime.key]
 
@@ -86,6 +91,11 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
     private val loadLock = Mutex()
     private var loaded = false
     private var persistedText: String? = null
+    /** The persisted state without [LibraryData.savedAt], to skip writes that change nothing. */
+    private var persistedBody: String? = null
+    private val _saveError = MutableStateFlow<String?>(null)
+    /** Set while saving keeps failing, so the app can say so instead of losing edits silently. */
+    val saveError: StateFlow<String?> = _saveError.asStateFlow()
 
     // Reward processing must see every committed snapshot; StateFlow may conflate quick edits.
     internal var onAchievementChange: ((LibraryData) -> Unit)? = null
@@ -95,26 +105,34 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         if (loaded) return@withLock
         // Unreadable data must never become a new empty library, including on exit/flush.
         val text = store.readChecked(FILE)
-        val decoded = text?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) } }
-        val backup = if (text == null || decoded?.isFailure == true) store.readChecked(BACKUP) else null
-        val restored = backup?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) }.getOrNull() }
+        var decoded = text?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) } }
+        val backup = runCatching { store.readChecked(BACKUP) }.getOrNull()
+        val backupData = backup?.let { runCatching { AppJson.decodeFromString(LibraryData.serializer(), it) }.getOrNull() }
+        // A main file that could not be replaced for a while is older than the backup written beside it.
+        val newerBackup = backupData != null && (decoded?.getOrNull()?.savedAt ?: Long.MAX_VALUE) < backupData.savedAt
+        if (newerBackup) AppLog.info("Library", "newer_backup_used")
+        val restored = backupData?.takeIf { text == null || decoded?.isFailure == true || newerBackup }
+        if (newerBackup) decoded = null
         if (decoded?.isFailure == true && restored == null) {
             throw IllegalStateException("Не удалось прочитать библиотеку. Исходный файл сохранён без изменений.", decoded.exceptionOrNull())
         }
         if (text == null && backup != null && restored == null) {
             throw IllegalStateException("Не удалось прочитать резервную копию библиотеки. Файл сохранён без изменений.")
         }
-        if (restored != null && text != null) {
+        if (restored != null && text != null && !newerBackup) {
             // Archive the incompatible original before recovering; failure here blocks replacement.
             store.writeChecked("library.recovery-${nowMillis()}.json", text)
         }
-        val data = decoded?.getOrNull() ?: restored
+        // The disk stamp is file metadata, not part of the library in memory.
+        val data = (decoded?.getOrNull() ?: restored)?.copy(savedAt = 0)
         persistedText = if (restored != null) backup else text
+        persistedBody = null
         _state.value = data?.copy(profile = data.profile.copy(name = data.profile.name.takeCharacters(ProfileNameLimit)))
             ?: LibraryData(profile = LocalProfile(createdAt = nowMillis()))
         this.loaded = true
         if (restored != null) AppLog.info("Library", "backup_restored")
         if (text == null || restored != null || data != _state.value) save()
+        else persistedBody = AppJson.encodeToString(LibraryData.serializer(), _state.value.copy(savedAt = 0))
     }
 
     /** Every list status change as it happens, so listeners never miss a quick In-between step. */
@@ -230,9 +248,21 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         _state.update { it.copy(profile = it.profile.copy(name = clean, updatedAt = nowMillis())) }
         save()
     }
+    /** «Итоги года» watched to the end: the home banner becomes a small replay button. */
+    fun markReviewSeen(year: Int) {
+        if (year !in 2000..2100) return
+        _state.update { it.copy(reviewedYears = it.reviewedYears + year) }
+        save()
+    }
 
     fun updateProfile(draft: ProfileDraft, unlockedBadges: Set<String>) {
         _state.update { it.copy(profile = it.profile.edited(draft, unlockedBadges, nowMillis())) }
+        save()
+    }
+
+    /** Apply cloud state without manufacturing list-transition events or replacing mid-flight edits. */
+    internal fun applySynced(transform: (LibraryData) -> LibraryData) {
+        _state.update(transform)
         save()
     }
 
@@ -316,17 +346,24 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
                 throw cancel
             } catch (error: Exception) {
                 AppLog.failure("Library", "save_failed", error)
+                _saveError.value = "Не удаётся сохранить данные AniMix на диск" +
+                    (if (error.toString().contains("AccessDenied")) ": нет доступа к файлу библиотеки." else ".") +
+                    " Изменения пока только в памяти — не закрывайте приложение и проверьте папку данных."
             }
         }
     }
 
     private suspend fun persist() {
         check(loaded) { "Library has not loaded successfully" }
-        val text = AppJson.encodeToString(LibraryData.serializer(), _state.value)
+        val body = AppJson.encodeToString(LibraryData.serializer(), _state.value.copy(savedAt = 0))
         // A flush with no edits must not rotate the last useful recovery copy away.
-        if (text != persistedText) persistedText?.let { store.writeChecked(BACKUP, it) }
+        if (body == persistedBody) return
+        val text = AppJson.encodeToString(LibraryData.serializer(), _state.value.copy(savedAt = nowMillis()))
+        persistedText?.let { store.writeChecked(BACKUP, it) }
         store.writeChecked(FILE, text)
         persistedText = text
+        persistedBody = body
+        _saveError.value = null
     }
 
     private companion object {

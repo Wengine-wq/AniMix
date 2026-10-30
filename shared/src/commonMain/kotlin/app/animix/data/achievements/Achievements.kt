@@ -123,6 +123,12 @@ class Achievements(
     }
 
     val progress: StateFlow<List<AchievementProgress>> = _progress.asStateFlow()
+    internal val syncState: StateFlow<AchievementState> = _state.asStateFlow()
+
+    internal suspend fun applySynced(value: AchievementState, replace: Boolean = false) {
+        events.send(Event(library.state.value, { current -> if (replace) value else app.animix.data.account.mergeAwards(current, value) }))
+        flush()
+    }
 
     /** Achievements unlocked during this session, for the toast. */
     val unlockedNow: SharedFlow<Achievement> = _unlockedNow.asSharedFlow()

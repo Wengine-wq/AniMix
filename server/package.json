@@ -1,0 +1,25 @@
+{
+  "name": "animix-server",
+  "version": "1.0.5",
+  "private": true,
+  "description": "AniMix New Horizons account server: Google sign-in, profiles, friends, sync and Horizon Link on PostgreSQL.",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "test": "npm run build && node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "pg-mem": "^3.0.4",
+    "typescript": "^5.7.2"
+  }
+}

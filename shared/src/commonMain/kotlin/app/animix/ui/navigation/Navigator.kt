@@ -39,8 +39,8 @@ sealed interface Route {
     }
 
     /** [episode] opens that episode right away (links and history); otherwise the screen offers where the viewer stopped. */
-    data class Watch(val anime: Anime, val episode: String? = null) : Route {
-        override val key get() = "watch:${anime.key}"
+    data class Watch(val anime: Anime, val episode: String? = null, val handoffId:String?=null) : Route {
+        override val key get() = "watch:${anime.key}:${episode.orEmpty()}:${handoffId.orEmpty()}"
     }
 
     data class Offline(val downloadId: String) : Route {
@@ -60,9 +60,8 @@ sealed interface Route {
         override val key get() = "history"
     }
 
-    data object Support : Route {
-        override val key get() = "support"
-    }
+    data object Friends : Route { override val key = "friends" }
+    data class FriendProfile(val id:String) : Route { override val key get() = "user:$id" }
 
     data object Achievements : Route {
         override val key get() = "achievements"
@@ -155,7 +154,8 @@ class Navigator {
             "wrapped" -> push(Route.YearInReview(path.getOrNull(1)?.toIntOrNull() ?: app.animix.data.library.dayToDate(app.animix.core.localDayIndex()).year))
             "edit-profile" -> { tab = Tab.Profile; push(Route.EditProfile()) }
             "history" -> { tab = Tab.Profile; push(Route.History) }
-            "support" -> { tab = Tab.Profile; push(Route.Support) }
+            "friends" -> { tab = Tab.Profile; push(Route.Friends) }
+            "user" -> { val id=path.getOrNull(1)?.takeIf{it.matches(Regex("[0-9a-fA-F-]{36}"))}?:return false;push(Route.FriendProfile(id)) }
             else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false
         }
         return true

@@ -393,7 +393,13 @@ private fun FlowSessionScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                     nextLabel = state.queue.getOrNull(state.index + 1)?.let { "Далее" },
                     onNext = state.queue.getOrNull(state.index + 1)?.let { { graph.watchFlow.next() } },
                     onRefresh = stream::refresh, playbackAllowed = state.phase == FlowPhase.Running,
-                    onPlayerBound = graph.watchFlow::bind,
+                    onPlayerBound = { player ->
+                        val flow=graph.watchFlow.bind(player)
+                        val social=graph.social.bind(player,item.anime,item.episode.number,item.dubbingKey){graph.settings.state.value.preferredQuality?:"Авто"}
+                        val release: () -> Unit = { flow();social() }
+                        release
+                    },
+                    horizon = { app.animix.ui.screens.profile.HorizonButton(graph) },
                     onPlaybackRequest = graph.watchFlow::resume,
                     onSnapshot = { snapshot, skips -> graph.watchFlow.snapshot(item.key, snapshot, skips) },
                     onEpisodeEnded = { graph.watchFlow.completed(item.key) },

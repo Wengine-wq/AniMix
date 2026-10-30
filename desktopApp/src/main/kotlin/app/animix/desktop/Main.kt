@@ -33,11 +33,13 @@ fun main(args: Array<String>) {
             javaClass.getResourceAsStream("/animix_icon.png")?.use { ImageIO.read(it) }?.let { BitmapPainter(it.toComposeImageBitmap()) }
         }
         val exit: () -> Unit = {
+            graph.social.setActive(false)
             graph.watchFlow.pause()
             runBlocking { graph.downloads.shutdown(); graph.flushUserData() }
             exitApplication()
         }
         Window(onCloseRequest = exit, state = state, title = "AniMix", icon = icon) {
+            LaunchedEffect(state.isMinimized) { graph.social.setActive(!state.isMinimized) }
             val settings by graph.settings.state.collectAsState()
             val dark = when (settings.themeMode) {
                 ThemeMode.System -> isSystemInDarkTheme()

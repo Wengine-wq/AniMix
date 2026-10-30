@@ -9,6 +9,9 @@ import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.post
 import io.ktor.client.request.put
+import io.ktor.client.request.get
+import io.ktor.client.request.delete
+import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -72,14 +75,17 @@ class AniMixAccount(
     private val mutable = MutableStateFlow(AccountState())
     val state: StateFlow<AccountState> = mutable.asStateFlow()
     private val lock = Mutex()
+    private val refreshLock = Mutex()
     private var session: StoredAccount? = null
+    private var signingOut: StoredAccount? = null
     private var loaded = false
+    private var sessionGeneration = 0L
     private var signInStartedAt = 0L
     private var returnUri = AniMixServer.CALLBACK
 
     suspend fun load() = lock.withLock {
         if (loaded) return@withLock
-        session = store.read(FILE)?.let { runCatching { AppJson.decodeFromString(StoredAccount.serializer(), it) }.getOrNull() }
+        session = store.readChecked(FILE)?.let { AppJson.decodeFromString(StoredAccount.serializer(), it) }
         loaded = true
         mutable.value = mutable.value.copy(user = session?.user, path = session?.path)
     }
@@ -99,17 +105,18 @@ class AniMixAccount(
 
     /** Takes the sign-in redirect (true) or leaves the link to navigation (false). */
     fun handlesCallback(link: String): Boolean {
-        if (!link.startsWith(AniMixServer.CALLBACK)) return false
+        if (!sameReturnAddress(link, AniMixServer.CALLBACK)) return false
         completeSignIn(link)
         return true
     }
 
     /** Ignored unless a sign-in started on this device in the last 15 minutes. */
     fun completeSignIn(callback: String) {
-        if (!callback.startsWith(returnUri)) return
+        if (!sameReturnAddress(callback, returnUri)) return
         val started = signInStartedAt
         if (started == 0L || TrustedClock.now() - started > 15 * 60_000L) return
         signInStartedAt = 0
+        val generation = sessionGeneration
         mutable.value = mutable.value.copy(busy = true, waitingForBrowser = false, error = null)
         scope.launch {
             try {
@@ -127,7 +134,7 @@ class AniMixAccount(
                 val user = user(response["user"] as? JsonObject) ?: throw AccountException("Сервер AniMix не вернул профиль.")
                 // The server creates the profile on the first Google sign-in: that is a registration.
                 val path = if (user.createdAt != null && TrustedClock.now() - user.createdAt in -60_000L..REGISTRATION_WINDOW) "register" else "signin"
-                save(StoredAccount(access, refresh, user, path))
+                save(StoredAccount(access, refresh, user, path), generation)
             } catch (cancel: CancellationException) { throw cancel }
             catch (error: Exception) {
                 AppLog.failure("Account", "sign_in", error)
@@ -137,12 +144,26 @@ class AniMixAccount(
     }
 
     fun signOut() {
-        val current = session ?: return
+        val current = session ?: signingOut ?: return
+        // Invalidate synchronously: an in-flight refresh must never resurrect this account.
+        session = null
+        signingOut = current
+        sessionGeneration++
+        val generation = sessionGeneration
+        mutable.value = mutable.value.copy(busy = true, error = null)
         scope.launch {
-            lock.withLock {
-                session = null
-                store.delete(FILE)
-                mutable.value = AccountState()
+            try {
+                lock.withLock {
+                    if (session == null && sessionGeneration == generation) {
+                        store.deleteChecked(FILE)
+                        signingOut = null
+                        mutable.value = AccountState()
+                    }
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (error: Exception) {
+                AppLog.failure("Account", "sign_out_storage", error)
+                mutable.value = mutable.value.copy(busy = false, error = "Не удалось удалить сессию с устройства. Повторите выход.")
             }
             runCatching { http.post("$baseUrl/v1/auth/logout") { bearerAuth(current.accessToken) } }
         }
@@ -168,16 +189,28 @@ class AniMixAccount(
     }
 
     /** One request with the current token; an expired token is refreshed once. */
-    private suspend fun authorized(request: suspend (String) -> HttpResponse): HttpResponse {
+    internal suspend fun authorized(userId: String? = null, request: suspend (String) -> HttpResponse): HttpResponse {
         val current = session ?: throw AccountException("Войдите в аккаунт AniMix.")
-        return try { request(current.accessToken) }
-        catch (error: ClientRequestException) {
-            if (error.response.status != HttpStatusCode.Unauthorized) throw error
-            request(refresh(current).accessToken)
+        if (userId != null && current.user.id != userId) throw AccountException("Аккаунт изменился.")
+        suspend fun send(token: String): HttpResponse {
+            val response = request(token)
+            if (response.status == HttpStatusCode.Unauthorized) throw ClientRequestException(response, "Unauthorized")
+            if (response.status.value !in 200..299 && response.status != HttpStatusCode.Conflict) throw AccountException("Сервер не принял изменения (${response.status.value}).")
+            return response
         }
+        val response = try { send(current.accessToken) } catch (error: ClientRequestException) {
+            if (error.response.status != HttpStatusCode.Unauthorized) throw error
+            send(refresh(current).accessToken)
+        }
+        if (session?.user?.id != current.user.id) throw AccountException("Аккаунт изменился.")
+        return response
     }
 
-    private suspend fun refresh(current: StoredAccount): StoredAccount {
+    private suspend fun refresh(expired: StoredAccount): StoredAccount = refreshLock.withLock {
+        val current = session ?: throw AccountException("Войдите в аккаунт AniMix.")
+        val generation = sessionGeneration
+        if (current.user.id != expired.user.id) throw AccountException("Аккаунт изменился.")
+        if (current.accessToken != expired.accessToken) return@withLock current
         val response = try {
             json(http.post("$baseUrl/v1/auth/refresh") {
                 contentType(ContentType.Application.Json)
@@ -185,18 +218,25 @@ class AniMixAccount(
             }.bodyAsText())
         } catch (error: ClientRequestException) {
             if (error.response.status == HttpStatusCode.Unauthorized) {
-                lock.withLock { session = null; store.delete(FILE); mutable.value = AccountState(error = "Сессия AniMix закончилась. Войдите снова.") }
+                lock.withLock { if (session == current) { session = null; store.delete(FILE); mutable.value = AccountState(error = "Сессия AniMix закончилась. Войдите снова.") } }
             }
             throw error
         }
         val next = StoredAccount(response.text("access_token") ?: throw AccountException("Сессия AniMix закончилась. Войдите снова."),
             response.text("refresh_token") ?: current.refreshToken, user(response["user"] as? JsonObject) ?: current.user, current.path)
-        save(next)
-        return next
+        lock.withLock {
+            if (session != current) throw AccountException("Аккаунт изменился.")
+            store.writeChecked(FILE, AppJson.encodeToString(StoredAccount.serializer(), next))
+            if (sessionGeneration != generation || session != current) { store.delete(FILE); throw AccountException("Аккаунт изменился.") }
+            session = next
+        }
+        next
     }
 
-    private suspend fun save(value: StoredAccount) = lock.withLock {
+    private suspend fun save(value: StoredAccount, generation: Long = sessionGeneration) = lock.withLock {
+        if (sessionGeneration != generation) throw AccountException("Аккаунт изменился.")
         store.writeChecked(FILE, AppJson.encodeToString(StoredAccount.serializer(), value))
+        if (sessionGeneration != generation) { store.delete(FILE); throw AccountException("Аккаунт изменился.") }
         session = value
         mutable.value = mutable.value.copy(user = value.user, path = value.path, error = null)
     }
@@ -212,6 +252,41 @@ class AniMixAccount(
         .getOrElse { throw AccountException("Сервер AniMix вернул неполный ответ. Попробуйте позже.") }
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+    internal suspend fun getJson(path: String, userId: String): JsonObject = json(authorized(userId) { token ->
+        http.get("$baseUrl$path") { bearerAuth(token); expectSuccess = false }
+    }.bodyAsText())
+
+    internal suspend fun putJson(path: String, body: String, userId: String): Pair<Int, JsonObject> {
+        val response = authorized(userId) { token -> http.put("$baseUrl$path") {
+            bearerAuth(token); expectSuccess = false; contentType(ContentType.Application.Json); setBody(body)
+        } }
+        return response.status.value to json(response.bodyAsText())
+    }
+
+    internal suspend fun command(path: String, userId: String, body: JsonObject = JsonObject(emptyMap()), delete: Boolean = false): JsonObject {
+        val response = authorized(userId) { token ->
+            if (delete) http.delete("$baseUrl$path") { bearerAuth(token); expectSuccess = false }
+            else http.post("$baseUrl$path") { bearerAuth(token); expectSuccess = false; contentType(ContentType.Application.Json); setBody(body.toString()) }
+        }
+        if (response.status.value !in 200..299) throw AccountException("Не удалось выполнить действие. Обновите страницу.")
+        return json(response.bodyAsText())
+    }
+
+    internal suspend fun uploadMedia(kind: String, bytes: ByteArray, userId: String): String {
+        require(kind in setOf("avatar", "banner"))
+        val response = authorized(userId) { token -> http.put("$baseUrl/v1/me/media/$kind") {
+            bearerAuth(token); expectSuccess = false; contentType(ContentType.Image.PNG); setBody(bytes)
+        } }
+        return (json(response.bodyAsText())["user"] as? JsonObject)?.text("${kind}_url")
+            ?: throw AccountException("Сервер не сохранил изображение профиля.")
+    }
+
+    private fun sameReturnAddress(link: String, expected: String): Boolean = runCatching {
+        val actual = Url(link); val target = Url(expected)
+        actual.protocol == target.protocol && actual.host == target.host && actual.port == target.port &&
+            actual.encodedPath == target.encodedPath && actual.user == null && actual.password == null
+    }.getOrDefault(false)
 
     private fun signInError(code: String): String = when {
         code.contains("email_not_verified") -> "Google не подтвердил почту этого аккаунта."

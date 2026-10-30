@@ -476,6 +476,8 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     // Skip times stored when the episode was watched or queued work offline too.
                     skips = { duration -> graph.skips.plan(item.anime, item.episode, duration) },
                     initialPositionMs = library.entry(item.anime)?.episodePositions?.get(item.episode.number) ?: 0,
+                    onPlayerBound = { player -> graph.social.bind(player,item.anime,item.episode.number,item.dubbingKey){item.quality} },
+                    horizon = { app.animix.ui.screens.profile.HorizonButton(graph) },
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
                     onCompleted = {
                         graph.library.saveEpisodePosition(item.anime, item.episode.number, 0)

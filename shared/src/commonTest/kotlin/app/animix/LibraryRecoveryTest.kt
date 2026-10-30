@@ -5,6 +5,8 @@ import app.animix.core.DiskStore
 import app.animix.data.library.*
 import app.animix.model.Anime
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlin.random.Random
 import kotlin.test.*
 
@@ -38,7 +40,7 @@ class LibraryRecoveryTest {
         library.load()
         library.flush()
         assertEquals(healthy, library.state.value)
-        assertEquals(healthy, AppJson.decodeFromString(LibraryData.serializer(), disk.readChecked("library.json")!!))
+        assertEquals(healthy, AppJson.decodeFromString(LibraryData.serializer(), disk.readChecked("library.json")!!).copy(savedAt = 0))
         assertEquals(backup, disk.readChecked("library.backup.json"))
         disk.clear()
     }
@@ -65,8 +67,9 @@ class LibraryRecoveryTest {
         assertTrue(library.state.value.entries.isEmpty())
         library.refreshMetadata(anime)
         assertTrue(library.state.value.entries.isEmpty())
-        // Finish the initial asynchronous save before replacing this file with a legacy fixture.
+        // End this instance's background work before replacing its file with a legacy fixture.
         library.flush()
+        backgroundScope.coroutineContext[Job]!!.children.toList().forEach { it.cancelAndJoin() }
         disk.clear()
 
         val legacy = LibraryData(entries = mapOf(unresolved.key to LibraryEntry(unresolved, status = ListStatus.Planned, favorite = true, updatedAt = 123)))
@@ -80,5 +83,21 @@ class LibraryRecoveryTest {
         assertTrue(entry.favorite)
         assertEquals(123L, entry.updatedAt)
         disk.clear()
+    }
+
+    @Test fun aMainFileStuckInThePastLosesToTheNewerBackup() = runTest {
+        val disk = disk()
+        // The state seen on this PC: library.json could not be replaced for weeks, the backup kept up.
+        disk.writeChecked("library.json", """{"profile":{"createdAt":1},"savedAt":100}""")
+        val newer = LibraryData(profile = LocalProfile(name = "Илья", about = "Смотрю всё подряд"), savedAt = 200)
+        disk.writeChecked("library.backup.json", AppJson.encodeToString(LibraryData.serializer(), newer))
+        val library = Library(disk, backgroundScope).apply { load() }
+        assertEquals("Смотрю всё подряд", library.state.value.profile.about)
+        assertEquals(0, library.state.value.savedAt)
+        library.flush()
+        val saved = AppJson.decodeFromString(LibraryData.serializer(), disk.readChecked("library.json")!!)
+        assertEquals("Илья", saved.profile.name)
+        assertTrue(saved.savedAt > 200)
+        assertNull(library.saveError.value)
     }
 }

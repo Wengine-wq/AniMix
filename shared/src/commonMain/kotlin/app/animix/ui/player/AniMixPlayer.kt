@@ -117,6 +117,7 @@ fun AniMixPlayer(
     playbackAllowed: Boolean = true,
     onPlaybackRequest: () -> Unit = {},
     onPlayerBound: ((NativePlayer) -> (() -> Unit))? = null,
+    horizon: (@Composable () -> Unit)? = null,
     onSnapshot: (PlayerSnapshot, SkipPlan) -> Unit = { _, _ -> },
     onEpisodeEnded: () -> Unit = {},
     /** Highest quality to start at (traffic saving on mobile data); the viewer can still pick more. */
@@ -385,6 +386,7 @@ fun AniMixPlayer(
                 },
         ) {
             VideoArea(player, state, zoomed = fill && fullscreen)
+            if(horizon!=null && controlsVisible) Box(Modifier.align(Alignment.CenterEnd).padding(12.dp)){horizon()}
             PlayerOverlay(
                 visible = controlsVisible || !state.playing || state.error != null,
                 state = state,

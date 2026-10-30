@@ -62,7 +62,12 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         val graph = (application as AniMixApplication).graph
+        graph.social.setActive(false)
         graph.watchFlow.pause()
         graph.scope.launch { graph.flushUserData() }
+    }
+    override fun onStart() {
+        super.onStart()
+        (application as AniMixApplication).graph.social.setActive(true)
     }
 }

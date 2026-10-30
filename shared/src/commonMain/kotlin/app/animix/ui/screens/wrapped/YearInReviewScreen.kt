@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -22,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -54,6 +57,12 @@ import app.animix.ui.theme.AniMixTheme
 import app.animix.ui.theme.LocalUiPerformance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
+import app.animix.data.playback.ReviewMusic
+import app.animix.data.playback.createReviewMusic
+import app.animix.resources.Res
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -110,14 +119,27 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
     val motion = LocalUiPerformance.current.animations
     var index by remember { mutableIntStateOf(0) }
     var held by remember { mutableStateOf(false) }
+    val settings by graph.settings.state.collectAsState()
+    val foreground by graph.social.foreground.collectAsState()
+    var music by remember { mutableStateOf<ReviewMusic?>(null) }
+    var musicError by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit){
+        try{
+            val created=withContext(NonCancellable){createReviewMusic(Res.readBytes("files/review_horizon.ogg"))}
+            if(isActive)music=created else created.close()
+        }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(_:Exception){musicError=true}
+    }
+    val currentMusic=music
+    DisposableEffect(currentMusic){onDispose{currentMusic?.close()}}
+    LaunchedEffect(music,settings.reviewMusicEnabled,foreground,held){if(settings.reviewMusicEnabled&&foreground&&!held)music?.play() else music?.pause()}
     val timer = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     fun go(step: Int) {
         val next = (index + step).coerceIn(0, slides.lastIndex)
         if (next != index) { index = next; scope.launch { timer.snapTo(0f) } }
     }
-    LaunchedEffect(index, held, slides) {
-        if (held || index >= slides.lastIndex) return@LaunchedEffect
+    LaunchedEffect(index, held, slides, motion, foreground) {
+        if (held || !foreground || index >= slides.lastIndex) return@LaunchedEffect
         if (!motion) { timer.snapTo(0f); return@LaunchedEffect }
         timer.animateTo(1f, tween(((1f - timer.value) * 7_500).toInt(), easing = LinearEasing))
         index++
@@ -125,6 +147,7 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
     }
     val colors = AniMixTheme.colors
     val slide = slides.getOrElse(index) { Slide.Outro }
+    LaunchedEffect(slide){if(slide==Slide.Outro)graph.library.markReviewSeen(year)}
     val poster = review.topTitles.firstOrNull()?.anime?.posterUrl
     Box(
         Modifier.fillMaxSize().background(colors.background)
@@ -157,6 +180,9 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
                 radius = constraints.maxWidth * 0.9f,
             )))
         }
+        ReviewAtmosphere(motion && foreground)
+        Txt("$year",AniMixTheme.type.display.copy(fontSize=AniMixTheme.type.display.fontSize*3.2f),
+            color=colors.accent.copy(alpha=.06f),modifier=Modifier.align(Alignment.BottomEnd).padding(24.dp))
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -168,18 +194,49 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
                     }
                 }
                 Spacer(Modifier.width(12.dp))
+                IconCircle(if(settings.reviewMusicEnabled)AniMixIcons.Volume else AniMixIcons.Muted,
+                    {graph.settings.update{it.copy(reviewMusicEnabled=!it.reviewMusicEnabled)}},
+                    contentDescription=if(settings.reviewMusicEnabled)"Выключить музыку" else "Включить музыку")
+                Spacer(Modifier.width(8.dp))
                 IconCircle(AniMixIcons.Close, { navigator.back() }, contentDescription = "Закрыть итоги")
             }
-            Box(Modifier.weight(1f).fillMaxWidth().widthIn(max = 560.dp).align(Alignment.CenterHorizontally), contentAlignment = Alignment.CenterStart) {
+            if(musicError)Txt("Музыка недоступна",AniMixTheme.type.micro)
+            BoxWithConstraints(Modifier.weight(1f).widthIn(max=1100.dp).fillMaxWidth().align(Alignment.CenterHorizontally), contentAlignment = Alignment.CenterStart) {
+              val wide=maxWidth>=840.dp
+              Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(32.dp)){
                 AnimatedContent(
                     targetState = slide,
+                    modifier=Modifier.weight(1f),
                     transitionSpec = {
                         if (motion) (fadeIn(tween(AniMixMotion.Standard)) + slideInHorizontally(tween(AniMixMotion.Page)) { it / 6 })
                             .togetherWith(fadeOut(tween(AniMixMotion.Fast)))
                         else fadeIn(tween(0)).togetherWith(fadeOut(tween(0)))
                     },
                 ) { current -> SlideContent(current, review, onRestart = { index = 0; scope.launch { timer.snapTo(0f) } }, onClose = { navigator.back() }) }
+                if(wide && review.topTitles.isNotEmpty())Column(Modifier.weight(.8f),verticalArrangement=Arrangement.spacedBy(24.dp)){
+                    if(slide!=Slide.Intro)PosterFan(review.topTitles.map{it.anime.posterUrl})
+                    if(slide!=Slide.Outro)SummaryCard(review,Modifier.fillMaxWidth())
+                }
+              }
             }
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
+                androidx.compose.material3.TextButton(onClick={go(-1)},enabled=index>0){Txt("Назад",AniMixTheme.type.label)}
+                Txt("${index+1} / ${slides.size}",AniMixTheme.type.micro)
+                androidx.compose.material3.TextButton(onClick={if(index==slides.lastIndex)navigator.back() else go(1)}){Txt(if(index==slides.lastIndex)"Закрыть" else "Далее",AniMixTheme.type.label)}
+            }
+        }
+    }
+}
+
+@Composable private fun ReviewAtmosphere(motion:Boolean){
+    val phase=remember{Animatable(0f)}
+    LaunchedEffect(motion){if(!motion){phase.snapTo(0f);return@LaunchedEffect};while(isActive){phase.snapTo(0f);phase.animateTo(1f,tween(24000,easing=LinearEasing))}}
+    val colors=AniMixTheme.colors
+    Canvas(Modifier.fillMaxSize()){
+        repeat(16){i->
+            val x=((i*.173f+phase.value*.05f)%1f)*size.width
+            val y=((i*.293f+sin((phase.value+i)*2*PI).toFloat()*.025f)%1f)*size.height
+            drawCircle(colors.accent.copy(alpha=.06f+(i%3)*.025f),radius=(8+i%4*12).dp.toPx(),center=Offset(x,y))
         }
     }
 }
@@ -233,7 +290,7 @@ private fun Caption(text: String, order: Int) = Txt(text, AniMixTheme.type.body,
 private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Unit, onClose: () -> Unit) {
     val type = AniMixTheme.type
     val colors = AniMixTheme.colors
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical=24.dp)) {
         when (slide) {
             Slide.Intro -> {
                 if (review.topTitles.isNotEmpty()) {
@@ -257,15 +314,24 @@ private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Un
                 Spacer(Modifier.height(8.dp))
                 if (review.minutes >= 120) CountUp(review.minutes / 60, " ч") else CountUp(review.minutes, " мин")
                 Spacer(Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    DayClock(review.usage.hours, Modifier.size(150.dp).appear(2))
-                    Spacer(Modifier.width(18.dp))
-                    Column(Modifier.weight(1f)) {
+                val description: @Composable () -> Unit = {
+                    Column {
                         review.persona?.let { Txt(it, type.title, modifier = Modifier.appear(3)) }
                         review.peakHour?.let {
                             Spacer(Modifier.height(6.dp))
                             Caption("Чаще всего вы смотрите около ${it}:00.", 4)
                         }
+                    }
+                }
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    if(maxWidth < 480.dp * LocalDensity.current.fontScale) {
+                        Column(verticalArrangement=Arrangement.spacedBy(20.dp)) {
+                            DayClock(review.usage.hours,Modifier.size(180.dp).appear(2))
+                            description()
+                        }
+                    }else Row(verticalAlignment=Alignment.CenterVertically) {
+                        DayClock(review.usage.hours,Modifier.size(180.dp).appear(2))
+                        Spacer(Modifier.width(18.dp));Box(Modifier.weight(1f)){description()}
                     }
                 }
             }
@@ -304,7 +370,7 @@ private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Un
                 Spacer(Modifier.height(24.dp))
                 val grow = rememberGrowth()
                 val max = review.minutesByMonth.maxOrNull()?.coerceAtLeast(1) ?: 1
-                Row(Modifier.fillMaxWidth().height(150.dp).appear(3), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
+                Row(Modifier.fillMaxWidth().height(220.dp).appear(3), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
                     review.minutesByMonth.forEachIndexed { i, minutes ->
                         Box(Modifier.weight(1f).fillMaxHeight((minutes.toFloat() / max * grow).coerceAtLeast(0.03f)).clip(AniMixTheme.shapes.small)
                             .background(if (i + 1 == review.bestMonth) colors.accentGradient else Brush.verticalGradient(
@@ -321,7 +387,7 @@ private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Un
                 Spacer(Modifier.height(18.dp))
                 Box(Modifier.fillMaxWidth().appear(1), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(220.dp).background(Brush.radialGradient(listOf(colors.accent.copy(alpha = 0.35f), Color.Transparent))))
-                    RemoteImage(top.anime.posterUrl, Modifier.width(160.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
+                    RemoteImage(top.anime.posterUrl, Modifier.width(220.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
                 }
                 Spacer(Modifier.height(18.dp))
                 Txt(top.anime.title, type.title, maxLines = 3, modifier = Modifier.appear(2))
@@ -563,11 +629,11 @@ private fun GenreBubbles(genres: List<Pair<String, Int>>, modifier: Modifier) {
         // A fixed, pleasant arrangement for up to five bubbles; sizes follow the weights.
         val spots = listOf(0.28f to 0.40f, 0.76f to 0.24f, 0.74f to 0.80f, 0.16f to 0.92f, 0.50f to 0.95f)
         genres.take(5).forEachIndexed { i, (genre, weight) ->
-            val diameter = width * (0.22f + 0.24f * sqrt(weight.toFloat() / max))
+            val diameter = (width * (0.22f + 0.24f * sqrt(weight.toFloat() / max))).coerceAtMost(maxHeight)
             val (x, y) = spots[i]
             Box(
                 // Kept inside the area, so no bubble is cut by the screen edge.
-                Modifier.offset(x = (width * x - diameter / 2).coerceIn(0.dp, width - diameter), y = (maxHeight * y - diameter / 2).coerceIn(0.dp, maxHeight - diameter))
+                Modifier.offset(x = (width * x - diameter / 2).coerceIn(0.dp, (width - diameter).coerceAtLeast(0.dp)), y = (maxHeight * y - diameter / 2).coerceIn(0.dp, (maxHeight - diameter).coerceAtLeast(0.dp)))
                     .size(diameter).appear(2 + i)
                     .clip(CircleShape).background(if (i == 0) colors.accentGradient else Brush.linearGradient(
                         listOf(colors.accent.copy(alpha = 0.32f - i * 0.04f), colors.accent.copy(alpha = 0.18f)))),
