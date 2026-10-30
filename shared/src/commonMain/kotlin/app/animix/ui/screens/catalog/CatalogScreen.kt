@@ -56,6 +56,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -119,10 +120,11 @@ fun CatalogScreen(
     showBack: Boolean = false,
     initialSearch: String = "",
 ) {
-    var kinds by remember(preset) { mutableStateOf(preset.kinds) }
-    var order by remember(preset) { mutableStateOf(preset.order) }
-    var genres by remember(preset) { mutableStateOf(preset.genreIds) }
-    var season by remember(preset) { mutableStateOf(preset.season) }
+    // Saveable, so filters survive opening a title and coming back.
+    var kinds by rememberSaveable(preset, stateSaver = StringListSaver) { mutableStateOf(preset.kinds) }
+    var order by rememberSaveable(preset, stateSaver = OrderSaver) { mutableStateOf(preset.order) }
+    var genres by rememberSaveable(preset, stateSaver = StringListSaver) { mutableStateOf(preset.genreIds) }
+    var season by rememberSaveable(preset) { mutableStateOf(preset.season) }
     var moreFilters by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(initialSearch) }
     val query = preset.copy(
@@ -130,12 +132,15 @@ fun CatalogScreen(
         search = search.trim().ifEmpty { null }, page = 1,
     )
     val genreList = rememberLoad(Unit) { graph.shikimori.genres() }
-    val paging = remember(query) { CatalogPaging(graph, query) }
+    // Loaded pages outlive the screen, so «Назад» returns to the same results and scroll position.
+    val paging = remember(query) { cachedPaging(graph, query) }
+    val userFiltered = kinds != preset.kinds || genres.any { it !in preset.genreIds } || (season != null && season != preset.season)
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState()
 
     LaunchedEffect(paging) {
         if (searchMode && query.search == null) return@LaunchedEffect
+        if (paging.items.isNotEmpty() || paging.endReached) return@LaunchedEffect
         delay(if (query.search != null) 350 else 0) // let typing settle before searching
         query.search?.let(graph.achievements::searched)
         paging.loadNext()
@@ -252,7 +257,7 @@ fun CatalogScreen(
         items(paging.items, key = { it.key }) { anime ->
             AnimeCard(anime, onClick = {
                 if (query.search != null) graph.achievements.openedFromSearch(anime.key)
-                if (query.kinds.isNotEmpty()) graph.achievements.openedFromFilter(anime.key)
+                if (userFiltered) graph.achievements.openedFromFilter(anime.key)
                 navigator.push(Route.Detail(anime))
             })
         }
@@ -333,8 +338,25 @@ private fun SearchField(value: String, onChange: (String) -> Unit, autoFocus: Bo
     }
 }
 
+private val StringListSaver = Saver<List<String>, String>(
+    save = { it.joinToString("") },
+    restore = { saved -> if (saved.isEmpty()) emptyList() else saved.split('') },
+)
+private val OrderSaver = Saver<CatalogOrder, String>(save = { it.name }, restore = { CatalogOrder.valueOf(it) })
+
+private val pagingCache = LinkedHashMap<CatalogQuery, CatalogPaging>()
+
+/** A few recent queries keep their pages; failed ones start over. */
+private fun cachedPaging(graph: AppGraph, query: CatalogQuery): CatalogPaging {
+    pagingCache[query]?.takeIf { it.graph === graph && it.error == null }?.let { pagingCache.remove(query); pagingCache[query] = it; return it }
+    val created = CatalogPaging(graph, query)
+    pagingCache[query] = created
+    while (pagingCache.size > 6) pagingCache.remove(pagingCache.keys.first())
+    return created
+}
+
 /** Page-by-page loading of a catalog query. */
-private class CatalogPaging(private val graph: AppGraph, private val query: CatalogQuery) {
+private class CatalogPaging(val graph: AppGraph, private val query: CatalogQuery) {
     val items = mutableStateListOf<Anime>()
     var loading by mutableStateOf(false)
         private set

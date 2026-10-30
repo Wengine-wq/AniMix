@@ -235,7 +235,7 @@ internal val AchievementCatalog: List<Achievement> = listOf(
     Achievement(
         id = "catalog_filter_discovery", number = 39, category = AchievementCategory.Discovery,
         name = "Я не душный, я с фильтрами",
-        description = "Выбрать фильтр типа тайтла, отличный от «Все», и открыть тайтл из выдачи.",
+        description = "Выбрать в фильтрах каталога тип, жанр или год и открыть тайтл из выдачи.",
         trigger = Trigger(metric = "filtered_catalog_titles_opened", threshold = 1),
     ),
     Achievement(

@@ -730,7 +730,7 @@
       "number": 39,
       "category": "discovery",
       "name": "Я не душный, я с фильтрами",
-      "description": "Выбрать фильтр типа тайтла, отличный от «Все», и открыть тайтл из выдачи.",
+      "description": "Выбрать в фильтрах каталога тип, жанр или год и открыть тайтл из выдачи.",
       "trigger": {
         "metric": "filtered_catalog_titles_opened",
         "threshold": 1
