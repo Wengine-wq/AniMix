@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **Актуальная версия — AniMix New Horizons (1.0.5 re)** для Android и Windows: [скачать последний релиз](https://github.com/Wengine-wq/AniMix/releases/latest) · [исходники и описание в ветке `new-horizons`](https://github.com/Wengine-wq/AniMix/tree/new-horizons).
+>
+> Ниже — описание AniMix 2.x (Flutter). Эта версия больше не развивается; списки, часы и достижения из неё переносятся в New Horizons: «Настройки → Аккаунт → Миграция с AniMix 2.x».
+
 <div align="center">
 
 <img src="assets/icon/app_icon.png" width="112" alt="AniMix icon">
