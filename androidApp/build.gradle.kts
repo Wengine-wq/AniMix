@@ -12,8 +12,9 @@ android {
         applicationId = "com.example.animix"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3000
-        versionName = "3.0.0"
+        // versionCode only grows: 3000 + minor * 100 + patch of the "1.minor.patch re" line.
+        versionCode = 3005
+        versionName = "1.0.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

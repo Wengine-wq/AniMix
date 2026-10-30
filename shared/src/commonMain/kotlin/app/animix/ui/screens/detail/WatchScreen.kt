@@ -385,9 +385,10 @@ private fun DubbingList(dubbings: List<Dubbing>, selected: Dubbing?, onSelect: (
 
 /** An episode number; watched ones are dimmed with a check, started ones show how far they got. */
 @Composable
-private fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, progress: Float?, saved: Boolean, onClick: () -> Unit) {
+internal fun EpisodeCell(episode: Episode, selected: Boolean, watched: Boolean, progress: Float?, saved: Boolean,
+    enabled: Boolean = true, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
-    EpisodeCardSurface(selected, onClick, Modifier.height(48.dp)) {
+    EpisodeCardSurface(selected, onClick, Modifier.height(48.dp), enabled = enabled) {
         Txt(
             episode.number,
             AniMixTheme.type.bodyStrong,

@@ -1,6 +1,6 @@
-# AniMix 3.0 — New Horizons
+# AniMix New Horizons — 1.0.5 re
 
-A from-scratch rewrite of AniMix in Kotlin and Compose Multiplatform.
+AniMix reborn: an anime app in Kotlin and Compose Multiplatform.
 Targets: Android and Windows desktop, from one shared codebase.
 
 ## Layout

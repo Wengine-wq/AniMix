@@ -27,24 +27,32 @@ internal fun AboutSection() {
     Spacer(Modifier.height(16.dp))
     Txt(AppRelease.name, AniMixTheme.type.heading, color = AniMixTheme.colors.accentText)
     Spacer(Modifier.height(8.dp))
-    Txt("Новая глава AniMix: больше контроля над просмотром, временем и своей коллекцией.", AniMixTheme.type.body)
+    Txt("Перерождение первого AniMix. Просмотр, свободное время и своя коллекция — в одном приложении на телефоне и ПК.", AniMixTheme.type.body)
 
     Spacer(Modifier.height(32.dp))
-    Txt("Что нового после 2.5", AniMixTheme.type.heading)
+    Txt("Что есть в этой версии", AniMixTheme.type.heading)
     Spacer(Modifier.height(20.dp))
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        ReleaseFeature(AniMixIcons.Palette, "Единый интерфейс 3.0",
-            "Общий визуальный язык на Android и Windows: светлая и тёмная темы, согласованные формы и плавная навигация.")
+        ReleaseFeature(AniMixIcons.Palette, "Единый интерфейс",
+            "Общий визуальный язык на Android и Windows: светлая и тёмная темы, согласованные формы и плавная навигация. Экономия батареи и отключение анимаций.")
+        ReleaseFeature(AniMixIcons.Search, "Каталог и поиск",
+            "Shikimori и YummyAnime в одной выдаче, фильтры по типу, жанрам и году, которые сохраняются при переходах.")
         ReleaseFeature(AniMixIcons.Play, "Встроенный плеер AniMix",
             "Общие элементы управления на телефоне и ПК: качество видео, полноэкранный режим, автопереход и пропуск размеченных опенингов и эндингов.")
         ReleaseFeature(AniMixIcons.Download, "Загрузки и просмотр без сети",
             "Очередь серий с выбором озвучки и качества, паузой и продолжением. Скачанные серии доступны в приложении без интернета.")
         ReleaseFeature(AniMixIcons.Clock, "Watch flow",
             "Очередь под свободное время: подбор серий, прогноз окончания и остановка по лимиту. Можно объединять разные тайтлы в одну сессию.")
-        ReleaseFeature(AniMixIcons.User, "Профиль с вашим характером",
-            "Свой аватар, баннер и значок достижения рядом с именем. Статистика, активность и любимые жанры показывают вашу историю просмотра.")
-        ReleaseFeature(AniMixIcons.Trophy, "История и достижения без пересмотра",
-            "Импорт из Shikimori и Anixart открывает подходящие достижения из истории без XP. Опыт и уровень растут за подтверждённый просмотр в AniMix.")
+        ReleaseFeature(AniMixIcons.User, "Профиль и уровень",
+            "Свой аватар, баннер и значок достижения рядом с именем. Уровень — кольцо вокруг аватара; статистика, активность, любимые жанры и «Итоги года».")
+        ReleaseFeature(AniMixIcons.Trophy, "Достижения",
+            "Награды за подтверждённый просмотр, коллекцию и привычки, включая секретные. Импорт из Shikimori и Anixart открывает награды из истории без XP.")
+        ReleaseFeature(AniMixIcons.Share, "Перенос данных",
+            "Списки из Shikimori и Anixart, перенос списков, часов и достижений из AniMix 2.x — через аккаунт или с этого компьютера.")
+        ReleaseFeature(AniMixIcons.Refresh, "Обновления",
+            "Новая версия предлагается на главной и устанавливается прямо из приложения.")
+        ReleaseFeature(AniMixIcons.Flame, "Экспериментальные функции",
+            "AniPulse — еженедельный выпуск по вашим спискам — и подборки на главной. Включаются в настройках.")
     }
 
     Spacer(Modifier.height(32.dp))

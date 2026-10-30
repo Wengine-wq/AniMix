@@ -100,7 +100,7 @@ private fun LegacyMigrationSection(graph: AppGraph) {
         AniMixTheme.type.caption)
     Spacer(Modifier.height(12.dp))
     Panel {
-        AccountRow(AniMixIcons.User, "Войти в аккаунт AniMix 2.x", "Через Google, как в прежней версии. Сессия закроется после переноса",
+        AccountRow(AniMixIcons.User, "Войти в аккаунт AniMix 2.x", "Через Google. Сессия закроется сразу после переноса",
             trailing = "Войти", enabled = !state.busy, onClick = {
                 val url = graph.legacy.signInUrl()
                 if (Platform.name == "Android") runCatching { uri.openUri(url) } else browserUrl = url

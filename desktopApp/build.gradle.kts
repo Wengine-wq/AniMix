@@ -75,8 +75,8 @@ compose.desktop {
             modules("java.net.http", "jdk.unsupported")
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "AniMix"
-            packageVersion = "3.0.0"
-            description = "AniMix 3.0 New Horizons"
+            packageVersion = "1.0.5"
+            description = "AniMix New Horizons"
             vendor = "AniMix"
             windows {
                 iconFile.set(project.file("icons/animix.ico"))

@@ -25,6 +25,7 @@ import app.animix.core.nowMillis
 import app.animix.core.localDayIndex
 import app.animix.data.downloads.DownloadStatus
 import app.animix.data.library.ListStatus
+import app.animix.data.library.isEpisodeWatched
 import app.animix.data.playback.ResolvedStream
 import app.animix.data.watchflow.*
 import app.animix.model.Anime
@@ -81,7 +82,10 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
         mutableStateOf(openEpisode?.takeIf { anime?.key == opened?.key && dubbing?.episodes?.any { episode -> episode.number == it } == true }
             ?: resumeEpisode(dubbing?.episodes.orEmpty(), anime?.let { library.entry(it) })?.number)
     }
-    var page by rememberSaveable(anime?.key, dubbing?.key) { mutableIntStateOf(0) }
+    // Open the grid on the page of the starting episode: episode 500 is not on the first page.
+    var page by rememberSaveable(anime?.key, dubbing?.key) {
+        mutableIntStateOf((dubbing?.episodes?.indexOfFirst { it.number == from } ?: -1).coerceAtLeast(0) / 24)
+    }
     var editing by rememberSaveable { mutableStateOf(state.queue.isEmpty()) }
     var optionsOpen by remember { mutableStateOf(false) }
     var chooseTitle by rememberSaveable { mutableStateOf(false) }
@@ -247,9 +251,12 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
             }
             val episodes = if (editing) dubbing?.episodes.orEmpty() else emptyList()
             items(episodes.drop(page * 24).take(24), key = { "episode:${dubbing?.key}:${it.number}" }) { episode ->
-                EpisodeCardSurface(episode.number == from, { from = episode.number }, Modifier.height(48.dp), enabled = !busy) {
-                    Txt(episode.number, AniMixTheme.type.label, modifier = Modifier.align(Alignment.Center))
-                }
+                // The same cell as «Смотреть»: watched, started and downloaded episodes are visible while planning.
+                val entry = anime?.let { library.entry(it) }
+                val saved = downloads.any { it.anime.key == anime?.key && it.dubbingKey == dubbing?.key &&
+                    it.episode.number == episode.number && it.status == DownloadStatus.Completed }
+                app.animix.ui.screens.detail.EpisodeCell(episode, episode.number == from, entry?.isEpisodeWatched(episode.number) == true,
+                    app.animix.ui.screens.detail.watchProgress(entry, episode), saved, enabled = !busy) { from = episode.number }
             }
             if (episodes.size > 24) item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

@@ -13,7 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.fromHttpToGmtDate
 import io.ktor.serialization.kotlinx.json.json
 
-const val AppVersion = "3.0.0"
+const val AppVersion = "1.0.5"
 
 fun createHttpClient(): HttpClient = HttpClient(createHttpEngine()) {
     expectSuccess = true
