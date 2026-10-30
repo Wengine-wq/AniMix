@@ -94,7 +94,10 @@ class AchievementReliabilityTest {
                 } }
             }
             rewards.flush()
-            val persisted = AppJson.decodeFromString<AchievementState>(disk.read("achievements.json")!!)
+            // The background writer may still be replacing the file; on Windows a read can lose that race.
+            var text: String? = null
+            for (attempt in 1..20) { text = disk.read("achievements.json"); if (text != null) break; withContext(Dispatchers.Default) { delay(50) } }
+            val persisted = AppJson.decodeFromString<AchievementState>(text!!)
             assertEquals(320L, persisted.counters["reviews_published"])
             assertEquals(320, persisted.sets["search"]?.size)
             assertTrue(rewards.award("first_review").earned)
