@@ -107,7 +107,8 @@ private fun LegacyMigrationSection(graph: AppGraph) {
             })
         if (local) {
             Divider()
-            AccountRow(AniMixIcons.Monitor, "Перенести с этого компьютера", "Найдены данные AniMix 2.x, в том числе без аккаунта",
+            AccountRow(AniMixIcons.Monitor, if (Platform.name == "Android") "Перенести с этого устройства" else "Перенести с этого компьютера",
+                "Найдены данные AniMix 2.x, в том числе без аккаунта",
                 trailing = "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
         }
     }
@@ -123,11 +124,11 @@ private fun LegacyMigrationSection(graph: AppGraph) {
         state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
             modifier = Modifier.padding(top = 10.dp, start = 4.dp))
         done != null -> Txt(
-            "Перенесено${done.accountName?.let { " из аккаунта «$it»" } ?: if (done.source == "device") " с этого компьютера" else ""}: " +
+            "Перенесено${done.accountName?.let { " из аккаунта «$it»" } ?: if (done.source == "device") " с этого устройства" else ""}: " +
                 "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
             AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
     }
-    if (Platform.name == "Android") Unavailable("Без аккаунта данные 2.x хранятся внутри прежнего приложения, поэтому на телефоне перенос идёт через вход в аккаунт.")
+    if (Platform.name == "Android" && !local) Unavailable("Данные 2.x без аккаунта находятся, только если AniMix установлен поверх версии 2.x. Иначе перенос идёт через вход в аккаунт.")
 }
 
 @Composable
