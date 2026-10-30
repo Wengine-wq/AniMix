@@ -13,8 +13,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.Platform
-import app.animix.data.importer.OAuthBrowser
-import app.animix.data.account.AniMixServer
+import app.animix.data.account.openLoopbackCallback
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,12 +37,24 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
     val shikimori by graph.shikimoriAccount.user.collectAsState()
     val account by graph.account.state.collectAsState()
     val uri = LocalUriHandler.current
-    var browserUrl by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    var browserSignIn by remember { mutableStateOf<Job?>(null) }
     LaunchedEffect(Unit) { graph.shikimoriAccount.load(); graph.account.load() }
-    browserUrl?.let { url ->
-        OAuthBrowser(url, AniMixServer.CALLBACK, service = "Google",
-            onRedirect = { redirect -> browserUrl = null; graph.account.completeSignIn(redirect) },
-            onCancel = { browserUrl = null; graph.account.cancelSignIn() })
+    browserSignIn?.let { job ->
+        BrowserWaitDialog(onCancel = { job.cancel(); browserSignIn = null; graph.account.cancelSignIn() })
+    }
+    // Google signs in only in a normal browser: Android returns through the animix:// link,
+    // desktop through a one-shot listener on 127.0.0.1.
+    fun signIn() {
+        val loopback = openLoopbackCallback()
+        if (loopback == null) { runCatching { uri.openUri(graph.account.signInUrl()) }; return }
+        browserSignIn = scope.launch {
+            try {
+                runCatching { uri.openUri(graph.account.signInUrl(loopback.returnUri)) }
+                withTimeoutOrNull(10 * 60_000L) { loopback.await() }?.let(graph.account::completeSignIn)
+                    ?: graph.account.cancelSignIn()
+            } finally { loopback.close(); browserSignIn = null }
+        }
     }
     val user = account.user
     Column {
@@ -59,14 +73,12 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         }
         Spacer(Modifier.height(12.dp))
         if (user == null) {
-            PrimaryButton(if (account.busy) "Входим…" else "Войти или зарегистрироваться", {
-                val url = graph.account.signInUrl()
-                if (Platform.name == "Android") runCatching { uri.openUri(url) } else browserUrl = url
-            }, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !account.busy)
+            PrimaryButton(if (account.busy) "Входим…" else "Войти или зарегистрироваться", ::signIn,
+                Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !account.busy && browserSignIn == null)
             when {
                 account.error != null -> Txt(account.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
                     modifier = Modifier.padding(top = 8.dp, start = 4.dp))
-                account.waitingForBrowser && Platform.name == "Android" -> Unavailable("Завершите вход в браузере — AniMix продолжит сам.")
+                account.waitingForBrowser -> Unavailable("Завершите вход в браузере — AniMix продолжит сам.")
                 else -> Unavailable("Вход через Google. При первом входе создаётся онлайн-профиль AniMix.")
             }
         } else {
@@ -140,6 +152,21 @@ private fun LegacyMigrationSection(graph: AppGraph) {
             "Перенесено${done.accountName?.let { " в онлайн-профиль «$it»" } ?: " на это устройство"}: " +
                 "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
             AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+    }
+}
+
+/** While the system browser is open: what to do there, and a way back. */
+@Composable
+private fun BrowserWaitDialog(onCancel: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
+        Column(Modifier.widthIn(max = 380.dp).clip(AniMixTheme.shapes.large).background(AniMixTheme.colors.surfaceRaised).padding(20.dp)) {
+            Txt("Вход через браузер", AniMixTheme.type.heading)
+            Spacer(Modifier.height(6.dp))
+            Txt("Войдите в Google в открывшемся браузере. Когда вход подтвердится, AniMix продолжит сам, а вкладку можно будет закрыть.",
+                AniMixTheme.type.caption)
+            Spacer(Modifier.height(16.dp))
+            SecondaryButton("Отмена", onCancel)
+        }
     }
 }
 

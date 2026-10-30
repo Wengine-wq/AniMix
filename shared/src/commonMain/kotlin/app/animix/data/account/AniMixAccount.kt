@@ -75,6 +75,7 @@ class AniMixAccount(
     private var session: StoredAccount? = null
     private var loaded = false
     private var signInStartedAt = 0L
+    private var returnUri = AniMixServer.CALLBACK
 
     suspend fun load() = lock.withLock {
         if (loaded) return@withLock
@@ -83,11 +84,15 @@ class AniMixAccount(
         mutable.value = mutable.value.copy(user = session?.user, path = session?.path)
     }
 
-    /** The Google sign-in page on the server; it ends with a redirect to [AniMixServer.CALLBACK]. */
-    fun signInUrl(): String {
+    /**
+     * The Google sign-in page on the server, opened in the normal system browser. It ends with a
+     * redirect to [returnTo]: the `animix://` link on Android, a loopback listener on desktop.
+     */
+    fun signInUrl(returnTo: String = AniMixServer.CALLBACK): String {
         signInStartedAt = TrustedClock.now()
+        returnUri = returnTo
         mutable.value = mutable.value.copy(waitingForBrowser = true, error = null)
-        return "$baseUrl/v1/auth/google/start?return_uri=${AniMixServer.CALLBACK.encodeURLParameter()}"
+        return "$baseUrl/v1/auth/google/start?return_uri=${returnTo.encodeURLParameter()}"
     }
 
     fun cancelSignIn() { signInStartedAt = 0; mutable.value = mutable.value.copy(waitingForBrowser = false) }
@@ -101,7 +106,7 @@ class AniMixAccount(
 
     /** Ignored unless a sign-in started on this device in the last 15 minutes. */
     fun completeSignIn(callback: String) {
-        if (!callback.startsWith(AniMixServer.CALLBACK)) return
+        if (!callback.startsWith(returnUri)) return
         val started = signInStartedAt
         if (started == 0L || TrustedClock.now() - started > 15 * 60_000L) return
         signInStartedAt = 0

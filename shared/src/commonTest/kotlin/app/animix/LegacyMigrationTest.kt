@@ -95,8 +95,13 @@ class LegacyMigrationTest {
         testScheduler.advanceUntilIdle()
         assertTrue(requests.isEmpty())
 
-        account.signInUrl()
+        // Desktop: the browser comes back to a loopback listener; another address is not accepted.
+        val loopback = "http://127.0.0.1:53111/oauth/callback"
+        assertTrue("return_uri=http%3A%2F%2F127.0.0.1%3A53111%2Foauth%2Fcallback" in account.signInUrl(loopback))
         account.completeSignIn("${AniMixServer.CALLBACK}?ticket=t&state=s")
+        testScheduler.advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+        account.completeSignIn("$loopback?ticket=t&state=s")
         settle { account.state.value.user != null && !account.state.value.busy }
         assertEquals("Ilya", account.state.value.user?.name)
         assertEquals("signin", account.state.value.path)
