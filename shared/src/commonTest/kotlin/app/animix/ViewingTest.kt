@@ -126,10 +126,12 @@ class ViewingTest {
 
     @Test fun levelsHaveStableIncreasingThresholds() {
         val empty = LibraryData()
-        assertEquals(ProfileLevel(1, 0, 0, 100), empty.level(0))
-        assertEquals(ProfileLevel(2, 100, 0, 150), empty.level(2))
-        assertEquals(ProfileLevel(3, 250, 0, 200), empty.level(5))
-        assertEquals(0.5f, empty.level(1).fraction)
+        assertEquals(ProfileLevel(1, 0, 0, 150), empty.level(0))
+        assertEquals(ProfileLevel(1, 100, 100, 150), empty.level(2))
+        assertEquals(ProfileLevel(2, 150, 0, 250), empty.level(3))
+        assertEquals(ProfileLevel(3, 400, 0, 350), empty.level(8))
+        assertEquals(ProfileLevel(4, 750, 0, 450), empty.level(15))
+        assertEquals(1f / 3, empty.level(1).fraction)
     }
 
     @Test fun powerSavingPersistsAndRestoresTheSeparateAnimationPreference() = runTest {

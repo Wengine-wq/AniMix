@@ -107,7 +107,9 @@ data class ProfileLevel(val level: Int, val xp: Long, val progressXp: Long, val 
 fun LibraryData.level(earnedAchievements: Int): ProfileLevel {
     val xp = entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs } } / 60_000 +
         entries.values.sumOf { it.verifiedEpisodes.toLong() } * 20 + earnedAchievements.coerceAtLeast(0).toLong() * 50
-    fun threshold(level: Int): Long { val n = level.toLong() - 1; return n * 100 + n * (n - 1) * 25 }
+    // 150 XP to level 2, then 250, 350, … (+100 per level). XP is derived, so changing the curve
+    // recomputes every earlier level from the same confirmed playback and awards.
+    fun threshold(level: Int): Long { val n = level.toLong() - 1; return n * 150 + n * (n - 1) * 50 }
     var low = 1
     var high = 2
     while (threshold(high) <= xp && high < 1_000_000) high *= 2

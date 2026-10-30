@@ -31,6 +31,7 @@ import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.navigation.Tab
+import app.animix.ui.theme.AniMixMotion
 import app.animix.ui.theme.AniMixTheme
 import kotlin.time.Instant
 
@@ -50,13 +51,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
         }
         Spacer(Modifier.height(20.dp))
         ProfileIdentity(library.profile, badge, onEdit = { navigator.push(Route.EditProfile()) },
-            onBadge = { navigator.push(Route.Achievements) })
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Txt("Уровень ${level.level}", AniMixTheme.type.label, color = AniMixTheme.colors.accentText, modifier = Modifier.weight(1f))
-            Txt("${level.progressXp} / ${level.nextLevelXp} XP", AniMixTheme.type.micro)
-        }
-        ProgressLine(level.fraction, Modifier.padding(top = 8.dp))
+            onBadge = { navigator.push(Route.Achievements) }, level = level)
         Spacer(Modifier.height(24.dp))
         Row(Modifier.fillMaxWidth()) {
             ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
@@ -92,7 +87,8 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
 }
 
 @Composable
-internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?, onEdit: (() -> Unit)? = null, onBadge: (() -> Unit)? = null) {
+internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?, onEdit: (() -> Unit)? = null, onBadge: (() -> Unit)? = null,
+    level: ProfileLevel? = null) {
     val colors = AniMixTheme.colors
     val avatarInteraction = remember { MutableInteractionSource() }
     val badgeInteraction = remember { MutableInteractionSource() }
@@ -103,7 +99,8 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
         Column {
             Box(Modifier.fillMaxWidth().height(bannerHeight + avatarSize / 2)) {
                 ProfileBanner(profile.banner, Modifier.fillMaxWidth().height(bannerHeight))
-                ProfileAvatar(profile, avatarSize, Modifier.align(Alignment.BottomStart).padding(start = 16.dp)
+                ProfileAvatar(profile, avatarSize, Modifier.align(Alignment.BottomStart).padding(start = 16.dp), level = level,
+                    clickModifier = Modifier
                     .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
                         .clickable(avatarInteraction, indication = null, role = Role.Button, onClick = onEdit)
                         .focusOutline(avatarInteraction, CircleShape) else Modifier))
@@ -157,15 +154,46 @@ internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier) 
 }
 
 @Composable
-internal fun ProfileAvatar(profile: LocalProfile, size: Dp, modifier: Modifier = Modifier) {
+internal fun ProfileAvatar(profile: LocalProfile, size: Dp, modifier: Modifier = Modifier, level: ProfileLevel? = null,
+    clickModifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
     val model = remember(profile.avatar) { profile.avatar?.imageModel() }
-    Box(modifier.size(size).clip(CircleShape).background(colors.background).padding(5.dp)) {
-        Box(Modifier.fillMaxSize().clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
-            val initial = profile.name.firstOrNull { it.isLetterOrDigit() }?.uppercase()
-            if (initial != null) Txt(initial, AniMixTheme.type.title, color = colors.onAccent)
-            else Icon(AniMixIcons.User, null, Modifier.size(32.dp), tint = colors.onAccent)
-            if (model != null) RemoteImage(model, Modifier.fillMaxSize(), shape = CircleShape, placeholder = false)
+    Box(modifier.size(size)) {
+        Box(Modifier.fillMaxSize().then(clickModifier).clip(CircleShape).background(colors.background).padding(5.dp)) {
+            Box(Modifier.fillMaxSize().clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
+                val initial = profile.name.firstOrNull { it.isLetterOrDigit() }?.uppercase()
+                if (initial != null) Txt(initial, AniMixTheme.type.title, color = colors.onAccent)
+                else Icon(AniMixIcons.User, null, Modifier.size(32.dp), tint = colors.onAccent)
+                if (model != null) RemoteImage(model, Modifier.fillMaxSize(), shape = CircleShape, placeholder = false)
+            }
+        }
+        if (level != null) LevelRing(level, Modifier.matchParentSize())
+    }
+}
+
+/**
+ * Experience as a ring in the avatar's frame, filled from the top, with the level in a small
+ * bubble on the ring. No XP numbers: the ring is the progress to the next level.
+ */
+@Composable
+private fun LevelRing(level: ProfileLevel, modifier: Modifier) {
+    val colors = AniMixTheme.colors
+    val fraction by app.animix.ui.theme.animateMotionFloatAsState(level.fraction, androidx.compose.animation.core.tween(AniMixMotion.Page))
+    val percent = (level.fraction * 100).toInt()
+    Box(modifier.semantics { contentDescription = "Уровень ${level.level}, до следующего уровня пройдено $percent %" }) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 3.dp.toPx()
+            val inset = 2.5.dp.toPx()
+            val arc = Size(size.width - inset * 2, size.height - inset * 2)
+            val topLeft = Offset(inset, inset)
+            drawArc(colors.outline, 0f, 360f, false, topLeft, arc, style = Stroke(stroke))
+            if (fraction > 0f) drawArc(colors.accent, -90f, 360f * fraction, false, topLeft, arc,
+                style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        }
+        Box(Modifier.align(Alignment.TopCenter).offset(y = (-9).dp).clip(AniMixTheme.shapes.pill)
+            .background(colors.background).padding(2.dp).clip(AniMixTheme.shapes.pill).background(colors.accent)
+            .padding(horizontal = 8.dp, vertical = 1.dp), contentAlignment = Alignment.Center) {
+            Txt("${level.level}", AniMixTheme.type.label, color = colors.onAccent, maxLines = 1)
         }
     }
 }
