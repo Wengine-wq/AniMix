@@ -108,8 +108,10 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     val library by graph.library.state.collectAsState()
     val continueItems = remember(library) { library.continueWatching() }
     // Recomputed only when the taste changes, not on every saved position.
+    val settings by graph.settings.state.collectAsState()
     val taste = remember(library) { library.tasteGenres().take(3).joinToString { it.first } }
-    val picks = rememberLoad(taste) { if (taste.isEmpty()) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
+    val picksOn = settings.experimentalPicks && taste.isNotEmpty()
+    val picks = rememberLoad(taste to picksOn) { if (!picksOn) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
     // Read before building lazy items: each request updates only its own section.
     val ongoingState = ongoing.value
     val popularState = popular.value
@@ -129,7 +131,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         item(key = "filters") {
             QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) })
         }
-        item(key = "anipulse") {
+        if (settings.experimentalPulse) item(key = "anipulse") {
             app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) }
         }
         item(key = "continue") {
@@ -142,7 +144,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         item(key = "year-review") {
             YearReviewCard(library) { year -> navigator.push(Route.YearInReview(year)) }
         }
-        if (taste.isNotEmpty()) item(key = "recommendations") {
+        if (picksOn) item(key = "recommendations") {
             LoadingShelf("Подобрано для вас", picksState, open, picks::refresh)
         }
         item(key = "ongoing") {

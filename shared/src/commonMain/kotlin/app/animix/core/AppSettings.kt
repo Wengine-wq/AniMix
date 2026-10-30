@@ -42,6 +42,10 @@ data class Settings(
     val fillScreen: Boolean = false,
     /** Quality for downloads; asked on the first download, changeable in settings. */
     val downloadQuality: String? = null,
+    /** «Экспериментальные функции»: the AniPulse weekly digest, off until the viewer opts in. */
+    val experimentalPulse: Boolean = false,
+    /** «Экспериментальные функции»: «Подобрано для вас» on the home screen. */
+    val experimentalPicks: Boolean = false,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 ) {

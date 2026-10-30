@@ -36,6 +36,7 @@ private enum class SettingsCategory(val title: String, val icon: ImageVector) {
     Network("Соединение", AniMixIcons.Wifi),
     Performance("Производительность", AniMixIcons.Battery),
     Data("Данные и кэш", AniMixIcons.Refresh),
+    Experimental("Экспериментальные функции", AniMixIcons.Flame),
     About("О приложении", AniMixIcons.Info),
 }
 
@@ -48,8 +49,10 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
         Txt("Коллекция", AniMixTheme.type.heading)
         Spacer(Modifier.height(12.dp))
         Panel {
-            NavRow("AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }, trailing = "Аниме-неделя")
-            Divider()
+            if (settings.experimentalPulse) {
+                NavRow("AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }, trailing = "Аниме-неделя")
+                Divider()
+            }
             NavRow("История просмотров", AniMixIcons.History, { navigator.push(Route.History) })
             Divider()
             NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.Achievements) })
@@ -68,6 +71,8 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> if (settings.batterySaver) "Экономия" else "Обычный режим"
                     SettingsCategory.Data -> "Объём и очистка"
+                    SettingsCategory.Experimental -> listOfNotNull("AniPulse".takeIf { settings.experimentalPulse },
+                        "Подборки".takeIf { settings.experimentalPicks }).joinToString().ifEmpty { "Выключены" }
                     SettingsCategory.Account -> "Локальный профиль"
                     SettingsCategory.About -> AppRelease.version
                 }
@@ -162,6 +167,23 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
             SettingsCategory.Import -> ImportSection(graph, navigator)
             SettingsCategory.About -> AboutSection()
             SettingsCategory.Data -> StorageSection(graph, navigator)
+            SettingsCategory.Experimental -> {
+                Panel {
+                    ToggleRow("AniPulse — аниме-неделя", settings.experimentalPulse,
+                        { v -> graph.settings.update { it.copy(experimentalPulse = v) } }, AniMixIcons.Pulse,
+                        subtitle = "Еженедельный выпуск по вашим спискам: серии, новости Shikimori и ИИ-обзор со ссылками на источники")
+                    Divider()
+                    ToggleRow("Подобрано для вас", settings.experimentalPicks,
+                        { v -> graph.settings.update { it.copy(experimentalPicks = v) } }, AniMixIcons.Star,
+                        subtitle = "Полка на главной: похожее на любимые тайтлы и лучшее в ваших жанрах")
+                }
+                Txt("Функции в разработке: результаты могут ошибаться, а ИИ-обзору нужна сеть. Выключение скрывает их и ничего не удаляет — архив выпусков сохраняется.",
+                    AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
+                if (settings.experimentalPulse) {
+                    Spacer(Modifier.height(12.dp))
+                    Panel { NavRow("Открыть AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }) }
+                }
+            }
             SettingsCategory.Account -> AccountSection(graph, navigator)
         }
     }

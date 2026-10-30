@@ -5,6 +5,7 @@ import app.animix.data.library.LibraryData
 import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
 import app.animix.model.Anime
+import app.animix.model.AnimeStatus
 import app.animix.model.AnimeTopic
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
@@ -26,10 +27,12 @@ fun pulseDateLabel(time: Long): String = pulseDate(time).split('-').let { "${it[
 fun pulseInterests(library: LibraryData): List<LibraryEntry> {
     val eligible = library.entries.values.filter { it.anime.title.isNotBlank() && it.status != ListStatus.Dropped &&
         (it.status != null || it.favorite || it.episodesWatched > 0 || it.viewing.isNotEmpty()) }
+    // Airing and announced titles have news to tell; within a list they go first.
     val ranked = eligible.sortedWith(compareBy<LibraryEntry> {
         when { it.status == ListStatus.Watching -> 0; it.favorite -> 1; it.status == ListStatus.Planned -> 2
             it.status == ListStatus.Completed -> 3; else -> 4 }
-    }.thenByDescending { it.updatedAt })
+    }.thenBy { if (it.anime.status == AnimeStatus.Ongoing || it.anime.status == AnimeStatus.Announced) 0 else 1 }
+        .thenByDescending { it.updatedAt })
     val past = ranked.firstOrNull { it.status == ListStatus.Completed }
     return (ranked.take(3) + listOfNotNull(past) + ranked.drop(3)).distinctBy { it.anime.key }.take(4)
 }

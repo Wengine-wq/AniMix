@@ -51,6 +51,17 @@ fun PulseEntry(graph: AppGraph, onRead: () -> Unit) {
 
 @Composable
 fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
+    val settings by graph.settings.state.collectAsState()
+    if (!settings.experimentalPulse) {
+        // A link (animix://anipulse) can still lead here while the experiment is off.
+        Box(Modifier.fillMaxSize().padding(padding).padding(20.dp), contentAlignment = Alignment.Center) {
+            app.animix.ui.components.MessageState("AniPulse выключен",
+                message = "Это экспериментальная функция. Включите её в «Настройки → Экспериментальные функции».",
+                icon = AniMixIcons.Pulse, actionLabel = "Включить",
+                onAction = { graph.settings.update { it.copy(experimentalPulse = true) } })
+        }
+        return
+    }
     val state by graph.pulse.state.collectAsState()
     val library by graph.library.state.collectAsState()
     val interests = remember(library) { pulseInterests(library) }
