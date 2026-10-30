@@ -4,7 +4,8 @@ import app.animix.core.AppLog
 import app.animix.core.AppJson
 import app.animix.core.AppSettings
 import app.animix.core.DiskStore
-import app.animix.core.nowMillis
+import app.animix.core.TrustedClock
+import app.animix.data.library.viewingKey
 import app.animix.data.library.Library
 import app.animix.data.library.LibraryData
 import app.animix.data.library.ListStatus
@@ -198,8 +199,11 @@ class Achievements(
         }))
     }
 
-    /** A completed download identity is counted once, including restoration on startup. */
-    fun downloadCompleted(id: String) = addToSet("downloads_completed", id)
+    /**
+     * A completed download counts once per episode, including restoration on startup: the same
+     * episode in another quality or dubbing, or deleted and downloaded again, adds nothing.
+     */
+    fun downloadCompleted(animeKey: String, episode: String) = addToSet("downloaded_episodes", "$animeKey|${viewingKey(episode)}")
 
     // --- Internals ---------------------------------------------------------------------------
 
@@ -210,7 +214,7 @@ class Achievements(
     /** Remembers list history that the current library snapshot alone can't tell. */
     private fun observeLibrary(lib: LibraryData) {
         var state = _state.value
-        val now = nowMillis()
+        val now = TrustedClock.now()
         for ((key, entry) in lib.entries) {
             if (entry.favorite) state = state.withSet("favorites_ever", key)
             if (entry.status == ListStatus.Planned) state = state.withSet("planned_ever", key)
@@ -262,7 +266,9 @@ class Achievements(
                 "secret_genre_selected" -> if (t.value in set("secret_genres")) 1 else 0
                 "secret_search" -> if (t.value in set("secret_searches")) 1 else 0
                 "watch_seconds" -> lib.confirmedWatchSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                "episode_downloads_completed" -> maxOf(state.sets["downloads_completed"].orEmpty().size, (state.counters["episode_downloads_completed"] ?: 0).toInt())
+                // Older builds counted download IDs (one per quality); their progress is kept, never added to.
+                "episode_downloads_completed" -> maxOf(set("downloaded_episodes").size, set("downloads_completed").size,
+                    (state.counters["episode_downloads_completed"] ?: 0).toInt())
                 "reviews_published" -> (state.counters["reviews_published"] ?: 0).toInt()
                 "episodes_per_day" -> verifiedDays.values.maxOrNull() ?: 0
                 "daily_episode_streak" -> {
@@ -291,10 +297,10 @@ class Achievements(
             for (a in catalog) {
                 if (a.id in unlocked) continue
                 if (current(a) >= a.trigger.threshold) {
-                    unlocked[a.id] = nowMillis()
+                    unlocked[a.id] = TrustedClock.now()
                     fresh += a
                 } else if (a.id !in historical && withHistory(a) >= a.trigger.threshold) {
-                    historical[a.id] = nowMillis()
+                    historical[a.id] = TrustedClock.now()
                 }
             }
         }

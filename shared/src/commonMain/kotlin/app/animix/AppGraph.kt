@@ -83,7 +83,9 @@ class AppGraph {
     val kodik = KodikResolver(http)
     /** «Умное соединение» and «Экономия трафика». */
     val connection = app.animix.data.ConnectionPolicy(settings)
-    val downloads = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"), parallelism = { connection.downloadParallelism() }, onCompleted = achievements::downloadCompleted)
+    val downloads: DownloadManager = DownloadManager(scope, kodik, http, OfflineFiles("${Platform.dataDir}/downloads"), parallelism = { connection.downloadParallelism() }, onCompleted = { id ->
+        downloads.state.value.firstOrNull { it.id == id }?.let { achievements.downloadCompleted(it.anime.key, it.episode.number) }
+    })
 
     /** Opening and ending times from YummyAnime and AniSkip, remembered for offline viewing. */
     val skips = SkipTimes(http, DiskStore(Platform.dataDir), scope)

@@ -106,13 +106,13 @@ class AchievementReliabilityTest {
         val disk = disk()
         val library = Library(disk, backgroundScope).apply { load() }
         val rewards = Achievements(disk, backgroundScope, library, AppSettings(disk, backgroundScope)).apply { load() }
-        repeat(3) { repeat(10) { rewards.downloadCompleted("download-$it") } }
+        repeat(3) { repeat(10) { rewards.downloadCompleted("s1", "${it + 1}") } }
         rewards.flush()
         assertEquals(10, rewards.award("download_hoarder").current)
         assertTrue(rewards.award("first_download").earned)
         assertTrue(rewards.award("download_hoarder").earned)
         val first = rewards.award("first_download").unlockedAt
-        rewards.downloadCompleted("download-0")
+        rewards.downloadCompleted("s1", "1")
         rewards.flush()
         assertEquals(first, rewards.award("first_download").unlockedAt)
     }

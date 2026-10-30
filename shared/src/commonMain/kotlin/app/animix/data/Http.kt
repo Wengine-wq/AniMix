@@ -5,10 +5,12 @@ import app.animix.core.Platform
 import app.animix.core.createHttpEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.HttpHeaders
+import io.ktor.http.fromHttpToGmtDate
 import io.ktor.serialization.kotlinx.json.json
 
 const val AppVersion = "3.0.0"
@@ -26,6 +28,14 @@ fun createHttpClient(): HttpClient = HttpClient(createHttpEngine()) {
         retryOnServerErrors()
         retryOnException(retryOnTimeout = true)
         exponentialDelay(base = 2.0, maxDelayMs = 4_000)
+    }
+    HttpResponseValidator {
+        // Server time anchors rewards that depend on the date (streaks, marathons, months).
+        validateResponse { response ->
+            response.headers[HttpHeaders.Date]?.let { date ->
+                runCatching { date.fromHttpToGmtDate().timestamp }.getOrNull()?.let(app.animix.core.TrustedClock::observeServerTime)
+            }
+        }
     }
     defaultRequest {
         headers.append(HttpHeaders.UserAgent, "AniMix/$AppVersion (${Platform.name})")

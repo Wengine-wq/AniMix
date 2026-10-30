@@ -153,7 +153,8 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         opening: app.animix.model.SkipRange?, ending: app.animix.model.SkipRange?, reachedEnd: Boolean,
         context: PlaybackContext? = null) {
         if (durationMs <= 0 || (credit.ranges.isEmpty() && !reachedEnd)) return
-        val now = nowMillis()
+        // Confirmation dates feed day streaks and marathons; a moved device clock must not shift them.
+        val now = app.animix.core.TrustedClock.now()
         val key = viewingKey(number)
         _state.update { data ->
             val entry = data.entry(anime) ?: LibraryEntry(anime)
