@@ -48,6 +48,8 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
         Txt("Коллекция", AniMixTheme.type.heading)
         Spacer(Modifier.height(12.dp))
         Panel {
+            NavRow("AniPulse", AniMixIcons.Pulse, { navigator.push(Route.Pulse) }, trailing = "Аниме-неделя")
+            Divider()
             NavRow("История просмотров", AniMixIcons.History, { navigator.push(Route.History) })
             Divider()
             NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.Achievements) })

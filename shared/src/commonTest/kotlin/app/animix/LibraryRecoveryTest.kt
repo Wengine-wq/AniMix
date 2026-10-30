@@ -65,6 +65,8 @@ class LibraryRecoveryTest {
         assertTrue(library.state.value.entries.isEmpty())
         library.refreshMetadata(anime)
         assertTrue(library.state.value.entries.isEmpty())
+        // Finish the initial asynchronous save before replacing this file with a legacy fixture.
+        library.flush()
         disk.clear()
 
         val legacy = LibraryData(entries = mapOf(unresolved.key to LibraryEntry(unresolved, status = ListStatus.Planned, favorite = true, updatedAt = 123)))

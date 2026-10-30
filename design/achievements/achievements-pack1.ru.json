@@ -1,0 +1,404 @@
+{
+  "version": 3,
+  "status": "design_proposal",
+  "brand": "AniMix 3.0 New Horizons",
+  "atlas": {
+    "file": "animix-achievements-atlas-v3.png",
+    "columns": 6,
+    "rows": 4,
+    "width": 1254,
+    "height": 1254,
+    "coordinates": "ordinal visual position only; not pixel crop coordinates",
+    "slicing": "Generated spacing is not uniform; define pixel rectangles before runtime sprite slicing.",
+    "order": "row-major",
+    "background": "transparent",
+    "textEmbedded": false
+  },
+  "notes": [
+    "Условия — дизайн-предложение, интеграция в приложение не выполнена.",
+    "animeKey — символический ключ: перед интеграцией связать с ID тайтлов используемого каталога.",
+    "Порядок чтения сетки: слева направо, сверху вниз. Координаты row и column начинаются с 0.",
+    "Проверять прогресс по фактическому просмотру, не по перемотке. Эпизод считать просмотренным при достижении принятого приложением порога.",
+    "Повторный просмотр одной серии не увеличивает число уникальных серий и тайтлов. Повторное скачивание одной серии не увеличивает число скачанных серий.",
+    "Отсчёт календарных дней ведётся в часовом поясе пользователя. Сезоны и состав тайтлов нужно согласовать с моделью каталога.",
+    "Условия просмотра предложены для будущей реализации; фактическая поддержка этих событий в приложении не проверялась."
+  ],
+  "achievements": [
+    {
+      "id": "haikyuu",
+      "category": "anime",
+      "name": "Прыжок есть. Соцжизни нет.",
+      "description": "Досмотреть первый сезон «Волейбола!!».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "haikyuu"
+      },
+      "atlas": {
+        "column": 0,
+        "row": 0
+      },
+      "iconConcept": "Форма Карасуно, оранжево-белый мяч и чёрное перо."
+    },
+    {
+      "id": "attack_on_titan",
+      "category": "anime",
+      "name": "За стеной спойлеры",
+      "description": "Досмотреть первый сезон «Атаки титанов».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "attack_on_titan"
+      },
+      "atlas": {
+        "column": 1,
+        "row": 0
+      },
+      "iconConcept": "Эмблема «Крылья свободы» и зелёный плащ Разведкорпуса."
+    },
+    {
+      "id": "one_piece",
+      "category": "anime",
+      "name": "Ещё 1000 серий и спать",
+      "description": "Посмотреть 100 серий One Piece.",
+      "trigger": {
+        "metric": "anime_episodes_watched",
+        "threshold": 100,
+        "animeKey": "one_piece"
+      },
+      "atlas": {
+        "column": 2,
+        "row": 0
+      },
+      "iconConcept": "Соломенная шляпа Луффи и эмблема пиратов Соломенной шляпы."
+    },
+    {
+      "id": "jujutsu_kaisen",
+      "category": "anime",
+      "name": "Расширение дивана",
+      "description": "Досмотреть первый сезон «Магической битвы».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "jujutsu_kaisen"
+      },
+      "atlas": {
+        "column": 3,
+        "row": 0
+      },
+      "iconConcept": "Белые волосы, чёрная повязка и высокий воротник Годжо."
+    },
+    {
+      "id": "solo_leveling",
+      "category": "anime",
+      "name": "Поднятие уровня недосыпа",
+      "description": "Досмотреть первый сезон «Поднятия уровня в одиночку».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "solo_leveling"
+      },
+      "atlas": {
+        "column": 4,
+        "row": 0
+      },
+      "iconConcept": "Шлем Игриса с алым плюмажем и фиолетовой тенью."
+    },
+    {
+      "id": "demon_slayer",
+      "category": "anime",
+      "name": "Дыхание автоплея",
+      "description": "Досмотреть первый сезон «Клинка, рассекающего демонов».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "demon_slayer"
+      },
+      "atlas": {
+        "column": 5,
+        "row": 0
+      },
+      "iconConcept": "Клетчатое хаори Тандзиро, серьги ханафуда и бамбук Нэдзуко."
+    },
+    {
+      "id": "gachiakuta",
+      "category": "anime",
+      "name": "Мусор? Это легендарка",
+      "description": "Досмотреть первый сезон «Гачиакуты».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "gachiakuta"
+      },
+      "atlas": {
+        "column": 0,
+        "row": 1
+      },
+      "iconConcept": "Характерные перчатки Рудо с маркировкой 3R."
+    },
+    {
+      "id": "dandadan",
+      "category": "anime",
+      "name": "Бабка на турбине",
+      "description": "Досмотреть первый сезон «Дандадана».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "dandadan"
+      },
+      "atlas": {
+        "column": 1,
+        "row": 1
+      },
+      "iconConcept": "Турбобабка в форме манэки-нэко."
+    },
+    {
+      "id": "chainsaw_man",
+      "category": "anime",
+      "name": "Заведи меня, Почита",
+      "description": "Досмотреть первый сезон «Человека-бензопилы».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "chainsaw_man"
+      },
+      "atlas": {
+        "column": 2,
+        "row": 1
+      },
+      "iconConcept": "Почита — оранжевый пёс с пилой, ручкой на спине и хвостом-шнурком."
+    },
+    {
+      "id": "frieren",
+      "category": "anime",
+      "name": "Для эльфа — одна серия",
+      "description": "Посмотреть 10 серий «Провожающей в последний путь Фрирен».",
+      "trigger": {
+        "metric": "anime_episodes_watched",
+        "threshold": 10,
+        "animeKey": "frieren"
+      },
+      "atlas": {
+        "column": 3,
+        "row": 1
+      },
+      "iconConcept": "Красный посох с золотым кольцом и красной сферой, сундук-мимик."
+    },
+    {
+      "id": "kaiju_no_8",
+      "category": "anime",
+      "name": "После смены — в монстры",
+      "description": "Досмотреть первый сезон «Кайдзю № 8».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "kaiju_no_8"
+      },
+      "atlas": {
+        "column": 4,
+        "row": 1
+      },
+      "iconConcept": "Голова Кафки в форме кайдзю: светлая маска и бирюзовые линии."
+    },
+    {
+      "id": "first_favorite",
+      "category": "library",
+      "name": "Это моя няшечка вкусняшечка",
+      "description": "Добавить первый тайтл в избранное.",
+      "trigger": {
+        "metric": "favorite_titles_added",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 5,
+        "row": 1
+      }
+    },
+    {
+      "id": "first_download",
+      "category": "downloads",
+      "name": "Интернет переоценён",
+      "description": "Скачать первую серию полностью.",
+      "trigger": {
+        "metric": "episode_downloads_completed",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 0,
+        "row": 2
+      }
+    },
+    {
+      "id": "download_hoarder",
+      "category": "downloads",
+      "name": "А если завтра без вайфая?",
+      "description": "Скачать 10 серий полностью.",
+      "trigger": {
+        "metric": "episode_downloads_completed",
+        "threshold": 10
+      },
+      "atlas": {
+        "column": 1,
+        "row": 2
+      }
+    },
+    {
+      "id": "first_completed",
+      "category": "library",
+      "name": "Ну всё, теперь можно жить",
+      "description": "Отметить первый тайтл как просмотренный.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 2,
+        "row": 2
+      }
+    },
+    {
+      "id": "ten_completed",
+      "category": "library",
+      "name": "Втянулся, получается",
+      "description": "Досмотреть 10 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 10
+      },
+      "atlas": {
+        "column": 3,
+        "row": 2
+      }
+    },
+    {
+      "id": "fifty_completed",
+      "category": "library",
+      "name": "Субтитры уже снятся",
+      "description": "Досмотреть 50 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 50
+      },
+      "atlas": {
+        "column": 4,
+        "row": 2
+      }
+    },
+    {
+      "id": "hundred_completed",
+      "category": "library",
+      "name": "Сенсей диванных наук",
+      "description": "Досмотреть 100 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 100
+      },
+      "atlas": {
+        "column": 5,
+        "row": 2
+      }
+    },
+    {
+      "id": "ten_hours",
+      "category": "watch_time",
+      "name": "Это всё ещё одна серия",
+      "description": "Накопить 10 часов просмотра.",
+      "trigger": {
+        "metric": "watch_seconds",
+        "threshold": 36000
+      },
+      "atlas": {
+        "column": 0,
+        "row": 3
+      }
+    },
+    {
+      "id": "hundred_hours",
+      "category": "watch_time",
+      "name": "Трава? Это новый тайтл?",
+      "description": "Накопить 100 часов просмотра.",
+      "trigger": {
+        "metric": "watch_seconds",
+        "threshold": 360000
+      },
+      "atlas": {
+        "column": 1,
+        "row": 3
+      }
+    },
+    {
+      "id": "seven_day_streak",
+      "category": "habits",
+      "name": "Ни дня без опенинга",
+      "description": "Смотреть хотя бы одну серию в день 7 дней подряд.",
+      "trigger": {
+        "metric": "daily_episode_streak",
+        "threshold": 7
+      },
+      "atlas": {
+        "column": 2,
+        "row": 3
+      }
+    },
+    {
+      "id": "marathon",
+      "category": "habits",
+      "name": "Воу воу куда так быстро",
+      "description": "Посмотреть 5 серий за один календарный день.",
+      "trigger": {
+        "metric": "episodes_per_day",
+        "threshold": 5
+      },
+      "atlas": {
+        "column": 3,
+        "row": 3
+      }
+    },
+    {
+      "id": "watchlist_backlog",
+      "category": "library",
+      "name": "Посмотрю. Наверное. Потом.",
+      "description": "Собрать 50 разных тайтлов в списке «Буду смотреть».",
+      "trigger": {
+        "metric": "planned_titles_current",
+        "threshold": 50
+      },
+      "atlas": {
+        "column": 4,
+        "row": 3
+      }
+    },
+    {
+      "id": "first_review",
+      "category": "community",
+      "name": "Сейчас объясню за сюжет",
+      "description": "Опубликовать первый отзыв о тайтле.",
+      "trigger": {
+        "metric": "reviews_published",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 5,
+        "row": 3
+      }
+    }
+  ],
+  "referenceSources": [
+    {
+      "title": "Gachiakuta — официальный сайт персонажей",
+      "url": "https://gachiakuta-anime.com/en/character/detail/?category=cleaners_other&lang=en"
+    },
+    {
+      "title": "DAN DA DAN — официальный сайт персонажей",
+      "url": "https://anime-dandadan.com/en/character/"
+    },
+    {
+      "title": "Frieren — официальный сайт персонажей",
+      "url": "https://frieren-anime.jp/character/"
+    },
+    {
+      "title": "Kaiju No. 8 — официальный сайт",
+      "url": "https://kaiju-no8.net/en/"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+Use the attached AniMix achievement sheet ONLY as a STYLE REFERENCE. Create a COMPLETELY NEW second sheet of 24 DISTINCT NEW achievement icons. Do NOT reproduce any subjects from the reference. It must look like the same collectible achievement collection, same materials and polish.
+
+ONE PNG with true transparent alpha background. Exactly SIX COLUMNS and FOUR ROWS, 24 icons in strict row-major order. Uniform cell centers and icon size, generous clear transparent gutters and margin. Refined soft 3D enamel, brushed silver, warm ivory ceramic, matte charcoal/graphite, minimal muted rose (under 5% overall). Preserve natural canonical anime colors for recognition. Crisp readable silhouettes, compact compositions, restrained highlights. No pink glitter, no decorative orbit rings, no floor or background, no large tile panels. No captions, names, labels, watermarks. Small canonical jersey numbers and fire-company insignia are allowed.
+
+Exact new icons:
+ROW 1 — six anime achievements:
+1 SAKAMOTO DAYS: recognizable peaceful chibi head-and-shoulders of Taro Sakamoto in his chubby shopkeeper form: white/light-gray hair tied back, small round glasses, mustache, red shop apron, holding a tiny plain shopping bag. Faithful anime cues, no weapons.
+2 BLUE LOCK: blue-and-black Team Z football jersey with canonical number 11, black-white soccer ball, a broken silver chain and one little blue puzzle piece. Clear Blue Lock identity, no orange volleyball.
+3 THE APOTHECARY DIARIES: recognizable Maomao chibi head with dark green hair, blunt bangs, twin side braids, freckles, amused curious expression; small porcelain mortar and herbal bottle tucked below. Green/lilac/ivory color accents, peaceful.
+4 HELL'S PARADISE JIGOKURAKU: recognizable Gabimaru chibi head emblem, spiky WHITE hair, narrow golden eyes, dark face covering and recognizable ninja collar; small orange ninjutsu flame accent. No gore, no violence.
+5 FIRE FORCE: recognizable dark Fire Force Company 8 firefighter helmet and coat collar, bold electric BLUE luminous bands, canonical small 8 emblem, tiny controlled orange flame below. No real emergency scene.
+6 WITCH HAT ATELIER: recognizable Coco chibi head, light hair and her distinctive very broad pointed WHITE witch hat with dark ribbon, green cloak collar, tiny gold drawing pen and ink circle. Delicate ivory/gold/green, not a generic purple witch.
+
+ROW 2:
+7 RE:ZERO: recognizable Rem chibi head collectible, light BLUE short bob covering one eye, blue visible eye, white maid headband, canonical crossed hairpins and tiny floral headpiece, black-white collar. Friendly neutral expression, head and collar only.
+8 OSHI NO KO: recognizable Ai Hoshino chibi head emblem, PURPLE hair, distinctive sparkling star-shaped pupils, small bunny-shaped pink hair accessory, black/silver microphone. Keep canonical small pink accessory but no pink aura. Fully clothed head-and-collar icon.
+9 CUSTOM PROFILE NAME: graphite ID/name tag with an ivory cat-face avatar silhouette, silver pencil and little gold star, no writing.
+10 DARK THEME: brushed-silver crescent moon resting in a small matte charcoal gear, tiny dark-blue star.
+11 LIGHT THEME: ivory and champagne-gold sun resting in a silver gear, clearly different from moon.
+12 SKIP OPENING: silver fast-forward double arrow cutting across a small graphite music-note ribbon, blue accent, no text.
+
+ROW 3:
+13 SKIP ENDING: a tiny curling ivory film credits strip with blank short line marks, graphite end flag and a silver forward arrow. Distinct from music-note icon.
+14 AUTO NEXT: two small graphite and ivory episode screens connected by one curved silver forward arrow, one blue play symbol.
+15 CATALOG FILTERS: graphite and silver funnel filtering three tiny natural-color video cards into one gold-star card, very readable.
+16 SEARCH DISCOVERIES: silver magnifying glass examining a miniature ivory anime video tile, blue lens glint, tiny compass accent.
+17 TEN FAVORITES: a graphite treasure chest opened to reveal three ivory/rose/gold heart gems. Not a cat in a heart, not a castle.
+18 ON-HOLD LIST: two ivory pause bars nestled in a folded graphite bookmark with a little sleepy cat tail, tiny amber accent.
+
+ROW 4:
+19 RETURN FROM PAUSE: a silver circular return arrow around a graphite play triangle, small ivory cat paw pressing play. Distinct from auto-next screens.
+20 WATCHLIST TO COMPLETED: a graphite clipboard with one silver checkmark and a little folded bookmark turning into an ivory star.
+21 THREE COMPLETED TITLES THIS MONTH: a silver calendar with exactly THREE small gold stars and three slate mini-spines, no digits or text.
+22 365 HOURS OF WATCHING: graphite and brushed silver astronaut helmet with an ivory couch reflected inside its blue visor, a tiny planetary orbit. Time spent in one's own anime universe. No clock or hourglass.
+23 THIRTY DAY WATCHING STREAK: a compact graphite calendar with a continuous chain of small ivory checkmarks across its face, a silver laurel and tiny amber comet. No flame, no digits.
+24 ALL OTHER 47 ACHIEVEMENTS: the ultimate completionist trophy, an elegant dark graphite faceted diamond-shaped crystal held by two silver wings over a small platinum base with tiny gold star, subtle blue light inside. This is a prestigious final award, not a castle or a generic gold cup.
+
+All 24 icons exactly once, correct sequence, six columns and four rows. Match the supplied style but all subjects NEW. Original first sheet must not be included anywhere. Keep transparent margins between every icon; no text labels. High detail inside compact clear forms, highest available resolution.

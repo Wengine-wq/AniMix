@@ -3,6 +3,7 @@ package app.animix.data.shikimori
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
 import app.animix.model.AnimeKind
+import app.animix.model.AnimeTopic
 import app.animix.model.AnimeStatus
 import app.animix.model.Genre
 import app.animix.model.Review
@@ -69,6 +70,15 @@ internal fun CommentDto.toReview(): Review = Review(
     date = formatIsoDate(created_at),
     likes = null,
     source = ReviewSource.Shikimori,
+)
+
+internal fun NewsTopicDto.toTopic(): AnimeTopic = AnimeTopic(
+    id = id,
+    title = topic_title.orEmpty().trim(),
+    text = (html_body?.let(RichTextParser::parseHtml)?.takeUnless { it.isBlank } ?: RichTextParser.parseBbCode(body.orEmpty())).plain,
+    createdAt = created_at,
+    event = event?.takeIf { it.isNotBlank() },
+    episode = episode,
 )
 
 internal fun GenreDto.toGenre(): Genre? {

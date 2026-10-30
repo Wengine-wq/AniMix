@@ -24,6 +24,8 @@ enum class Tab(val label: String, val icon: ImageVector) {
 sealed interface Route {
     val key: String
 
+    data object Pulse : Route { override val key = "anipulse" }
+
     data class Detail(val anime: Anime) : Route {
         override val key get() = "detail:${anime.key}"
     }
@@ -149,6 +151,7 @@ class Navigator {
             "lists", "favorites" -> tab = Tab.Lists
             "achievements" -> { tab = Tab.Profile; push(Route.Achievements) }
             "watch-flow" -> push(Route.WatchFlow())
+            "anipulse", "pulse" -> push(Route.Pulse)
             "wrapped" -> push(Route.YearInReview(path.getOrNull(1)?.toIntOrNull() ?: app.animix.data.library.dayToDate(app.animix.core.localDayIndex()).year))
             "edit-profile" -> { tab = Tab.Profile; push(Route.EditProfile()) }
             "history" -> { tab = Tab.Profile; push(Route.History) }

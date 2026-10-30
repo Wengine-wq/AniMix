@@ -43,6 +43,18 @@ internal class ScreenshotDto(val originalUrl: String? = null, val x332Url: Strin
 @Serializable
 internal class TopicDto(val id: String? = null, val commentsCount: Int? = null)
 
+/** A news topic from the REST API: user-written news, or a generated event (anons, ongoing, released, episode). */
+@Serializable
+internal class NewsTopicDto(
+    val id: Long = 0,
+    val topic_title: String? = null,
+    val body: String? = null,
+    val html_body: String? = null,
+    val created_at: String = "",
+    val event: String? = null,
+    val episode: Int? = null,
+)
+
 /** The REST shape of an anime (used by /similar). */
 @Serializable
 internal class RestImageDto(val original: String? = null, val preview: String? = null)

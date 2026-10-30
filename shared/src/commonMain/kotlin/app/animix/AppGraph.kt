@@ -70,6 +70,12 @@ class AppGraph {
     /** The combined catalog screens use: Shikimori plus YummyAnime-only titles. */
     val anime = AnimeRepository(shikimori, yummy)
 
+    val pulse = app.animix.data.pulse.PulseRepository(DiskStore(Platform.dataDir), scope,
+        detail = { title -> if (title.source == app.animix.model.AnimeSource.Shikimori) shikimori.liveDetail(title.id)
+            else anime.detail(title, forceRefresh = true) },
+        editor = app.animix.data.pulse.PolzaPulseClient(),
+        topics = { title -> shikimori.topics(title.id) })
+
     /** «Подобрано для вас» from the local library. */
     val recommendations = app.animix.data.Recommendations(shikimori, anime)
 

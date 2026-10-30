@@ -1,0 +1,36 @@
+Use case: stylized-concept.
+Asset type: production achievement icon atlas for AniMix 3.0 New Horizons anime streaming application.
+Create ONE polished square transparent PNG sprite sheet with EXACTLY 24 distinct achievement icons in a perfectly regular 6 column by 4 row grid. Every cell equal size, each icon optically centered in its cell. Large consistent transparent gutters, outer margin; icons must not touch each other. Truly transparent alpha canvas: NO background, NO checkerboard drawn into image, NO floor, NO board, NO enclosing panels.
+Art direction from the actual application's brand: graphite #08080F and #1A1A1F, pastel pink #FFB4C8, porcelain white #FBF8FA, accent gradients #FF9EC6 to #FF889D. High-end playful collectible miniature enamel pins / soft sculpted 3D achievement charms, rounded silhouettes, pink translucent resin, matte graphite details, pearly highlights and delicate silver edges. Cohesive restrained materials, front-facing readable silhouettes, clean contours, expressive anime fandom humor. Mainly pink graphite white; tiny orange, straw gold, lavender or mint accents only where useful for recognition. Cute but premium, not generic emoji. Every object self-contained, no large identical badge backplates. Small horizon arc/sparkle details repeat subtly. Readable at 64px, not overly intricate. NO text anywhere, no letters, no numerals, no captions, no logos or watermarks. Names are supplied separately in app.
+
+EXACT subjects in row-major order, one per cell, distinct compositions:
+ROW 1 — anime:
+1 Haikyuu!!: a volleyball with black and orange panels rocketing over a miniature net, little crow wing accent.
+2 Attack on Titan: two crossed short silver swords, pale pink feathered wings, broken miniature stone wall.
+3 One Piece: iconic cute straw hat with pink-red band above a tiny skull and crossed bones, wave curl.
+4 Jujutsu Kaisen: black blindfold draped around a glowing lavender-pink energy orb with two orbiting sparks.
+5 Naruto: ramen bowl, chopsticks, spiral fishcake, tiny abstract ninja headband.
+6 Demon Slayer: dark checkered haori cloth ribbon wrapped around a miniature katana, pink crescent slash.
+ROW 2 — more anime and favorite:
+7 Death Note: small matte black notebook with a white feather pen and a tiny pink apple; NO writing.
+8 Spy x Family: pink-haired chibi spy cat-shaped plush face with little dark gold hair ornaments and peanut, stylized object not portrait.
+9 Chainsaw Man: adorable orange chainsaw dog charm with short metal saw nose and pink heart.
+10 Sailor Moon: pearly crescent moon hugging a pink heart with delicate wings.
+11 Pokemon: sleepy yellow electric mouse-like mascot curled around a glossy pink-white capture ball.
+12 favorite anime: tiny cute blushing anime catgirl face, pink hair, cat ears, held lovingly inside a large pearl-and-pink heart.
+ROW 3 — app functionality:
+13 first offline download: plump pink download arrow nesting into a graphite cloud, small crossed-out wifi glyph as shape, no text.
+14 download collection: three stacked miniature episode tiles inside a pink storage box, a download arrow.
+15 completed title: graphite play-triangle medallion inside a pink checkmark wreath.
+16 ten titles: stack of little pink and graphite manga/video volumes tied with a star clasp, no writing.
+17 fifty titles: tall fan-shaped library of tiny volumes, pink laurel leaves.
+18 hundred titles: extravagant small graphite-and-pink library castle with a pearly crown, premium legendary collectible.
+ROW 4 — time, habits and community:
+19 watch time 10 hours: cozy headphones wrapped around a little pink analog clock, no numbers.
+20 watch time 100 hours: tiny pink hourglass with a galaxy star inside.
+21 watching streak: pink flame character holding a calendar page with checkmark only, no text or digits.
+22 binge marathon: comfy graphite couch with pink cushion, popcorn and tiny lightning bolt.
+23 watchlist backlog: leaning tower of miniature episode cards with a sleepy cat peeking from behind.
+24 first review: pink speech bubble with a graphite fountain pen and tiny sparkling heart.
+
+Maintain exact 6 by 4 order, equal cells, consistent scale and coherent collectible set. Each icon occupies about 70-75 percent of its cell and all visual effects stay inside its cell. Export clean real transparency. Highest available resolution, preferably 2048 square or larger.

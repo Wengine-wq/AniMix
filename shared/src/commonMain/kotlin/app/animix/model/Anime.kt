@@ -91,3 +91,14 @@ data class AnimeDetail(
 
 @Serializable
 data class Genre(val id: String, val title: String, val isDemographic: Boolean)
+
+/** A Shikimori news topic or generated event of one anime. [event]: anons, ongoing, released, episode; null for written news. */
+@Serializable
+data class AnimeTopic(
+    val id: Long,
+    val title: String,
+    val text: String,
+    val createdAt: String,
+    val event: String? = null,
+    val episode: Int? = null,
+)

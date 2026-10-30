@@ -8,6 +8,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import app.animix.ui.components.AniMixSheet
+import app.animix.ui.components.MascotMessage
+import app.animix.ui.components.MascotPose
 import app.animix.ui.components.PrimaryButton
 import app.animix.ui.components.SecondaryButton
 
@@ -279,11 +281,10 @@ fun CatalogScreen(
             }
             paging.loading && paging.items.isEmpty() -> items(12) { AnimeCardPlaceholder() }
             paging.endReached && paging.items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
-                MessageState(
+                MascotMessage(
                     "Ничего не нашлось",
-                    message = "Попробуйте изменить запрос",
-                    icon = AniMixIcons.Search,
-                    modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                    message = if (query.search != null) "Попробуйте другое название или измените фильтры" else "Попробуйте изменить фильтры",
+                    pose = MascotPose.Thinking,
                 )
             }
         }

@@ -235,6 +235,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
             CompositionLocalProvider(LocalScreenKey provides key) {
             Box(Modifier.fillMaxSize()) {
                 when {
+                    route == Route.Pulse -> app.animix.ui.screens.pulse.PulseScreen(graph, navigator, padding)
                     route is Route.Detail -> DetailScreen(graph, navigator, route.anime, padding)
                     route is Route.Catalog -> CatalogScreen(graph, navigator, padding, title = route.title, preset = route.preset, showBack = true)
                     route is Route.Search -> CatalogScreen(graph, navigator, padding, searchMode = true, showBack = true, initialSearch = route.query)

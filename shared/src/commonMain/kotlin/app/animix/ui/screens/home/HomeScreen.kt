@@ -129,6 +129,9 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         item(key = "filters") {
             QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) })
         }
+        item(key = "anipulse") {
+            app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) }
+        }
         item(key = "continue") {
             ContinueShelf(continueItems, onOpen = { item ->
                 val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&

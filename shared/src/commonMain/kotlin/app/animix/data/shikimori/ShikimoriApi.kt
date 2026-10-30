@@ -81,6 +81,25 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
             }.bodyAsText(),
         )
 
+    /** Generated events of one anime (anons, ongoing, released, episode), newest first. */
+    suspend fun animeTopics(id: Int, limit: Int): List<NewsTopicDto> =
+        AppJson.decodeFromString(
+            ListSerializer(NewsTopicDto.serializer()),
+            http.get("$baseUrl/api/animes/$id/topics") { parameter("limit", limit) }.bodyAsText(),
+        )
+
+    /** Site news linked to one anime, newest first. */
+    suspend fun newsTopics(id: Int, limit: Int): List<NewsTopicDto> =
+        AppJson.decodeFromString(
+            ListSerializer(NewsTopicDto.serializer()),
+            http.get("$baseUrl/api/topics") {
+                parameter("forum", "news")
+                parameter("linked_type", "Anime")
+                parameter("linked_id", id)
+                parameter("limit", limit)
+            }.bodyAsText(),
+        )
+
     private suspend fun post(query: String, variables: JsonObject?): String =
         http.post("$baseUrl/api/graphql") {
             contentType(ContentType.Application.Json)

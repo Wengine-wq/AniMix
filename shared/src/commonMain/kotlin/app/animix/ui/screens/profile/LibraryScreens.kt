@@ -1,7 +1,6 @@
 package app.animix.ui.screens.profile
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
@@ -36,8 +34,9 @@ import app.animix.data.library.ListStatus
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.Chip
 import app.animix.ui.components.IconCircle
-import app.animix.ui.components.MessageState
 import app.animix.ui.components.Txt
+import app.animix.ui.components.MascotMessage
+import app.animix.ui.components.MascotPose
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
@@ -82,8 +81,11 @@ fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVa
             }
         },
         empty = {
-            if (status == null) EmptyLibrary(AniMixIcons.Heart, "В избранном пусто", "Откройте аниме и нажмите «Списки»")
-            else EmptyLibrary(AniMixIcons.Bookmark, "В списке «${status.label}» пусто", "Откройте аниме и нажмите «Списки»")
+            EmptyLibrary(
+                if (status == null) "Здесь будут любимые тайтлы" else "В списке «${status.label}» пока пусто",
+                "Найдите аниме в каталоге и добавьте его через закладку на странице тайтла.",
+                onExplore = { navigator.select(app.animix.ui.navigation.Tab.Catalog) },
+            )
         },
     )
 }
@@ -137,8 +139,6 @@ private fun LibraryGrid(
 }
 
 @Composable
-private fun EmptyLibrary(icon: ImageVector, title: String, message: String) {
-    Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
-        MessageState(title, message = message, icon = icon)
-    }
+private fun EmptyLibrary(title: String, message: String, onExplore: () -> Unit) {
+    MascotMessage(title, message, MascotPose.Welcome, onExplore = onExplore)
 }

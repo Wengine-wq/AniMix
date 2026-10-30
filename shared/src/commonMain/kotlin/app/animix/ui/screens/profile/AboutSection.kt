@@ -1,6 +1,5 @@
 package app.animix.ui.screens.profile
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -9,18 +8,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.data.AppRelease
-import app.animix.resources.Res
-import app.animix.resources.animix_logo
 import app.animix.ui.components.Txt
+import app.animix.ui.components.AniMixMascot
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
-import org.jetbrains.compose.resources.painterResource
 
 /** Release notes and future plans stay visibly separate; this page never advertises a live account. */
 @Composable
 internal fun AboutSection() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(Res.drawable.animix_logo), null, Modifier.size(64.dp))
+        AniMixMascot(Modifier.size(width = 112.dp, height = 160.dp), contentDescription = "Маскот AniMix")
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Txt("AniMix", AniMixTheme.type.title)

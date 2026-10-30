@@ -1,0 +1,1076 @@
+{
+  "version": 5,
+  "status": "design_proposal",
+  "brand": "AniMix 3.0 New Horizons",
+  "totalAchievements": 51,
+  "atlases": {
+    "core": {
+      "file": "animix-achievements-atlas-v3.png",
+      "columns": 6,
+      "rows": 4,
+      "width": 1254,
+      "height": 1254,
+      "coordinates": "ordinal visual position only; not pixel crop coordinates",
+      "slicing": "Generated spacing is not uniform; define pixel rectangles before runtime sprite slicing.",
+      "order": "row-major",
+      "background": "transparent",
+      "textEmbedded": false
+    },
+    "expansion": {
+      "file": "animix-achievements-pack2.png",
+      "columns": 6,
+      "rows": 4,
+      "width": 1536,
+      "height": 1024,
+      "coordinates": "ordinal visual position only; not pixel crop coordinates",
+      "slicing": "Define pixel rectangles before runtime sprite slicing.",
+      "order": "row-major",
+      "background": "transparent",
+      "textEmbedded": false
+    },
+    "quintuplets": {
+      "file": "animix-achievements-quintuplets.png",
+      "columns": 3,
+      "rows": 1,
+      "width": 2172,
+      "height": 724,
+      "coordinates": "ordinal visual position only; not pixel crop coordinates",
+      "slicing": "Define pixel rectangles before runtime sprite slicing.",
+      "order": "row-major",
+      "background": "transparent",
+      "textEmbedded": false
+    }
+  },
+  "notes": [
+    "Условия — дизайн-предложение, интеграция в приложение не выполнена.",
+    "animeKey — символический ключ: перед интеграцией связать с ID тайтлов используемого каталога.",
+    "Порядок чтения сетки: слева направо, сверху вниз. Координаты row и column начинаются с 0.",
+    "Проверять прогресс по фактическому просмотру, не по перемотке. Эпизод считать просмотренным при достижении принятого приложением порога.",
+    "Повторный просмотр одной серии не увеличивает число уникальных серий и тайтлов. Повторное скачивание одной серии не увеличивает число скачанных серий.",
+    "Отсчёт календарных дней ведётся в часовом поясе пользователя. Сезоны и состав тайтлов нужно согласовать с моделью каталога.",
+    "Условия просмотра предложены для будущей реализации; фактическая поддержка этих событий в приложении не проверялась.",
+    "Пакет core содержит достижения 1–24, expansion — 25–48. Для каждого значка поле atlas.sheet выбирает лист; row/column — его визуальная позиция с нуля.",
+    "Названия и условия в данных являются дизайн-предложением. Изменения кода приложения и реализация событий выдачи в эту задачу не входят.",
+    "Настройки, редактирование имени, статусы списков, избранное, поиск и фильтры подтверждены в коде проекта. Это не подтверждает наличие системы достижений или всех событий статистики.",
+    "Настройки выдаются за явное действие пользователя, один раз. Значения по умолчанию и загрузка настроек с диска сами по себе не дают достижение.",
+    "custom_profile_name_saved требует непустое имя, отличное от «Гость», после нормализации пробелов.",
+    "При подсчёте поиска учитывать уникальные открытые тайтлы, а не нажатия клавиш или сетевые запросы.",
+    "Событие filtered_catalog_titles_opened требует фильтр типа, отличный от «Все», и открытие карточки из его выдачи.",
+    "favorite_titles_current и on_hold_titles_current — число разных тайтлов в списке одновременно. Повторные переключения одного тайтла не увеличивают счётчик.",
+    "unique_planned_titles_completed требует историю попадания тайтла в Planned и последующее завершение, допускает промежуточный статус Watching; каждый тайтл засчитывается один раз.",
+    "Переход OnHold → Watching задаётся статусами библиотеки; это не утверждение о фактическом возобновлении видеовоспроизведения.",
+    "Месяц и дни серий считаются в часовом поясе пользователя; дневная серия требует хотя бы один реально просмотренный эпизод за день.",
+    "365 часов = 1 314 000 секунд фактического просмотра. Перемотка и пауза не увеличивают время.",
+    "Финальное достижение имеет явный список из 47 requiredIds и не зависит от самого себя. Не менять его порог автоматически при добавлении будущих пакетов.",
+    "Иллюстрации сгенерированы, это стилизованные отсылки; точность каноничных деталей оценивать визуально, они не являются официальными логотипами.",
+    "Дополнение «Пять невест» содержит три самостоятельных достижения 49–51: первый сезон, второй сезон и полнометражный фильм 2022 года. Спешлы ∽ (2023) и ＊ (2024) в эти три релиза не входят.",
+    "anime_release_completed означает завершение конкретной записи каталога; ключи двух сезонов и фильма различаются. Не выдавать все три достижения за общий прогресс франшизы. Каждый animeKey нужно связать с фактическим ID релиза в используемом каталоге.",
+    "completionist_48 относится к базовой коллекции из 48 значков и сохраняет фиксированные 47 requiredIds. Дополнение «Пять невест» не изменяет условия этого трофея."
+  ],
+  "achievements": [
+    {
+      "id": "haikyuu",
+      "category": "anime",
+      "name": "Прыжок есть. Соцжизни нет.",
+      "description": "Досмотреть первый сезон «Волейбола!!».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "haikyuu"
+      },
+      "atlas": {
+        "column": 0,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Форма Карасуно, оранжево-белый мяч и чёрное перо.",
+      "number": 1
+    },
+    {
+      "id": "attack_on_titan",
+      "category": "anime",
+      "name": "За стеной спойлеры",
+      "description": "Досмотреть первый сезон «Атаки титанов».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "attack_on_titan"
+      },
+      "atlas": {
+        "column": 1,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Эмблема «Крылья свободы» и зелёный плащ Разведкорпуса.",
+      "number": 2
+    },
+    {
+      "id": "one_piece",
+      "category": "anime",
+      "name": "Ещё 1000 серий и спать",
+      "description": "Посмотреть 100 серий One Piece.",
+      "trigger": {
+        "metric": "anime_episodes_watched",
+        "threshold": 100,
+        "animeKey": "one_piece"
+      },
+      "atlas": {
+        "column": 2,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Соломенная шляпа Луффи и эмблема пиратов Соломенной шляпы.",
+      "number": 3
+    },
+    {
+      "id": "jujutsu_kaisen",
+      "category": "anime",
+      "name": "Расширение дивана",
+      "description": "Досмотреть первый сезон «Магической битвы».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "jujutsu_kaisen"
+      },
+      "atlas": {
+        "column": 3,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Белые волосы, чёрная повязка и высокий воротник Годжо.",
+      "number": 4
+    },
+    {
+      "id": "solo_leveling",
+      "category": "anime",
+      "name": "Поднятие уровня недосыпа",
+      "description": "Досмотреть первый сезон «Поднятия уровня в одиночку».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "solo_leveling"
+      },
+      "atlas": {
+        "column": 4,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Шлем Игриса с алым плюмажем и фиолетовой тенью.",
+      "number": 5
+    },
+    {
+      "id": "demon_slayer",
+      "category": "anime",
+      "name": "Дыхание автоплея",
+      "description": "Досмотреть первый сезон «Клинка, рассекающего демонов».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "demon_slayer"
+      },
+      "atlas": {
+        "column": 5,
+        "row": 0,
+        "sheet": "core"
+      },
+      "iconConcept": "Клетчатое хаори Тандзиро, серьги ханафуда и бамбук Нэдзуко.",
+      "number": 6
+    },
+    {
+      "id": "gachiakuta",
+      "category": "anime",
+      "name": "Мусор? Это легендарка",
+      "description": "Досмотреть первый сезон «Гачиакуты».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "gachiakuta"
+      },
+      "atlas": {
+        "column": 0,
+        "row": 1,
+        "sheet": "core"
+      },
+      "iconConcept": "Характерные перчатки Рудо с маркировкой 3R.",
+      "number": 7
+    },
+    {
+      "id": "dandadan",
+      "category": "anime",
+      "name": "Бабка на турбине",
+      "description": "Досмотреть первый сезон «Дандадана».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "dandadan"
+      },
+      "atlas": {
+        "column": 1,
+        "row": 1,
+        "sheet": "core"
+      },
+      "iconConcept": "Турбобабка в форме манэки-нэко.",
+      "number": 8
+    },
+    {
+      "id": "chainsaw_man",
+      "category": "anime",
+      "name": "Заведи меня, Почита",
+      "description": "Досмотреть первый сезон «Человека-бензопилы».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "chainsaw_man"
+      },
+      "atlas": {
+        "column": 2,
+        "row": 1,
+        "sheet": "core"
+      },
+      "iconConcept": "Почита — оранжевый пёс с пилой, ручкой на спине и хвостом-шнурком.",
+      "number": 9
+    },
+    {
+      "id": "frieren",
+      "category": "anime",
+      "name": "Для эльфа — одна серия",
+      "description": "Посмотреть 10 серий «Провожающей в последний путь Фрирен».",
+      "trigger": {
+        "metric": "anime_episodes_watched",
+        "threshold": 10,
+        "animeKey": "frieren"
+      },
+      "atlas": {
+        "column": 3,
+        "row": 1,
+        "sheet": "core"
+      },
+      "iconConcept": "Красный посох с золотым кольцом и красной сферой, сундук-мимик.",
+      "number": 10
+    },
+    {
+      "id": "kaiju_no_8",
+      "category": "anime",
+      "name": "После смены — в монстры",
+      "description": "Досмотреть первый сезон «Кайдзю № 8».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "kaiju_no_8"
+      },
+      "atlas": {
+        "column": 4,
+        "row": 1,
+        "sheet": "core"
+      },
+      "iconConcept": "Голова Кафки в форме кайдзю: светлая маска и бирюзовые линии.",
+      "number": 11
+    },
+    {
+      "id": "first_favorite",
+      "category": "library",
+      "name": "Это моя няшечка вкусняшечка",
+      "description": "Добавить первый тайтл в избранное.",
+      "trigger": {
+        "metric": "favorite_titles_added",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 5,
+        "row": 1,
+        "sheet": "core"
+      },
+      "number": 12
+    },
+    {
+      "id": "first_download",
+      "category": "downloads",
+      "name": "Интернет переоценён",
+      "description": "Скачать первую серию полностью.",
+      "trigger": {
+        "metric": "episode_downloads_completed",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 0,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 13
+    },
+    {
+      "id": "download_hoarder",
+      "category": "downloads",
+      "name": "А если завтра без вайфая?",
+      "description": "Скачать 10 серий полностью.",
+      "trigger": {
+        "metric": "episode_downloads_completed",
+        "threshold": 10
+      },
+      "atlas": {
+        "column": 1,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 14
+    },
+    {
+      "id": "first_completed",
+      "category": "library",
+      "name": "Ну всё, теперь можно жить",
+      "description": "Досмотреть первый тайтл в AniMix или импортировать его из истории просмотров.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 2,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 15
+    },
+    {
+      "id": "ten_completed",
+      "category": "library",
+      "name": "Втянулся, получается",
+      "description": "Досмотреть 10 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 10
+      },
+      "atlas": {
+        "column": 3,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 16
+    },
+    {
+      "id": "fifty_completed",
+      "category": "library",
+      "name": "Субтитры уже снятся",
+      "description": "Досмотреть 50 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 50
+      },
+      "atlas": {
+        "column": 4,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 17
+    },
+    {
+      "id": "hundred_completed",
+      "category": "library",
+      "name": "Сенсей диванных наук",
+      "description": "Досмотреть 100 разных тайтлов.",
+      "trigger": {
+        "metric": "titles_completed",
+        "threshold": 100
+      },
+      "atlas": {
+        "column": 5,
+        "row": 2,
+        "sheet": "core"
+      },
+      "number": 18
+    },
+    {
+      "id": "ten_hours",
+      "category": "watch_time",
+      "name": "Это всё ещё одна серия",
+      "description": "Накопить 10 часов просмотра.",
+      "trigger": {
+        "metric": "watch_seconds",
+        "threshold": 36000
+      },
+      "atlas": {
+        "column": 0,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 19
+    },
+    {
+      "id": "hundred_hours",
+      "category": "watch_time",
+      "name": "Трава? Это новый тайтл?",
+      "description": "Накопить 100 часов просмотра.",
+      "trigger": {
+        "metric": "watch_seconds",
+        "threshold": 360000
+      },
+      "atlas": {
+        "column": 1,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 20
+    },
+    {
+      "id": "seven_day_streak",
+      "category": "habits",
+      "name": "Ни дня без опенинга",
+      "description": "Смотреть хотя бы одну серию в день 7 дней подряд.",
+      "trigger": {
+        "metric": "daily_episode_streak",
+        "threshold": 7
+      },
+      "atlas": {
+        "column": 2,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 21
+    },
+    {
+      "id": "marathon",
+      "category": "habits",
+      "name": "Воу воу куда так быстро",
+      "description": "Посмотреть 5 серий за один календарный день.",
+      "trigger": {
+        "metric": "episodes_per_day",
+        "threshold": 5
+      },
+      "atlas": {
+        "column": 3,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 22
+    },
+    {
+      "id": "watchlist_backlog",
+      "category": "library",
+      "name": "Посмотрю. Наверное. Потом.",
+      "description": "Собрать 50 разных тайтлов в списке «Буду смотреть».",
+      "trigger": {
+        "metric": "planned_titles_current",
+        "threshold": 50
+      },
+      "atlas": {
+        "column": 4,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 23
+    },
+    {
+      "id": "first_review",
+      "category": "community",
+      "name": "Сейчас объясню за сюжет",
+      "description": "Опубликовать первый отзыв о тайтле.",
+      "trigger": {
+        "metric": "reviews_published",
+        "threshold": 1
+      },
+      "atlas": {
+        "column": 5,
+        "row": 3,
+        "sheet": "core"
+      },
+      "number": 24
+    },
+    {
+      "id": "sakamoto_days",
+      "number": 25,
+      "category": "anime",
+      "name": "Пакет нужен? А алиби?",
+      "description": "Досмотреть первый сезон «Дней Сакамото».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "sakamoto_days"
+      },
+      "iconConcept": "Сакамото в образе продавца: седой хвост, круглые очки, усы, красный фартук и пакет.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 0,
+        "row": 0
+      }
+    },
+    {
+      "id": "blue_lock",
+      "number": 26,
+      "category": "anime",
+      "name": "Пас? Я главный герой",
+      "description": "Досмотреть первый сезон Blue Lock.",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "blue_lock"
+      },
+      "iconConcept": "Сине-чёрная форма Исаги № 11, футбольный мяч, цепь и фрагмент пазла.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 1,
+        "row": 0
+      }
+    },
+    {
+      "id": "apothecary_diaries",
+      "number": 27,
+      "category": "anime",
+      "name": "Это яд? Дайте два",
+      "description": "Досмотреть первый сезон «Монолога фармацевта».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "apothecary_diaries"
+      },
+      "iconConcept": "Маомао с зелёными волосами и веснушками, ступка и травяной флакон.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 2,
+        "row": 0
+      }
+    },
+    {
+      "id": "hells_paradise",
+      "number": 28,
+      "category": "anime",
+      "name": "Отпуск по путёвке в ад",
+      "description": "Досмотреть первый сезон «Адского рая».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "hells_paradise"
+      },
+      "iconConcept": "Габимару с белыми волосами и закрытым нижним краем лица, небольшой огненный акцент.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 3,
+        "row": 0
+      }
+    },
+    {
+      "id": "fire_force",
+      "number": 29,
+      "category": "anime",
+      "name": "Горит дедлайн, а я смотрю",
+      "description": "Досмотреть первый сезон «Пламенной бригады пожарных».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "fire_force"
+      },
+      "iconConcept": "Пожарный шлем восьмой роты, синие полосы, эмблема 8 и маленькое пламя.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 4,
+        "row": 0
+      }
+    },
+    {
+      "id": "witch_hat_atelier",
+      "number": 30,
+      "category": "anime",
+      "name": "Накалякал — скастовал",
+      "description": "Посмотреть 6 серий «Ателье колдовских колпаков».",
+      "trigger": {
+        "metric": "anime_episodes_watched",
+        "threshold": 6,
+        "animeKey": "witch_hat_atelier"
+      },
+      "iconConcept": "Коко в характерной широкой белой шляпе, зелёный воротник, перо и магический круг.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 5,
+        "row": 0
+      }
+    },
+    {
+      "id": "re_zero",
+      "number": 31,
+      "category": "anime",
+      "name": "Снова здравствуйте, я опять",
+      "description": "Досмотреть первый сезон Re:Zero.",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "re_zero"
+      },
+      "iconConcept": "Рем: голубое каре, один глаз закрыт волосами, белый ободок и каноничные заколки.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 0,
+        "row": 1
+      }
+    },
+    {
+      "id": "oshi_no_ko",
+      "number": 32,
+      "category": "anime",
+      "name": "Мой краш — сюжетный поворот",
+      "description": "Досмотреть первый сезон «Звёздного дитя».",
+      "trigger": {
+        "metric": "anime_season_completed",
+        "threshold": 1,
+        "animeKey": "oshi_no_ko"
+      },
+      "iconConcept": "Ай Хосино: фиолетовые волосы, звёзды в глазах, заколка-зайчик и микрофон.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 1,
+        "row": 1
+      }
+    },
+    {
+      "id": "custom_profile_name",
+      "number": 33,
+      "category": "profile",
+      "name": "Теперь я тут главный герой",
+      "description": "Сохранить своё имя в профиле вместо имени по умолчанию.",
+      "trigger": {
+        "metric": "custom_profile_name_saved",
+        "threshold": 1
+      },
+      "iconConcept": "Графитовый бейдж профиля, кошачий аватар, карандаш и звезда.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 2,
+        "row": 1
+      }
+    },
+    {
+      "id": "dark_theme_selected",
+      "number": 34,
+      "category": "settings",
+      "name": "Перешёл на тёмную сторону",
+      "description": "Вручную выбрать тему Horizon Dusk.",
+      "trigger": {
+        "metric": "theme_selected",
+        "threshold": 1,
+        "value": "Dusk"
+      },
+      "iconConcept": "Серебряный полумесяц в графитовой шестерёнке.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 3,
+        "row": 1
+      }
+    },
+    {
+      "id": "light_theme_selected",
+      "number": 35,
+      "category": "settings",
+      "name": "Солнце? В настройках было",
+      "description": "Вручную выбрать тему Horizon Dawn.",
+      "trigger": {
+        "metric": "theme_selected",
+        "threshold": 1,
+        "value": "Dawn"
+      },
+      "iconConcept": "Фарфорово-золотое солнце в серебряной шестерёнке.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 4,
+        "row": 1
+      }
+    },
+    {
+      "id": "skip_openings_enabled",
+      "number": 36,
+      "category": "settings",
+      "name": "Опенинг знаю, пропускайте",
+      "description": "Вручную включить пропуск опенингов.",
+      "trigger": {
+        "metric": "setting_enabled_by_user",
+        "threshold": 1,
+        "setting": "skipOpenings"
+      },
+      "iconConcept": "Двойная стрелка вперёд пересекает музыкальную ноту на графитовой ленте.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 5,
+        "row": 1
+      }
+    },
+    {
+      "id": "skip_endings_enabled",
+      "number": 37,
+      "category": "settings",
+      "name": "Титры — для терпеливых",
+      "description": "Вручную включить пропуск эндингов.",
+      "trigger": {
+        "metric": "setting_enabled_by_user",
+        "threshold": 1,
+        "setting": "skipEndings"
+      },
+      "iconConcept": "Лента финальных титров, финишный флажок и стрелка вперёд.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 0,
+        "row": 2
+      }
+    },
+    {
+      "id": "auto_next_enabled",
+      "number": 38,
+      "category": "settings",
+      "name": "Руки убрал, оно само",
+      "description": "Вручную включить автопереход к следующей серии.",
+      "trigger": {
+        "metric": "setting_enabled_by_user",
+        "threshold": 1,
+        "setting": "autoNextEpisode"
+      },
+      "iconConcept": "Два экрана серий с соединяющей стрелкой.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 1,
+        "row": 2
+      }
+    },
+    {
+      "id": "catalog_filter_discovery",
+      "number": 39,
+      "category": "discovery",
+      "name": "Я не душный, я с фильтрами",
+      "description": "Выбрать фильтр типа тайтла, отличный от «Все», и открыть тайтл из выдачи.",
+      "trigger": {
+        "metric": "filtered_catalog_titles_opened",
+        "threshold": 1
+      },
+      "iconConcept": "Воронка фильтра превращает стопку карточек в одну карточку со звездой.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 2,
+        "row": 2
+      }
+    },
+    {
+      "id": "ten_search_discoveries",
+      "number": 40,
+      "category": "discovery",
+      "name": "Найдётся всё. Кроме сна",
+      "description": "Найти и открыть 10 разных тайтлов через поиск.",
+      "trigger": {
+        "metric": "unique_titles_opened_from_search",
+        "threshold": 10
+      },
+      "iconConcept": "Серебряная лупа над карточкой аниме, маленький компас.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 3,
+        "row": 2
+      }
+    },
+    {
+      "id": "ten_favorites",
+      "number": 41,
+      "category": "library",
+      "name": "Сердце не резиновое. Или…",
+      "description": "Собрать 10 разных тайтлов в избранном.",
+      "trigger": {
+        "metric": "favorite_titles_current",
+        "threshold": 10
+      },
+      "iconConcept": "Графитовый сундук с драгоценными сердцами.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 4,
+        "row": 2
+      }
+    },
+    {
+      "id": "five_on_hold",
+      "number": 42,
+      "category": "library",
+      "name": "Не сегодня, японские мультики",
+      "description": "Отложить 5 разных тайтлов в список «Отложено».",
+      "trigger": {
+        "metric": "on_hold_titles_current",
+        "threshold": 5
+      },
+      "iconConcept": "Знак паузы внутри закладки со спящим кошачьим хвостом.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 5,
+        "row": 2
+      }
+    },
+    {
+      "id": "return_from_hold",
+      "number": 43,
+      "category": "library",
+      "name": "Я вернулся, а вы не ждали",
+      "description": "Перевести тайтл из «Отложено» обратно в «Смотрю».",
+      "trigger": {
+        "metric": "on_hold_to_watching_transitions",
+        "threshold": 1
+      },
+      "iconConcept": "Круговая стрелка вокруг кнопки воспроизведения, кошачья лапа.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 0,
+        "row": 3
+      }
+    },
+    {
+      "id": "planned_to_completed",
+      "number": 44,
+      "category": "library",
+      "name": "Из «потом» в «готово»",
+      "description": "Довести 5 разных тайтлов из списка «Запланировано» до «Просмотрено».",
+      "trigger": {
+        "metric": "unique_planned_titles_completed",
+        "threshold": 5
+      },
+      "iconConcept": "Планшет с галочкой, закладка превращается в звезду.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 1,
+        "row": 3
+      }
+    },
+    {
+      "id": "monthly_three_completed",
+      "number": 45,
+      "category": "habits",
+      "name": "Сезоны закрываю, дела — нет",
+      "description": "Впервые завершить 3 разных тайтла за один календарный месяц.",
+      "trigger": {
+        "metric": "unique_titles_completed_in_month",
+        "threshold": 3
+      },
+      "iconConcept": "Серебряный календарь с тремя золотыми звёздами и тремя корешками.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 2,
+        "row": 3
+      }
+    },
+    {
+      "id": "three_sixty_five_hours",
+      "number": 46,
+      "category": "watch_time",
+      "name": "Вышел на орбиту дивана",
+      "description": "Накопить 365 часов просмотра.",
+      "trigger": {
+        "metric": "watch_seconds",
+        "threshold": 1314000
+      },
+      "iconConcept": "Шлем космонавта с отражением дивана в голубом визоре.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 3,
+        "row": 3
+      }
+    },
+    {
+      "id": "thirty_day_streak",
+      "number": 47,
+      "category": "habits",
+      "name": "30 дней без отрыва от сюжета",
+      "description": "Смотреть хотя бы одну серию в день 30 дней подряд.",
+      "trigger": {
+        "metric": "daily_episode_streak",
+        "threshold": 30
+      },
+      "iconConcept": "Календарь с непрерывной цепочкой галочек, серебряный лавр и маленькая комета.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 4,
+        "row": 3
+      }
+    },
+    {
+      "id": "completionist_48",
+      "number": 48,
+      "category": "meta",
+      "name": "Всё выбил. Жизнь когда?",
+      "description": "Получить остальные 47 достижений базовой коллекции из 48.",
+      "trigger": {
+        "metric": "all_required_achievements_unlocked",
+        "threshold": 47,
+        "requiredIds": [
+          "haikyuu",
+          "attack_on_titan",
+          "one_piece",
+          "jujutsu_kaisen",
+          "solo_leveling",
+          "demon_slayer",
+          "gachiakuta",
+          "dandadan",
+          "chainsaw_man",
+          "frieren",
+          "kaiju_no_8",
+          "first_favorite",
+          "first_download",
+          "download_hoarder",
+          "first_completed",
+          "ten_completed",
+          "fifty_completed",
+          "hundred_completed",
+          "ten_hours",
+          "hundred_hours",
+          "seven_day_streak",
+          "marathon",
+          "watchlist_backlog",
+          "first_review",
+          "sakamoto_days",
+          "blue_lock",
+          "apothecary_diaries",
+          "hells_paradise",
+          "fire_force",
+          "witch_hat_atelier",
+          "re_zero",
+          "oshi_no_ko",
+          "custom_profile_name",
+          "dark_theme_selected",
+          "light_theme_selected",
+          "skip_openings_enabled",
+          "skip_endings_enabled",
+          "auto_next_enabled",
+          "catalog_filter_discovery",
+          "ten_search_discoveries",
+          "ten_favorites",
+          "five_on_hold",
+          "return_from_hold",
+          "planned_to_completed",
+          "monthly_three_completed",
+          "three_sixty_five_hours",
+          "thirty_day_streak"
+        ],
+        "scope": "base48"
+      },
+      "iconConcept": "Финальный трофей: графитовый кристалл, серебряные крылья и платиновое основание.",
+      "atlas": {
+        "sheet": "expansion",
+        "column": 5,
+        "row": 3
+      }
+    },
+    {
+      "id": "quintuplets_season_1",
+      "number": 49,
+      "category": "anime",
+      "name": "Я вообще-то учиться пришёл",
+      "description": "Досмотреть первый сезон «Пяти невест» (2019).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_s1",
+        "releaseType": "tv",
+        "releaseYear": 2019
+      },
+      "iconConcept": "Учебная тетрадь Футаро и пять характерных аксессуаров сестёр.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 0
+      }
+    },
+    {
+      "id": "quintuplets_season_2",
+      "number": 50,
+      "category": "anime",
+      "name": "Экзамен по выбору вайфу",
+      "description": "Досмотреть второй сезон «Пяти невест» (2021).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_s2",
+        "releaseType": "tv",
+        "releaseYear": 2021
+      },
+      "iconConcept": "Пять сестёр Накано с узнаваемыми причёсками и аксессуарами над экзаменационным планшетом.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 1
+      }
+    },
+    {
+      "id": "quintuplets_movie_2022",
+      "number": 51,
+      "category": "anime",
+      "name": "Выбрал? Теперь объясняй интернету",
+      "description": "Досмотреть полнометражный фильм «Пять невест» (2022).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_movie_2022",
+        "releaseType": "movie",
+        "releaseYear": 2022
+      },
+      "iconConcept": "Свадебные кольца, букет с пятью аксессуарами сестёр, фата и кинолента; без раскрытия выбранной невесты.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 2
+      }
+    }
+  ],
+  "referenceSources": [
+    {
+      "title": "Gachiakuta — официальный сайт персонажей",
+      "url": "https://gachiakuta-anime.com/en/character/detail/?category=cleaners_other&lang=en"
+    },
+    {
+      "title": "DAN DA DAN — официальный сайт персонажей",
+      "url": "https://anime-dandadan.com/en/character/"
+    },
+    {
+      "title": "Frieren — официальный сайт персонажей",
+      "url": "https://frieren-anime.jp/character/"
+    },
+    {
+      "title": "Kaiju No. 8 — официальный сайт",
+      "url": "https://kaiju-no8.net/en/"
+    },
+    {
+      "title": "Sakamoto Days — официальный сайт",
+      "url": "https://sakamotodays.jp/character/"
+    },
+    {
+      "title": "Blue Lock — официальный сайт",
+      "url": "https://tv.bluelock-pr.com/tv2nd/"
+    },
+    {
+      "title": "The Apothecary Diaries — официальный сайт",
+      "url": "https://kusuriyanohitorigoto.jp/season2/character/"
+    },
+    {
+      "title": "Hell's Paradise — официальный сайт",
+      "url": "https://www.jigokuraku.com/character/"
+    },
+    {
+      "title": "Fire Force — официальный сайт",
+      "url": "https://fireforce-anime.jp/character/"
+    },
+    {
+      "title": "Witch Hat Atelier — официальный сайт",
+      "url": "https://tongari-anime.com/character/detail/?chara=01"
+    },
+    {
+      "title": "Re:Zero — официальный сайт",
+      "url": "https://re-zero-anime.jp/tv/character/"
+    },
+    {
+      "title": "Oshi no Ko — официальный сайт",
+      "url": "https://ichigoproduction.com/Season3/news/"
+    },
+    {
+      "title": "The Quintessential Quintuplets — первый сезон, официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/1st/"
+    },
+    {
+      "title": "The Quintessential Quintuplets — второй сезон, официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/2nd/"
+    },
+    {
+      "title": "The Quintessential Quintuplets Movie — официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/movie/"
+    },
+    {
+      "title": "Crunchyroll — сезоны, фильм и отдельные спешлы",
+      "url": "https://www.crunchyroll.com/news/announcements/2026/4/22/the-quintessential-quintuplets-anime-specials-stream-crunchyroll"
+    }
+  ]
+}
+

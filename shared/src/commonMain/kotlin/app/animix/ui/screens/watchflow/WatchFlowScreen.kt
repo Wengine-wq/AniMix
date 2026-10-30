@@ -82,9 +82,13 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
             ?: resumeEpisode(dubbing?.episodes.orEmpty(), anime?.let { library.entry(it) })?.number)
     }
     var page by rememberSaveable(anime?.key, dubbing?.key) { mutableIntStateOf(0) }
+    var editing by rememberSaveable { mutableStateOf(state.queue.isEmpty()) }
+    var optionsOpen by remember { mutableStateOf(false) }
+    var chooseTitle by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var minutes by rememberSaveable { mutableStateOf(state.options.minutes.toString()) }
+    var gridScrollRequest by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     fun prepare(fit: Boolean) {
         val title = anime ?: return
@@ -102,19 +106,30 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                         "Эти серии уже есть в очереди. Выберите другую серию или тайтл."
                     else "Следующая серия целиком не помещается в оставшееся время. Увеличьте лимит или добавьте её вручную."
                 }
-                else graph.watchFlow.add(items)
+                else { graph.watchFlow.add(items); editing = false; gridScrollRequest++ }
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { problem = "Не удалось подготовить очередь. Проверьте соединение и повторите." }
             finally { busy = false }
         }
     }
     val grid = rememberLazyGridState()
+    LaunchedEffect(editing, gridScrollRequest) { grid.scrollToItem(0) }
     val performance = LocalUiPerformance.current
     val reorder = rememberReorderableLazyGridState(grid,
         scrollThresholdPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())) { from, to ->
         val fromKey = (from.key as? String)?.takeIf { it.startsWith("queue:") }?.removePrefix("queue:")
         val toKey = (to.key as? String)?.takeIf { it.startsWith("queue:") }?.removePrefix("queue:")
         if (!busy && fromKey != null && toKey != null) graph.watchFlow.moveTo(fromKey, toKey)
+    }
+    if (optionsOpen) AniMixSheet({ optionsOpen = false }, title = "Параметры сессии", subtitle = "Действуют только в Watch flow") {
+        ToggleRow("Пропускать опенинги", state.options.skipOpenings,
+            { graph.watchFlow.options(state.options.copy(skipOpenings = it)) }, AniMixIcons.SkipAhead, enabled = !busy)
+        ToggleRow("Пропускать эндинги", state.options.skipEndings,
+            { graph.watchFlow.options(state.options.copy(skipEndings = it)) }, AniMixIcons.SkipAhead, enabled = !busy)
+        ToggleRow("Следующая серия автоматически", state.options.autoNext,
+            { graph.watchFlow.options(state.options.copy(autoNext = it)) }, AniMixIcons.Next, enabled = !busy)
+        Txt("Таймер включает паузы и загрузку. На лимите видео остановится. Пропуски учитываем только по известной разметке.", AniMixTheme.type.caption,
+            modifier = Modifier.padding(top = 12.dp))
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyVerticalGrid(GridCells.Adaptive(56.dp), state = grid, modifier = Modifier.widthIn(max = 1000.dp).fillMaxSize(),
@@ -123,10 +138,19 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    PageHeader("Watch flow", { navigator.back() })
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { PageHeader("Watch flow", { navigator.back() }) }
+                        IconCircle(AniMixIcons.Sliders, { optionsOpen = true }, contentDescription = "Параметры сессии")
+                    }
                     Spacer(Modifier.height(8.dp))
-                    Txt("Очередь под ваше время: серии онлайн и из загрузок, любой тайтл каталога.", AniMixTheme.type.caption)
+                    Txt("Выберите время и серии — проверите очередь перед запуском.", AniMixTheme.type.caption)
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Подбор", editing, { if (!busy) editing = true })
+                        Chip("Очередь · ${state.queue.size}", !editing, { if (!busy) editing = false })
+                    }
                     Spacer(Modifier.height(24.dp))
+                    if (editing) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Txt("У меня есть", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
                         BasicTextField(minutes, { input ->
@@ -150,12 +174,13 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                             if (!busy) { minutes = value.toString(); graph.watchFlow.options(state.options.copy(minutes = value)) }
                         }) }
                     }
+                    } else Txt("Лимит ${state.options.minutes} мин · изменить в подборе", AniMixTheme.type.caption)
                     Spacer(Modifier.height(20.dp))
-                    FlowPlanSummary(state)
+                    if (!editing) FlowPlanSummary(state)
                     Spacer(Modifier.height(12.dp))
                 }
             }
-            items(state.queue, key = { "queue:${it.key}" }, span = { GridItemSpan(maxLineSpan) }) { item ->
+            items(if (editing) emptyList() else state.queue, key = { "queue:${it.key}" }, span = { GridItemSpan(maxLineSpan) }) { item ->
                 ReorderableItem(reorder, key = "queue:${item.key}", enabled = !busy,
                     animateItemModifier = if (performance.animations) Modifier.animateItem() else Modifier) { dragging ->
                     FlowQueueRow(item, state.options, dragging = dragging,
@@ -173,31 +198,29 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    if (state.queue.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        PrimaryButton("Начать сессию", { graph.watchFlow.start() }, Modifier.fillMaxWidth(), icon = AniMixIcons.Play,
-                            enabled = !busy && minutes.toIntOrNull() in 1..360)
-                        Spacer(Modifier.height(24.dp))
+                    if (!editing) {
+                        if (state.queue.isNotEmpty()) {
+                            PrimaryButton("Начать просмотр", { graph.watchFlow.start() }, Modifier.fillMaxWidth(), icon = AniMixIcons.Play,
+                                enabled = !busy && minutes.toIntOrNull() in 1..360)
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        SecondaryButton("Добавить серии", { editing = true }, Modifier.fillMaxWidth(), icon = AniMixIcons.Search)
                     }
-                    Panel {
-                        ToggleRow("Пропускать опенинги", state.options.skipOpenings,
-                            { graph.watchFlow.options(state.options.copy(skipOpenings = it)) }, AniMixIcons.SkipAhead, enabled = !busy)
-                        ToggleRow("Пропускать эндинги", state.options.skipEndings,
-                            { graph.watchFlow.options(state.options.copy(skipEndings = it)) }, AniMixIcons.SkipAhead, enabled = !busy)
-                        ToggleRow("Автопереход внутри сессии", state.options.autoNext,
-                            { graph.watchFlow.options(state.options.copy(autoNext = it)) }, AniMixIcons.Next, enabled = !busy)
+                    if (editing) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Txt("Что смотрим", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+                        Chip(if (chooseTitle) "Закрыть поиск" else "Найти тайтл", false, { chooseTitle = !chooseTitle }, icon = AniMixIcons.Search)
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Txt("Таймер учитывает паузы и загрузку. Опенинги исключаем только при наличии разметки. Лимит — от 1 до 360 минут.", AniMixTheme.type.micro)
-                    Spacer(Modifier.height(24.dp))
-                    FlowTitleSearch(graph) { picked ->
-                        searched = (listOf(picked) + searched).distinctBy { it.key }.take(6)
-                        animeKey = picked.key
-                        problem = null
+                    Spacer(Modifier.height(12.dp))
+                    if (chooseTitle || choices.isEmpty()) {
+                        FlowTitleSearch(graph) { picked ->
+                            searched = (listOf(picked) + searched).distinctBy { it.key }.take(6)
+                            animeKey = picked.key; chooseTitle = false; problem = null
+                        }
+                        Spacer(Modifier.height(12.dp))
                     }
-                    Spacer(Modifier.height(16.dp))
                     if (choices.isEmpty()) {
-                        MessageState("Добавьте тайтл в очередь", message = "Выберите аниме из «Смотрю» или откройте Watch flow со страницы просмотра.",
+                        MessageState("Добавьте тайтл в очередь", message = "Найдите аниме выше или выберите его в каталоге.",
                             icon = AniMixIcons.Clock, actionLabel = "Открыть каталог", onAction = { navigator.openLink("animix://catalog") })
                     } else {
                         SelectionList("Тайтл", choices.map { SelectionOption(it.key, it.title, listOfNotNull(it.kind.label, it.year?.toString()).joinToString(" · ")) }, anime?.key, AniMixIcons.Play) {
@@ -215,33 +238,34 @@ private fun FlowPlannerScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                                 }, dubbing?.key, AniMixIcons.Mic) { if (!busy) dubbingKey = it }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
-                        if (state.queue.isEmpty()) PrimaryButton(if (busy) "Готовим очередь…" else "Подобрать на ${state.options.minutes} минут",
-                            { prepare(true) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock, enabled = !busy && dubbing != null && from != null)
-                        else SecondaryButton(if (busy) "Готовим очередь…" else "Добавить в оставшееся время", { prepare(true) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock,
-                            enabled = !busy && dubbing != null && from != null)
-                        problem?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
                         Spacer(Modifier.height(20.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Txt("Начать с серии", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-                            if (dubbing != null && from != null) Chip("Добавить $from", false, { prepare(false) }, icon = AniMixIcons.Play)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Txt("Можно собрать очередь из разных тайтлов. Порядок серий сохраняется.", AniMixTheme.type.micro)
+                        Txt("Начать с серии", AniMixTheme.type.subheading)
+                        Txt("Подбор добавит следующие серии по порядку в свободное время.", AniMixTheme.type.micro, modifier = Modifier.padding(top = 4.dp))
+                    }
                     }
                 }
             }
-            val episodes = dubbing?.episodes.orEmpty()
-            items(episodes.drop(page * 60).take(60), key = { "episode:${dubbing?.key}:${it.number}" }) { episode ->
+            val episodes = if (editing) dubbing?.episodes.orEmpty() else emptyList()
+            items(episodes.drop(page * 24).take(24), key = { "episode:${dubbing?.key}:${it.number}" }) { episode ->
                 EpisodeCardSurface(episode.number == from, { from = episode.number }, Modifier.height(48.dp), enabled = !busy) {
                     Txt(episode.number, AniMixTheme.type.label, modifier = Modifier.align(Alignment.Center))
                 }
             }
-            if (episodes.size > 60) item(span = { GridItemSpan(maxLineSpan) }) {
+            if (episodes.size > 24) item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     if (page > 0) Chip("Назад", false, { page-- }) else Spacer(Modifier.width(1.dp))
-                    Txt("${page * 60 + 1}–${minOf((page + 1) * 60, episodes.size)} из ${episodes.size}", AniMixTheme.type.micro)
-                    if ((page + 1) * 60 < episodes.size) Chip("Далее", false, { page++ }) else Spacer(Modifier.width(1.dp))
+                    Txt("${page * 24 + 1}–${minOf((page + 1) * 24, episodes.size)} из ${episodes.size}", AniMixTheme.type.micro)
+                    if ((page + 1) * 24 < episodes.size) Chip("Далее", false, { page++ }) else Spacer(Modifier.width(1.dp))
+                }
+            }
+            if (editing && dubbing != null) item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.padding(top = 12.dp)) {
+                    PrimaryButton(if (busy) "Подбираем серии…" else "Подобрать серии", { prepare(true) }, Modifier.fillMaxWidth(),
+                        icon = AniMixIcons.Clock, enabled = !busy && from != null && minutes.toIntOrNull() in 1..360)
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton("Добавить только серию ${from ?: "—"}", { prepare(false) }, Modifier.fillMaxWidth(),
+                        enabled = !busy && from != null && minutes.toIntOrNull() in 1..360)
+                    problem?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
                 }
             }
         }
@@ -290,6 +314,12 @@ private fun FlowTimeline(queue: List<FlowEpisode>, options: FlowOptions) {
 private fun FlowQueueRow(item: FlowEpisode, options: FlowOptions, status: String? = null,
     onRemove: (() -> Unit)? = null, onUp: (() -> Unit)? = null, onDown: (() -> Unit)? = null,
     dragHandle: (@Composable () -> Unit)? = null, dragging: Boolean = false) {
+    var actionsOpen by remember { mutableStateOf(false) }
+    if (actionsOpen) AniMixSheet({ actionsOpen = false }, title = "Серия ${item.episode.number}", subtitle = item.anime.title) {
+        onUp?.let { action -> NavRow("Переместить выше", AniMixIcons.ChevronUp, { actionsOpen = false; action() }) }
+        onDown?.let { action -> NavRow("Переместить ниже", AniMixIcons.ChevronDown, { actionsOpen = false; action() }) }
+        onRemove?.let { action -> NavRow("Убрать из очереди", AniMixIcons.Trash, { actionsOpen = false; action() }) }
+    }
     EpisodeCardSurface(selected = status == "Сейчас" || dragging, onClick = null) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -302,15 +332,10 @@ private fun FlowQueueRow(item: FlowEpisode, options: FlowOptions, status: String
                     Txt(listOfNotNull(status, "${if (item.estimated) "≈ " else ""}${flowLength(flowDuration(item, options))}",
                         "Скачано".takeIf { item.downloadId != null }).joinToString(" · "), AniMixTheme.type.micro)
                 }
+                if (onRemove != null) IconCircle(AniMixIcons.More, { actionsOpen = true },
+                    contentDescription = "Действия с серией ${item.episode.number}")
             }
-            if (onRemove != null) {
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    if (onUp != null) Chip("Выше", false, onUp)
-                    if (onDown != null) { Spacer(Modifier.width(8.dp)); Chip("Ниже", false, onDown) }
-                    Spacer(Modifier.width(8.dp))
-                    IconCircle(AniMixIcons.Trash, onRemove, contentDescription = "Убрать серию ${item.episode.number} из сессии")
-                }
-            }
+
         }
     }
 }
@@ -332,14 +357,12 @@ private fun FlowSessionScreen(graph: AppGraph, navigator: Navigator, padding: Pa
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Txt("Осталось ${flowCountdown(state.remainingMs)}", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-            Txt("Лимит ${state.deadlineAt?.let(::flowFinishLabel)}", AniMixTheme.type.micro)
+            Txt("До ${state.deadlineAt?.let(::flowFinishLabel)}", AniMixTheme.type.micro)
         }
         Spacer(Modifier.height(8.dp))
         ProgressLine(1f - state.remainingMs.toFloat() / state.options.limitMs)
         Spacer(Modifier.height(8.dp))
-        val content = state.remainingContentMs
-        Txt("${if (state.estimated) "Примерно" else "По очереди"} до ${flowFinishLabel(nowMillis() + minOf(content, state.remainingMs))}. " +
-            if (content > state.remainingMs) "На лимите остановим воспроизведение." else "Паузы сдвигают прогноз, но не лимит.", AniMixTheme.type.caption)
+        Txt(if (state.phase == FlowPhase.Paused) "На паузе · таймер продолжает идти" else "На лимите просмотр остановится автоматически", AniMixTheme.type.caption)
         Spacer(Modifier.height(16.dp))
         when (val loaded = stream.value) {
             Load.Loading -> Shimmer(Modifier.fillMaxWidth().aspectRatio(16f / 9f), AniMixTheme.shapes.large)
@@ -407,6 +430,10 @@ private fun FlowFinishedScreen(graph: AppGraph, navigator: Navigator, padding: P
     FlowColumn(padding) {
         PageHeader("Watch flow", { navigator.back() })
         Spacer(Modifier.height(32.dp))
+        if (state.finish == FlowFinish.QueueCompleted) {
+            AniMixMascot(Modifier.size(width = 136.dp, height = 176.dp).align(Alignment.CenterHorizontally), pose = MascotPose.Happy)
+            Spacer(Modifier.height(20.dp))
+        }
         Txt("Сессия завершена", AniMixTheme.type.title)
         Spacer(Modifier.height(12.dp))
         Txt(when (state.finish) {
@@ -420,7 +447,7 @@ private fun FlowFinishedScreen(graph: AppGraph, navigator: Navigator, padding: P
         Spacer(Modifier.height(8.dp))
         Txt("Достижения учитываются отдельно, по подтверждённому просмотру в плеере.", AniMixTheme.type.micro)
         Spacer(Modifier.height(32.dp))
-        PrimaryButton("Подготовить новую сессию", graph.watchFlow::reset, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock)
+        PrimaryButton("Новая сессия", graph.watchFlow::reset, Modifier.fillMaxWidth(), icon = AniMixIcons.Clock)
     }
 }
 
@@ -460,7 +487,7 @@ private fun FlowTitleSearch(graph: AppGraph, onPick: (Anime) -> Unit) {
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(query, { query = it.take(60) }, singleLine = true,
+        BasicTextField(query, { query = it.take(24) }, singleLine = true,
             textStyle = AniMixTheme.type.body.copy(color = colors.textPrimary), cursorBrush = SolidColor(colors.accent),
             keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { search() }),

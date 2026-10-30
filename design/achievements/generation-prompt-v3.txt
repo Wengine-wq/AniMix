@@ -1,0 +1,26 @@
+Edit the attached transparent AniMix achievement icon sheet into VERSION 3. Retain its refined graphite, silver and porcelain collectible 3D enamel style, natural object colors, minimal dusty rose accent. Maintain 24 icons, SIX COLUMNS and FOUR ROWS. Transparent alpha background is required. Equal cell spacing, more clear empty transparent space between icons. No titles, captions, UI panels, background, watermarks. Small canonical markings on anime props are permitted. Icons must be immediately recognizable anime references, not generic substitutes or vague thematic shapes. Simplify secondary details for small icon use.
+
+Replace the FIRST ELEVEN anime icons with the following subjects in this EXACT order. Follow canonical anime character/prop appearances; these are peaceful collectible badges with no injury or action scene.
+
+ROW ONE:
+1. HAIKYUU!! — recognizable orange-and-black Karasuno jersey folded behind an orange-white volleyball, tiny black crow feather. Strong Karasuno team color identity.
+2. ATTACK ON TITAN — the actual iconic Survey Corps Wings of Freedom heraldic emblem: overlapping BLUE AND WHITE stylized geometric feathered wings on a small shield, backed by a folded forest-green scout cloak. Not literal angel wings and not a stone wall.
+3. ONE PIECE — Luffy's recognizable golden straw hat with RED band sitting over the smiling Straw Hat Pirates skull emblem, no ocean scenery. Clear iconic hat silhouette.
+4. JUJUTSU KAISEN — small Gojo Satoru chibi head emblem, recognizable upright WHITE hair, BLACK eye blindfold and high black collar, a single restrained blue-violet energy accent. Not an anonymous sleep mask with a planet.
+5. SOLO LEVELING — recognizable Igris knight helmet collectible: dark metallic crimson angular closed helmet, tall swept crimson plume and restrained VIOLET shadow aura at base. Distinct Igris silhouette, not generic purple daggers.
+6. DEMON SLAYER — Tanjiro's deep GREEN AND BLACK CHECKERED haori folded behind a pair of his recognizable rectangular hanafuda earrings with red sun motifs, small Nezuko green bamboo muzzle as supporting detail. Strong identifiable anime props.
+
+ROW TWO:
+7. GACHIAKUTA — Rudo Surebrec's distinctive battered 3R gloves, the actual recognizable Gachiakuta gloves, bulky worn stitched gloves with their characteristic cuff bands and 3R insignia, asymmetric overlapping pose with fingers visible. Faithful anime prop proportions and colors, tactile canvas/leather and metal, slight graffiti energy. Do not substitute generic boxing gloves or recycling-bin icon.
+8. DAN DA DAN — Turbo Granny's recognizable white maneki-neko cat form collectible, half-lidded mischievous eyes, red collar and gold bell, raised paw, a tiny red speed swoosh. Character identity matters; not an ordinary cute pet cat, no spy peanut.
+9. CHAINSAW MAN — recognizable Pochita: small round ORANGE dog with big expressive eyes, short metal chainsaw on forehead, black handle over back, stubby legs and little pull-cord tail. Cute canonical peaceful mascot, no generic triangular pull handle.
+10. FRIEREN: BEYOND JOURNEY'S END — Frieren's distinctive RED staff with GOLD crescent-ring head encircling a RED orb, diagonally across a miniature mimic treasure chest with a tuft of her SILVER WHITE hair and a little black boot poking out, playful nonviolent visual gag. Red orb staff must be clearly identifiable; not Sailor Moon.
+11. KAIJU NO. 8 — recognizable Kafka Kaiju No. 8 face emblem, charcoal armored head, ivory skull-like face plates with jagged tooth-shaped armor, small horn-like projections, restrained CYAN TEAL luminous lines and eyes. Clean stylized badge, not anatomical skull, not generic dinosaur.
+12. KEEP FAVORITE ICON — the original ivory cat plush within graphite/silver heart frame with muted rose inner accent.
+
+ROWS THREE AND FOUR:
+Keep ALL TWELVE functionality icons from the reference, same exact subjects and same order, with restrained graphite/ivory/silver palette and occasional natural amber accents. They are:
+Row3: download cloud; download storage tray; play checkmark wreath; short volume stack; laurel video-card fan; crowned library castle.
+Row4: clock with headphones; hourglass; flame with calendar; couch with popcorn; video-stack with sleepy cat; review speech bubble with pen.
+
+Important invariants: all 24 distinct icons, fixed order, 6 across 4 down; recognizable canonical anime cues in first 11; muted modern AniMix identity, no pink glow, no pink confetti, no extra hearts. Real transparent backdrop, crisp edges. Keep icon footprints compact enough for separation.

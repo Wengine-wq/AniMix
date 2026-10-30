@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
  * so every icon in the app shares one stroke weight.
  */
 object AniMixIcons {
+    val Pulse = outline("Pulse", "M2 12h4l3-7 5 14 3-7h5")
     val Grip = outline("Grip", "M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01")
     val Battery = outline("Battery", "M3 7h15a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM22 10v4M6 10v4M10 10v4")
     val Home = outline("Home", "M3 10.5 12 3l9 7.5V19a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z")
@@ -33,6 +34,7 @@ object AniMixIcons {
     val Search = outline("Search", "M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14zM20 20l-3.8-3.8")
     val Back = outline("Back", "M15 18l-6-6 6-6")
     val ChevronRight = outline("ChevronRight", "M9 18l6-6-6-6")
+    val ChevronUp = outline("ChevronUp", "M6 15l6-6 6 6")
     val ChevronDown = outline("ChevronDown", "M6 9l6 6 6-6")
     val Close = outline("Close", "M18 6 6 18M6 6l12 12")
     val Refresh = outline("Refresh", "M20 12a8 8 0 1 1-2.34-5.66L20 8.5M20 4v4.5h-4.5")
@@ -45,6 +47,7 @@ object AniMixIcons {
             "M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41",
     )
     val Monitor = outline("Monitor", "M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 20h8M12 16v4")
+    val More = outline("More", "M5 12h.01M12 12h.01M19 12h.01")
     val Sliders = outline("Sliders", "M4 6h9M17 6h3M15 4v4M4 12h3M11 12h9M9 10v4M4 18h11M19 18h1M17 16v4")
     val Mic = outline(
         "Mic",

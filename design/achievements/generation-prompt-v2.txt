@@ -1,0 +1,35 @@
+Edit the attached AniMix achievement atlas. Keep all 24 icon subjects in exactly the same row-major order, six columns and four rows. Keep the same visual meaning and distinct silhouettes. Preserve real alpha transparency and a text-free image.
+
+Primary requested change: drastically reduce pinkness and excessive cute sparkling decoration. This is an anime app with a refined graphite/porcelain visual identity. Aim for graphite charcoal, brushed silver and warm porcelain to cover about 70% of the total visible icon area; natural subject-specific colors about 20%; muted dusty rose accents at most 10%. Rose is an occasional small brand detail, never an overall wash. Soft restrained 3D game achievement collectibles with matte enamel, ceramic and brushed metal. Reduce plastic candy gloss. Remove the orbiting pink rings, confetti, glitter clouds, excess sparkles and decorative hearts from most icons. Standalone crisp objects with generous transparent spacing, no backdrop. At most one small sparkle per icon. Keep the heart on the favorite-cat icon and moon emblem because it conveys their meaning; use neutral ivory/silver with only a little muted rose.
+
+Specific recoloring, same sequence as the reference:
+Row 1:
+1 white orange charcoal volleyball, silver net and black feather;
+2 natural gray stone wall with ivory silver wings, no pink light;
+3 natural straw-gold hat with muted red band, small ocean-blue wave;
+4 black blindfold with small restrained violet orb;
+5 charcoal ramen bowl, natural cream noodles, wooden chopsticks, only fishcake spiral a little pink;
+6 deep green and charcoal checkered cloth with silver-blue wind arc.
+Row 2:
+7 matte black notebook, ivory feather, dark red apple, blank cover;
+8 natural tan peanut spy, charcoal hat and dark burgundy tie;
+9 orange pull-cord keychain, brushed steel chain, small graphite heart;
+10 ivory crescent moon, silver wings, one small dusty rose heart;
+11 white and muted red capsule ball, subdued gold lightning;
+12 ivory cat plush inside a graphite and silver heart frame with a narrow muted rose inner accent.
+Row 3:
+13 charcoal cloud, silver download arrow and a tiny muted rose status accent;
+14 graphite storage tray, ivory/slate video tiles, silver download arrow;
+15 graphite play symbol and silver checkmark wreath with tiny rose detail;
+16 charcoal ivory slate volumes, silver clasp;
+17 charcoal slate ivory video-card fan with brushed silver laurels;
+18 graphite library castle, ivory books, subdued champagne-gold crown, tiny rose highlight.
+Row 4:
+19 graphite headphones, ivory analog clock face, brushed metal bezel, narrow dusty rose detail;
+20 brushed silver hourglass, ivory sand, one small blue-gray star inside;
+21 small amber flame behind ivory calendar and graphite checkmark;
+22 charcoal couch, ivory cushion, natural popcorn and small amber lightning bolt;
+23 charcoal/slate video-card stack with ivory sleepy cat;
+24 ivory speech bubble, charcoal and silver fountain pen, small dusty rose heart.
+
+Maintain 24 objects and exact subject order. No text, digits, labels, panels, background, watermarks. Make icons slightly more compact to leave clean transparent gaps. No pink outer glows. This must feel like polished anime achievements rather than all-pink jewelry. Transparent background is essential.

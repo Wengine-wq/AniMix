@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "status": "design_proposal",
+  "brand": "AniMix 3.0 New Horizons",
+  "pack": "quintuplets",
+  "numberRange": [
+    49,
+    51
+  ],
+  "atlas": {
+    "file": "animix-achievements-quintuplets.png",
+    "columns": 3,
+    "rows": 1,
+    "width": 2172,
+    "height": 724,
+    "coordinates": "ordinal visual position only; not pixel crop coordinates",
+    "slicing": "Define pixel rectangles before runtime sprite slicing.",
+    "order": "row-major",
+    "background": "transparent",
+    "textEmbedded": false
+  },
+  "notes": [
+    "Дополнение «Пять невест» содержит три самостоятельных достижения 49–51: первый сезон, второй сезон и полнометражный фильм 2022 года. Спешлы ∽ (2023) и ＊ (2024) в эти три релиза не входят.",
+    "anime_release_completed означает завершение конкретной записи каталога; ключи двух сезонов и фильма различаются. Не выдавать все три достижения за общий прогресс франшизы. Каждый animeKey нужно связать с фактическим ID релиза в используемом каталоге.",
+    "completionist_48 относится к базовой коллекции из 48 значков и сохраняет фиксированные 47 requiredIds. Дополнение «Пять невест» не изменяет условия этого трофея."
+  ],
+  "achievements": [
+    {
+      "id": "quintuplets_season_1",
+      "number": 49,
+      "category": "anime",
+      "name": "Я вообще-то учиться пришёл",
+      "description": "Досмотреть первый сезон «Пяти невест» (2019).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_s1",
+        "releaseType": "tv",
+        "releaseYear": 2019
+      },
+      "iconConcept": "Учебная тетрадь Футаро и пять характерных аксессуаров сестёр.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 0
+      }
+    },
+    {
+      "id": "quintuplets_season_2",
+      "number": 50,
+      "category": "anime",
+      "name": "Экзамен по выбору вайфу",
+      "description": "Досмотреть второй сезон «Пяти невест» (2021).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_s2",
+        "releaseType": "tv",
+        "releaseYear": 2021
+      },
+      "iconConcept": "Пять сестёр Накано с узнаваемыми причёсками и аксессуарами над экзаменационным планшетом.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 1
+      }
+    },
+    {
+      "id": "quintuplets_movie_2022",
+      "number": 51,
+      "category": "anime",
+      "name": "Выбрал? Теперь объясняй интернету",
+      "description": "Досмотреть полнометражный фильм «Пять невест» (2022).",
+      "trigger": {
+        "metric": "anime_release_completed",
+        "threshold": 1,
+        "animeKey": "quintessential_quintuplets_movie_2022",
+        "releaseType": "movie",
+        "releaseYear": 2022
+      },
+      "iconConcept": "Свадебные кольца, букет с пятью аксессуарами сестёр, фата и кинолента; без раскрытия выбранной невесты.",
+      "atlas": {
+        "sheet": "quintuplets",
+        "row": 0,
+        "column": 2
+      }
+    }
+  ],
+  "referenceSources": [
+    {
+      "title": "The Quintessential Quintuplets — первый сезон, официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/1st/"
+    },
+    {
+      "title": "The Quintessential Quintuplets — второй сезон, официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/2nd/"
+    },
+    {
+      "title": "The Quintessential Quintuplets Movie — официальный сайт",
+      "url": "https://www.tbs.co.jp/anime/5hanayome/movie/"
+    },
+    {
+      "title": "Crunchyroll — сезоны, фильм и отдельные спешлы",
+      "url": "https://www.crunchyroll.com/news/announcements/2026/4/22/the-quintessential-quintuplets-anime-specials-stream-crunchyroll"
+    }
+  ]
+}

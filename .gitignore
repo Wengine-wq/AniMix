@@ -10,3 +10,6 @@ captures/
 /*.psd
 /*.jpg
 /*.png
+
+# Promo video project (Remotion): node_modules, renders and media archives, kept outside the app repo.
+/animix-promo-remotion/

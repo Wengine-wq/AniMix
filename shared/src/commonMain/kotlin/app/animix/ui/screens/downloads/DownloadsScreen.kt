@@ -81,7 +81,10 @@ fun DownloadsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddi
                 }
             }
             if (titles.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                MessageState("Серии всегда под рукой", message = "Откройте аниме и выберите серии для загрузки", icon = AniMixIcons.Download)
+                MascotMessage("Серии всегда под рукой",
+                    message = "На странице аниме откройте «Ещё → Загрузки» и сохраните серии для просмотра без сети.",
+                    pose = MascotPose.Relaxed,
+                    onExplore = { navigator.select(app.animix.ui.navigation.Tab.Catalog) })
             }
             items(titles, key = { it.first().anime.key }) { episodes ->
                 DownloadTitleCard(episodes) { navigator.push(Route.Downloads(episodes.first().anime)) }

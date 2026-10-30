@@ -1,0 +1,22 @@
+Use the attached AniMix achievement atlas ONLY as a style reference. Generate a NEW transparent PNG mini-sheet containing EXACTLY THREE achievement emblems for The Quintessential Quintuplets / Gotoubun no Hanayome, in ONE HORIZONTAL ROW with three evenly spaced separate equal cells. Do not reproduce any subjects from the reference sheet.
+
+Same polished collectible achievement style: matte graphite, brushed silver, warm porcelain enamel, natural anime hair/accessory colors, restrained soft 3D volume and crisp clean silhouettes. No excessive pinkness: use blue, green, lavender, amber and small canonical rose hair accents rather than an overall pink tint. No sparkles shower or pink aura. Real transparent alpha background, including between and around all three badges. No background card, floor, gradient backdrop, shadows outside the emblem, no text, captions, lettering or numbers. Each emblem must stay fully inside its own cell, clear generous transparent gutters.
+
+These three achievements are for season 1, season 2 and the 2022 movie, ordered left to right. Three distinct compositions, all clearly recognizable references to the Nakano sisters. Avoid revealing which sister wins the story.
+
+LEFT — season one, studying and meeting the quintuplets:
+A graphite-and-ivory open study notebook with pencil, a small recognizable Futaro Uesugi chibi head above the binding (short dark navy hair, blue eyes, reserved expression, school collar). Around the notebook arranged as five distinct miniature enamel charms are all five Nakano sisters' signature motifs: Ichika's little yellow earring, Nino's paired black butterfly hair ribbons with pale blue pattern, Miku's large BLUE over-ear headphones worn around her neck, Yotsuba's upright bright GREEN rabbit-ear hair ribbon, Itsuki's paired RED star hair clips. The five colored props are key to recognition. Compact study-themed collectible, no writing.
+
+CENTER — season two, all five Nakano sisters:
+A compact fan/flower-shaped cluster of EXACTLY FIVE recognizable chibi heads of Ichika, Nino, Miku, Yotsuba and Itsuki over a small graphite school exam clipboard with a silver checkmark, no words. Heads must be distinct and faithful:
+Ichika: short pale pink hair swept across one eye, yellow earring.
+Nino: straight dark pink hair with paired black butterfly ribbons.
+Miku: long muted brown/rose hair, long bangs and BLUE headphones visibly around her neck.
+Yotsuba: orange/coral short hair, the upright GREEN rabbit-ear ribbon.
+Itsuki: red hair, two RED star clips.
+Fully clothed school collars only, cheerful everyday anime faces. Group should read as the actual five sisters rather than five generic same-colored girls. Keep overall silhouette clean and compact; avoid extra faces.
+
+RIGHT — movie, wedding finale without winner spoilers:
+Elegant pair of SILVER wedding rings nestled in an IVORY bridal bouquet with five small flowers in distinct sister-associated accent colors (yellow, lavender, blue, green, red). The bouquet has delicate tiny charms repeating the sisters' five motifs: earring, butterfly ribbon, blue headphones, green bow and red star clips. A folded pearl-white veil behind, a small graphite filmstrip curl at the base to distinguish the movie award. All five represented equally, no individual bride or winner portrait. Celebrate the film without spoiling its chosen bride.
+
+All three icons coherent with supplied achievement art, readable at small app sizes, consistent rendering and similar visual mass. Make the center badge no larger than the others. Exactly THREE separate objects across, transparent background essential. Highest available resolution, landscape aspect ratio approximately 3:1.

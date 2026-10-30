@@ -3,6 +3,7 @@ package app.animix.data.shikimori
 import app.animix.data.cache.ResponseCache
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
+import app.animix.model.AnimeTopic
 import app.animix.model.Genre
 import app.animix.model.Review
 import kotlinx.serialization.builtins.ListSerializer
@@ -22,6 +23,23 @@ class ShikimoriRepository internal constructor(
         cache.get("anime:$id", ttl = 30.minutes, AnimeDetail.serializer(), forceRefresh) {
             api.anime(id)?.toDetail() ?: throw ShikimoriException("Аниме не найдено")
         }
+
+    /** Digest snapshots must distinguish a live catalog response from stale offline cache. */
+    suspend fun liveDetail(id: Int): AnimeDetail = api.anime(id)?.toDetail()
+        ?: throw ShikimoriException("Аниме не найдено")
+
+    /**
+     * Dated news and events of one anime, newest first, always live. Either endpoint may fail on its own;
+     * only a failure of both is an error.
+     */
+    suspend fun topics(id: Int, limit: Int = 15): List<AnimeTopic> {
+        val events = runCatching { api.animeTopics(id, limit) }
+        val news = runCatching { api.newsTopics(id, limit) }
+        listOf(events, news).forEach { (it.exceptionOrNull() as? kotlinx.coroutines.CancellationException)?.let { cancel -> throw cancel } }
+        if (events.isFailure && news.isFailure) throw events.exceptionOrNull()!!
+        return (events.getOrDefault(emptyList()) + news.getOrDefault(emptyList()))
+            .filter { it.id > 0 }.distinctBy { it.id }.map { it.toTopic() }.sortedByDescending { it.createdAt }
+    }
 
     suspend fun similar(id: Int): List<Anime> =
         cache.get("similar:$id", ttl = 6.hours, ListSerializer(Anime.serializer())) {

@@ -46,6 +46,8 @@ import app.animix.AppGraph
 import app.animix.Ambient
 import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
+import app.animix.data.mascot.mascotCosplayFor
+import app.animix.ui.components.MascotCosplayNote
 import androidx.compose.runtime.collectAsState
 import app.animix.model.Anime
 import app.animix.model.AnimeDetail
@@ -152,6 +154,10 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     is Load.Failed -> MessageState("Не удалось загрузить аниме", message = state.error.userMessage(),
                         icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
                     is Load.Ready -> Description(state.value)
+                }
+                mascotCosplayFor(anime)?.let { cosplay ->
+                    Spacer(Modifier.height(24.dp))
+                    MascotCosplayNote(cosplay)
                 }
                 ready?.screenshots?.takeIf { it.isNotEmpty() }?.let { shots ->
                     Spacer(Modifier.height(28.dp))
@@ -335,97 +341,31 @@ private fun WatchActions(
     queued: Int,
     notice: String?,
 ) {
-    val colors = AniMixTheme.colors
+    var more by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         PrimaryButton("Смотреть", onWatch, icon = AniMixIcons.Play, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(10.dp))
-        IconCircle(if (entry?.favorite == true) AniMixIcons.HeartFilled else AniMixIcons.Heart,
-            onClick = onFavorite, size = 50.dp, active = entry?.favorite == true,
-            contentDescription = if (entry?.favorite == true) "Убрать из избранного" else "В избранное")
-        Spacer(Modifier.width(10.dp))
-        IconCircle(AniMixIcons.Download, onClick = onDownload, size = 50.dp, active = queued > 0,
-            contentDescription = if (queued > 0) "Загрузки: скачано $downloaded из $queued" else "Скачать серии")
+        Spacer(Modifier.width(8.dp))
+        IconCircle(AniMixIcons.Bookmark, onLists, size = 50.dp, active = entry?.status != null || entry?.favorite == true,
+            contentDescription = entry?.status?.label ?: "Добавить в список")
+        Spacer(Modifier.width(8.dp))
+        IconCircle(AniMixIcons.More, { more = true }, size = 50.dp, contentDescription = "Ещё действия")
     }
-    Spacer(Modifier.height(12.dp))
-    val listAction: @Composable (Modifier) -> Unit = { modifier ->
-        PersonalAction(
-            label = "Мой список",
-            value = entry?.status?.label ?: "Добавить",
-            icon = entry?.status?.icon ?: AniMixIcons.Bookmark,
-            active = entry?.status != null,
-            onClick = onLists,
-            modifier = modifier,
-        )
+    if (entry?.status != null || entry?.score != null || downloaded > 0) {
+        Spacer(Modifier.height(10.dp))
+        Txt(listOfNotNull(entry?.status?.label, entry?.score?.let { "Моя оценка $it / 10" },
+            "$downloaded ${episodesWord(downloaded)} скачано".takeIf { downloaded > 0 }).joinToString(" · "), AniMixTheme.type.caption)
     }
-    val rateAction: @Composable (Modifier) -> Unit = { modifier ->
-        PersonalAction(
-            label = "Моя оценка",
-            value = entry?.score?.let { "$it / 10" } ?: "Оценить",
-            icon = if (entry?.score != null) AniMixIcons.Star else AniMixIcons.StarOutline,
-            active = entry?.score != null,
-            onClick = onRate,
-            modifier = modifier,
-        )
+    if (more) app.animix.ui.components.AniMixSheet({ more = false }, title = "Действия с тайтлом") {
+        app.animix.ui.components.NavRow(entry?.score?.let { "Моя оценка: $it / 10" } ?: "Оценить тайтл", AniMixIcons.StarOutline,
+            { more = false; onRate() })
+        app.animix.ui.components.NavRow(if (entry?.favorite == true) "Убрать из избранного" else "В избранное", AniMixIcons.Heart,
+            { more = false; onFavorite() })
+        app.animix.ui.components.NavRow("Загрузки", AniMixIcons.Download,
+            { more = false; if (queued > 0) onSaved() else onDownload() },
+            trailing = if (queued > 0) "Готово $downloaded из $queued" else "Скачать серии")
+        app.animix.ui.components.NavRow("Watch flow", AniMixIcons.Clock, { more = false; onFlow() }, trailing = "Просмотр по времени")
     }
-    val fontScale = LocalDensity.current.fontScale
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth < 340.dp || fontScale > 1.15f) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listAction(Modifier.fillMaxWidth())
-                rateAction(Modifier.fillMaxWidth())
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                listAction(Modifier.weight(1.1f))
-                rateAction(Modifier.weight(1f))
-            }
-        }
-    }
-    if (queued > 0) {
-        // The saved episodes of this title, as calm as «Мой список» and «Моя оценка».
-        Spacer(Modifier.height(8.dp))
-        PersonalAction(
-            label = "Загрузки",
-            value = if (downloaded == queued) "Готово $downloaded ${episodesWord(downloaded)} · без интернета" else "Готово $downloaded из $queued",
-            icon = AniMixIcons.Download,
-            active = downloaded > 0,
-            onClick = onSaved,
-            trailing = AniMixIcons.ChevronRight,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-    // Watch flow: a session for the time you have, online or from downloads, starting with this title.
-    Spacer(Modifier.height(8.dp))
-    PersonalAction(
-        label = "Watch flow",
-        value = "Серии под ваше время",
-        icon = AniMixIcons.Clock,
-        active = false,
-        onClick = onFlow,
-        modifier = Modifier.fillMaxWidth(),
-        trailing = AniMixIcons.ChevronRight,
-    )
-    if (notice != null) Txt(notice, AniMixTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(top = 10.dp))
-}
-
-@Composable
-private fun PersonalAction(label: String, value: String, icon: ImageVector, active: Boolean, onClick: () -> Unit, modifier: Modifier, trailing: ImageVector = AniMixIcons.ChevronDown) {
-    val colors = AniMixTheme.colors
-    Row(
-        modifier.clip(AniMixTheme.shapes.medium).background(colors.surface)
-            .border(1.dp, if (active) colors.accent.copy(alpha = 0.22f) else colors.outline, AniMixTheme.shapes.medium)
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, Modifier.size(19.dp), tint = if (active) colors.accent else colors.textSecondary)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Txt(label, AniMixTheme.type.micro, maxLines = 1)
-            Spacer(Modifier.height(3.dp))
-            Txt(value, AniMixTheme.type.label, color = if (active) colors.accentText else colors.textPrimary, maxLines = 1)
-        }
-        Icon(trailing, null, Modifier.size(14.dp), tint = colors.textMuted)
-    }
+    if (notice != null) Txt(notice, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp))
 }
 
 @Composable
