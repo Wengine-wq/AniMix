@@ -386,8 +386,8 @@ fun AniMixPlayer(
                 },
         ) {
             VideoArea(player, state, zoomed = fill && fullscreen)
-            if(horizon!=null && controlsVisible) Box(Modifier.align(Alignment.CenterEnd).padding(12.dp)){horizon()}
             PlayerOverlay(
+                horizon = horizon,
                 visible = controlsVisible || !state.playing || state.error != null,
                 state = state,
                 title = title,
@@ -463,6 +463,7 @@ fun AniMixPlayer(
 
 @Composable
 private fun PlayerOverlay(
+    horizon: (@Composable () -> Unit)?,
     visible: Boolean,
     state: PlayerSnapshot,
     title: String,
@@ -504,6 +505,10 @@ private fun PlayerOverlay(
                 }
                 if (qualities.size > 1) QualityMenu(quality, qualities, onQuality)
                 else GlassChip(quality) {}
+                if (horizon != null) {
+                    Spacer(Modifier.width(6.dp))
+                    horizon()
+                }
                 if (onDownload != null) {
                     Spacer(Modifier.width(6.dp))
                     OverlayIcon(AniMixIcons.Download, onDownload)
@@ -627,6 +632,20 @@ private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 40, 
     ) {
         Icon(icon, null, Modifier.size((size * if (label != null) 0.62f else 0.52f).dp), tint = Color.White)
         if (label != null) Txt(label, AniMixTheme.type.micro, color = Color.White, modifier = Modifier.padding(top = 1.dp))
+    }
+}
+
+/** A labelled action in the player's top bar, readable over any frame. */
+@Composable
+internal fun PlayerChip(text: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.45f)).clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(16.dp), tint = Color.White)
+        Spacer(Modifier.width(6.dp))
+        Txt(text, AniMixTheme.type.label, color = Color.White, maxLines = 1)
     }
 }
 

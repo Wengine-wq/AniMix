@@ -271,6 +271,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Achievements -> AchievementsScreen(graph, navigator, padding)
                     route == Route.History -> HistoryScreen(graph, navigator, padding)
                     route == Route.Friends -> app.animix.ui.screens.profile.FriendsScreen(graph,navigator,padding)
+                    route == Route.Notifications -> app.animix.ui.screens.profile.NotificationsScreen(graph, navigator, padding)
                     route is Route.FriendProfile -> app.animix.ui.screens.profile.FriendProfileScreen(graph,navigator,route.id,padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding, route.episode)

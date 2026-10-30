@@ -77,5 +77,7 @@ compose.resources {
 
 tasks.withType<Test>().configureEach {
     dependsOn(":desktopApp:prepareWindowsVlc")
+    // Tests never touch the person's real AniMix data or diagnostics log.
+    environment("ANIMIX_HOME", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
     systemProperty("animix.vlc.dir", project(":desktopApp").layout.buildDirectory.dir("native-resources/windows/vlc").get().asFile.absolutePath)
 }

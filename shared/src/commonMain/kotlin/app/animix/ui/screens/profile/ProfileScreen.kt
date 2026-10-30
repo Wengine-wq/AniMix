@@ -47,6 +47,16 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     ScreenColumn(contentPadding) {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt("Профиль", AniMixTheme.type.title, modifier = Modifier.weight(1f))
+            if (account.user != null) {
+                val requests = social.incomingRequests().size
+                Box {
+                    IconCircle(AniMixIcons.Bell, { navigator.push(Route.Notifications) },
+                        contentDescription = if (requests > 0) "Уведомления: заявок в друзья — $requests" else "Уведомления")
+                    if (requests > 0) Box(Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(AniMixTheme.colors.accent),
+                        contentAlignment = Alignment.Center) { Txt("$requests", AniMixTheme.type.micro, color = AniMixTheme.colors.onAccent) }
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             IconCircle(AniMixIcons.Edit, { navigator.push(Route.EditProfile()) }, contentDescription = "Редактировать профиль")
             Spacer(Modifier.width(8.dp))
             IconCircle(AniMixIcons.Sliders, { navigator.push(Route.Settings) }, contentDescription = "Настройки")
@@ -56,11 +66,13 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             onBadge = { navigator.push(Route.Achievements) }, level = level)
         if(account.user!=null)Txt(if(social.devices.any{it.id==graph.social.deviceId&&it.online()})"В сети" else "Онлайн-статус обновляется",AniMixTheme.type.caption,modifier=Modifier.padding(top=8.dp))
         Spacer(Modifier.height(24.dp))
-        NavRow("Друзья", AniMixIcons.User, { navigator.push(Route.Friends) })
         Row(Modifier.fillMaxWidth()) {
             ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
             ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
             ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
+            // Friends live with the other numbers of the profile; a tap opens the list.
+            ProfileStat(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей",
+                Modifier.weight(1f).clickable { navigator.push(Route.Friends) })
         }
         Spacer(Modifier.height(32.dp))
         CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) })
@@ -299,7 +311,7 @@ internal fun profileHours(minutes: Int): String = when {
     else -> "${minutes / 60}"
 }
 
-private fun profileDaysWord(n: Int): String = when {
+internal fun profileDaysWord(n: Int): String = when {
     n % 100 in 11..14 -> "дней"
     n % 10 == 1 -> "день"
     n % 10 in 2..4 -> "дня"

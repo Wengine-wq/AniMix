@@ -41,7 +41,11 @@ import kotlin.time.Instant
 object AniMixServer {
     const val BASE_URL = "https://193-124-64-116.sslip.io"
     /** The only return address the server accepts after Google sign-in. */
-    const val CALLBACK = "animix://oauth/callback"
+    /**
+     * Android's return link after Google sign-in. Not `animix://`: AniMix 2.x on the same phone
+     * claims animix://oauth/callback too, and the browser could hand the sign-in to the old app.
+     */
+    const val CALLBACK = "animix-nh://oauth/callback"
 }
 
 @Serializable

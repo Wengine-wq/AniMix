@@ -101,12 +101,7 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         LegacyMigrationSection(graph)
 
         Section("Horizon Link")
-        Txt("Откройте Horizon Link в плеере и выберите устройство для продолжения.",AniMixTheme.type.caption)
-        val social by graph.social.state.collectAsState()
-        social.devices.forEach { device ->
-            Txt("${device.label} · ${if(device.online())"в сети" else "не в сети"}",AniMixTheme.type.caption)
-        }
-        Panel { NavRow("Друзья и заявки",AniMixIcons.User,{navigator.push(Route.Friends)}) }
+        HorizonDevices(graph)
 
         Section("Привязки")
         Panel {

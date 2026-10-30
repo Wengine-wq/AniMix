@@ -38,6 +38,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="animix" />
             </intent-filter>
+            <!-- Google sign-in returns here; a scheme of its own so AniMix 2.x cannot take it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="animix-nh" android:host="oauth" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

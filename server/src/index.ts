@@ -81,6 +81,12 @@ function redirect(location: string): CloudFunctionResponse {
  * Google refuses sign-in inside browsers an app controls, so the desktop app uses the normal
  * system browser. Only 127.0.0.1 with an explicit port and this exact path is accepted.
  */
+/**
+ * AniMix New Horizons on Android returns here. AniMix 2.x on the same phone also claims
+ * animix://oauth/callback, and the browser could hand the sign-in to the old app instead.
+ */
+export const NEW_HORIZONS_RETURN_URI = 'animix-nh://oauth/callback';
+
 export function isLoopbackReturnUri(value: string): boolean {
   return /^http:\/\/127\.0\.0\.1:([1-9][0-9]{1,4})\/oauth\/callback$/.test(value) &&
     Number(value.split(':')[2].split('/')[0]) <= 65535;
@@ -236,7 +242,9 @@ async function createSession(userId: string, store: Store, config: RuntimeConfig
 
 async function googleStart(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const returnUri = query(event, 'return_uri');
-  if (returnUri !== config.allowedAppReturnUri && !isLoopbackReturnUri(returnUri)) return json(event, config, { error: 'invalid_return_uri' }, 400);
+  if (returnUri !== config.allowedAppReturnUri && returnUri !== NEW_HORIZONS_RETURN_URI && !isLoopbackReturnUri(returnUri)) {
+    return json(event, config, { error: 'invalid_return_uri' }, 400);
+  }
   const state = randomToken(32);
   const now = nowSeconds();
   await store.createOAuthTransaction(

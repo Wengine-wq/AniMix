@@ -61,6 +61,7 @@ sealed interface Route {
     }
 
     data object Friends : Route { override val key = "friends" }
+    data object Notifications : Route { override val key = "notifications" }
     data class FriendProfile(val id:String) : Route { override val key get() = "user:$id" }
 
     data object Achievements : Route {
@@ -155,6 +156,7 @@ class Navigator {
             "edit-profile" -> { tab = Tab.Profile; push(Route.EditProfile()) }
             "history" -> { tab = Tab.Profile; push(Route.History) }
             "friends" -> { tab = Tab.Profile; push(Route.Friends) }
+            "notifications" -> { tab = Tab.Profile; push(Route.Notifications) }
             "user" -> { val id=path.getOrNull(1)?.takeIf{it.matches(Regex("[0-9a-fA-F-]{36}"))}?:return false;push(Route.FriendProfile(id)) }
             else -> tab = Tab.entries.firstOrNull { it.name.equals(path.firstOrNull(), ignoreCase = true) } ?: return false
         }
