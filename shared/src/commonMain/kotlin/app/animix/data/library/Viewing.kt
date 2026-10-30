@@ -80,6 +80,22 @@ val LibraryEntry.watchedEpisodeCount: Int get() = episodesWatched + viewing.coun
     value.completedAt != null && (number.toDoubleOrNull()?.let { it > episodesWatched } != false)
 }
 
+/**
+ * Playback time confirmed by unique decoded coverage: every second of an episode counts once.
+ * Imports, list marks, seeking and broken daily counters cannot inflate it.
+ */
+val LibraryData.confirmedWatchSeconds: Long get() =
+    entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs.coerceIn(0, it.durationMs.coerceAtLeast(0)) } } / 1000
+
+/** Daily playback seconds that can be real: no future days and at most 24 hours per day. */
+fun LibraryData.plausibleWatchDays(today: Long = app.animix.core.localDayIndex()): Map<Long, Int> =
+    watchDays.filter { (day, seconds) -> day in EarliestWatchDay..today + 1 && seconds > 0 }
+        .mapValues { it.value.coerceAtMost(SecondsPerDay) }
+
+/** 1 January 2025: AniMix 3.0 playback statistics cannot be older. */
+private const val EarliestWatchDay = 20_089L
+private const val SecondsPerDay = 86_400
+
 data class ProfileLevel(val level: Int, val xp: Long, val progressXp: Long, val nextLevelXp: Long) {
     val fraction: Float get() = (progressXp.toFloat() / nextLevelXp).coerceIn(0f, 1f)
 }

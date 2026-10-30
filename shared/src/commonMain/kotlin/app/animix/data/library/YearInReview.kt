@@ -96,7 +96,7 @@ const val REVIEW_OPENS_DAY = 20
 const val EARLY_TITLES = 3
 
 fun LibraryData.yearInReview(year: Int, achievements: List<AchievementProgress>, offsetDay: (Long) -> Long = { localDayIndex(it) }): YearInReview {
-    val days = watchDays.filterKeys { dayToDate(it).year == year }.filterValues { it > 0 }
+    val days = plausibleWatchDays().filterKeys { dayToDate(it).year == year }
     val minutesByMonth = (1..12).map { month -> days.filterKeys { dayToDate(it).month == month }.values.sum() / 60 }
     val bestMonth = minutesByMonth.withIndex().maxByOrNull { it.value }?.takeIf { it.value > 0 }
     var streak = 0

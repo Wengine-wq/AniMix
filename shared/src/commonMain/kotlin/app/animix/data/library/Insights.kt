@@ -32,13 +32,14 @@ data class WatchStats(
     val completed: Int,
     val streak: Int,
     val bestStreak: Int,
-    /** Minutes for each of the last [days] days, oldest first. */
+    /** Minutes for each of the last [dayCount] days, oldest first. */
     val lastDays: List<Int>,
     val topGenres: List<Pair<String, Int>>,
 )
 
-fun LibraryData.stats(days: Int = 14, today: Long = localDayIndex()): WatchStats {
-    val active = watchDays.filterValues { it >= 60 }.keys
+fun LibraryData.stats(dayCount: Int = 14, today: Long = localDayIndex()): WatchStats {
+    val days = plausibleWatchDays(today)
+    val active = days.filterValues { it >= 60 }.keys
     var streak = 0
     // A streak survives until the end of today: yesterday's run still counts before today's first episode.
     var day = if (today in active) today else today - 1
@@ -52,12 +53,12 @@ fun LibraryData.stats(days: Int = 14, today: Long = localDayIndex()): WatchStats
         previous = d
     }
     return WatchStats(
-        totalMinutes = watchDays.values.sum() / 60,
+        totalMinutes = (confirmedWatchSeconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
         episodes = entries.values.sumOf { it.watchedEpisodeCount },
         completed = entries.values.count { it.status == ListStatus.Completed },
         streak = streak,
         bestStreak = maxOf(best, streak),
-        lastDays = (days - 1 downTo 0).map { (watchDays[today - it] ?: 0) / 60 },
+        lastDays = (dayCount - 1 downTo 0).map { (days[today - it] ?: 0) / 60 },
         topGenres = tasteGenres().take(5),
     )
 }

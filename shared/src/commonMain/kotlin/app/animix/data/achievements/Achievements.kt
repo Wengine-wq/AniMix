@@ -11,6 +11,7 @@ import app.animix.data.library.ListStatus
 import app.animix.data.library.hasVerifiedCompletion
 import app.animix.data.library.verifiedEpisodes
 import app.animix.data.library.completedWithHistory
+import app.animix.data.library.confirmedWatchSeconds
 import app.animix.data.library.episodesWithHistory
 import app.animix.core.localDayIndex
 import kotlinx.coroutines.CancellationException
@@ -134,6 +135,7 @@ class Achievements(
             decoded?.exceptionOrNull()?.let { throw it }
             AchievementState()
         }
+        _state.value = repairWatchTimeAwards(_state.value, library.state.value, catalog)
         loaded = true
         observeLibrary(library.state.value)
         evaluate(library.state.value)
@@ -249,7 +251,7 @@ class Achievements(
                 "setting_enabled_by_user" -> if (t.value in set("setting")) 1 else 0
                 "filtered_catalog_titles_opened" -> set("filtered").size
                 "unique_titles_opened_from_search" -> set("search").size
-                "watch_seconds" -> lib.watchDays.values.sumOf { it.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                "watch_seconds" -> lib.confirmedWatchSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 "episode_downloads_completed" -> maxOf(state.sets["downloads_completed"].orEmpty().size, (state.counters["episode_downloads_completed"] ?: 0).toInt())
                 "reviews_published" -> (state.counters["reviews_published"] ?: 0).toInt()
                 "episodes_per_day" -> verifiedDays.values.maxOrNull() ?: 0
@@ -316,6 +318,20 @@ class Achievements(
     internal companion object {
         const val FILE = "achievements.json"
         const val BACKUP = "achievements.backup.json"
+        private const val WATCH_TIME_REPAIR = "repair_watch_time_v1"
+
+        /**
+         * Earlier builds summed a daily counter that could be inflated (34 000 hours after a list
+         * import). Once, take back time awards the confirmed playback coverage does not support.
+         */
+        fun repairWatchTimeAwards(state: AchievementState, lib: LibraryData, catalog: List<Achievement>): AchievementState {
+            if (WATCH_TIME_REPAIR in state.counters) return state
+            val confirmed = lib.confirmedWatchSeconds
+            val revoked = catalog.filter { it.trigger.metric == "watch_seconds" && confirmed < it.trigger.threshold }.map { it.id }.toSet()
+            if (revoked.any { it in state.unlocked || it in state.historical }) AppLog.info("Achievements", "watch_time_awards_revoked")
+            return state.copy(unlocked = state.unlocked - revoked, historical = state.historical - revoked,
+                counters = state.counters + (WATCH_TIME_REPAIR to 1L))
+        }
 
         /** "yyyy-MM" in UTC; close enough for "three titles in one month". */
         fun monthOf(millis: Long): String = Instant.fromEpochMilliseconds(millis).toString().take(7)
