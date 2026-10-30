@@ -27,6 +27,21 @@ class SettingsDataStoreTest {
         assertEquals(expected, AppSettings(disk, backgroundScope).apply { load() }.state.value)
     }
 
+    @Test fun newInstallsStartWithAutoNextAndSkipsOffButKeepExistingChoices() = runTest {
+        val fresh = AppSettings(disk(), backgroundScope).apply { load() }.state.value
+        assertFalse(fresh.autoNextEpisode)
+        assertFalse(fresh.skipOpenings)
+        assertFalse(fresh.skipEndings)
+
+        val disk = disk()
+        val chosen = AppSettings(disk, backgroundScope).apply { load() }
+        chosen.update { it.copy(autoNextEpisode = true, autoNextAsked = true, skipOpenings = true) }
+        chosen.flush()
+        val restored = AppSettings(disk, backgroundScope).apply { load() }.state.value
+        assertTrue(restored.autoNextEpisode)
+        assertTrue(restored.skipOpenings)
+    }
+
     @Test fun legacyJsonCannotOverrideNewPreferencesOnRestart() = runTest {
         val disk = disk()
         disk.writeChecked("settings.json", "{\"themeMode\":\"Dawn\",\"skipEndings\":true}")

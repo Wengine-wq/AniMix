@@ -20,9 +20,11 @@ enum class ThemeMode(val label: String) {
 @Serializable
 data class Settings(
     val themeMode: ThemeMode = ThemeMode.System,
-    val skipOpenings: Boolean = true,
+    // Off for new installs: the viewer turns them on (and earns the settings achievements).
+    // Existing preferences are stored explicitly, so changing these defaults never flips them.
+    val skipOpenings: Boolean = false,
     val skipEndings: Boolean = false,
-    val autoNextEpisode: Boolean = true,
+    val autoNextEpisode: Boolean = false,
     /** Whether the viewer has answered the auto-next question at the end of an episode. */
     val autoNextAsked: Boolean = false,
     /** Show «Избранное» after the status lists instead of first. */
