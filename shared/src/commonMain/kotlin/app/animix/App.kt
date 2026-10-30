@@ -189,12 +189,18 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
     BackHandler(enabled = navigator.canGoBack) { if (!navigator.back()) onExit() }
 
     CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient) {
-        Box(Modifier.fillMaxSize().background(colors.background)) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
             val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            // A phone turned sideways on a player screen is for the video: no tab bar over it,
+            // the same as fullscreen. Desktop windows are wide by nature and keep the bar.
+            val current = navigator.current
+            val playerLandscape = Platform.name == "Android" && maxWidth > maxHeight &&
+                (current is Route.Watch || current is Route.Offline || current is Route.WatchFlow)
+            val showBar = current !is Route.YearInReview && !playerLandscape
             Box(Modifier.fillMaxSize().then(if (LocalUiPerformance.current.batterySaver) Modifier else Modifier.hazeSource(haze))) {
                 AmbientBackdrop(ambient.imageUrl)
-                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + BottomBarSpace))
+                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + if (showBar) BottomBarSpace else 0.dp))
             }
             // Keeps the status bar readable over scrolled content.
             Box(
@@ -202,7 +208,7 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
                     .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.85f), Color.Transparent))),
             )
             // «Итоги года» are full screen, like stories.
-            if (navigator.current !is Route.YearInReview) BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            if (showBar) BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             AchievementToastHost(graph, Modifier.align(Alignment.TopCenter))
         }
     }
