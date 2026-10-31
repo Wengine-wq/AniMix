@@ -351,7 +351,7 @@ fun AniMixPlayer(
                         Key.DirectionDown -> { player.setVolume(state.volume - 0.1f); show() }
                         Key.M -> toggleMute()
                         Key.F -> onFullscreenChange(!fullscreen)
-                        Key.Z -> if (fullscreen) toggleFill() else return@onPreviewKeyEvent false
+                        Key.Z -> toggleFill()
                         Key.Escape -> if (fullscreen) onFullscreenChange(false) else return@onPreviewKeyEvent false
                         Key.N -> nextCallback?.invoke() ?: return@onPreviewKeyEvent false
                         Key.S -> activeSkip?.let { (_, target) -> jump(target) } ?: return@onPreviewKeyEvent false
@@ -389,7 +389,7 @@ fun AniMixPlayer(
             val overlayVisible = controlsVisible || !state.playing || state.error != null
             // The skip pill sits above the time pill, and above the bottom row when it is shown.
             val skipLift = when { !overlayVisible -> 20.dp; playerHasBottomRow(fullscreen, maxHeight.value) -> 132.dp; else -> 84.dp }
-            VideoArea(player, state, zoomed = fill && fullscreen)
+            VideoArea(player, state, zoomed = fill)
             PlayerOverlay(
                 horizon = horizon,
                 visible = overlayVisible,
@@ -473,6 +473,9 @@ internal fun chapterAt(positionMs: Long, plan: SkipPlan): String? = when {
     else -> null
 }
 
+/** Solid dark backing of the middle buttons and pills, as in YouTube: the picture never shows through them. */
+private val ControlFill = Color(0xF2161618)
+
 /** Room for the bottom row of the player (actions and the next episode), as in YouTube's large player. */
 internal fun playerHasBottomRow(fullscreen: Boolean, heightDp: Float): Boolean = fullscreen || heightDp >= 300f
 
@@ -511,7 +514,7 @@ private fun PlayerOverlay(
 ) {
     val playingNow = state.playRequested || state.playing
     AnimatedVisibility(visible, enter = fadeIn(tween(180)), exit = fadeOut(tween(260)), modifier = Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x47000000))) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x29000000))) {
             val compact = maxWidth < 480.dp
             val bottomRow = playerHasBottomRow(fullscreen, maxHeight.value)
             Box(Modifier.fillMaxWidth().height(110.dp).align(Alignment.TopStart)
@@ -527,9 +530,11 @@ private fun PlayerOverlay(
                     Txt(title, if (compact) AniMixTheme.type.subheading else AniMixTheme.type.heading, color = Color.White, maxLines = 1)
                     subtitle?.let { Txt(it, AniMixTheme.type.caption, color = Color.White.copy(alpha = 0.65f), maxLines = 1) }
                 }
-                if (horizon != null) horizon()
+                if (horizon != null) CompositionLocalProvider(LocalCompactPlayer provides compact) { horizon() }
+                // «Без рамок» works in any size of the player and is named, not hidden behind the gear.
+                TopAction(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, "Без рамок", onFill, active = fill, showLabel = !compact)
                 if (onDownload != null) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
-                SettingsMenu(quality, qualities, onQuality, fill = fill.takeIf { fullscreen }, onFill = onFill)
+                SettingsMenu(quality, qualities, onQuality)
             }
 
             // Middle: back 10 s, play or pause, forward 10 s — round dark buttons.
@@ -540,7 +545,7 @@ private fun PlayerOverlay(
                 val interaction = remember { MutableInteractionSource() }
                 Box(
                     Modifier.size(if (compact) 64.dp else 76.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f))
+                        .background(ControlFill)
                         .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -557,7 +562,7 @@ private fun PlayerOverlay(
                 // Above the line: where we are (and the chapter) on the left, fullscreen on the right.
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     val position = scrub ?: state.positionMs
-                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 12.dp, vertical = 6.dp),
+                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(ControlFill).padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Txt(timeLabel(position), AniMixTheme.type.label, color = Color.White, maxLines = 1)
                         Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.65f), maxLines = 1)
@@ -573,30 +578,16 @@ private fun PlayerOverlay(
                     onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) }, onCancel = { scrub = null })
                 // Below the line, with room: the actions panel and the next episode, like YouTube's large player.
                 if (bottomRow) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 4.dp),
+                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(ControlFill).padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
                             description = if (state.volume > 0) "Выключить звук" else "Включить звук")
                         if (isDesktop) VolumeBar(state.volume, onVolume)
                     }
-                    // «Без рамок» in words, not a lone icon: it is the mode people look for on a wide phone.
-                    if (fullscreen) {
-                        Spacer(Modifier.width(8.dp))
-                        val interaction = remember { MutableInteractionSource() }
-                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill)
-                            .background(if (fill) AniMixTheme.colors.accent.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.5f))
-                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onClick = onFill)
-                            .heightIn(min = 44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val tint = if (fill) AniMixTheme.colors.onAccent else Color.White
-                            Icon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, null, Modifier.size(18.dp), tint = tint)
-                            Spacer(Modifier.width(8.dp))
-                            Txt("Без рамок", AniMixTheme.type.label, color = tint, maxLines = 1)
-                        }
-                    }
                     Spacer(Modifier.weight(1f))
                     if (hasNext) {
                         val interaction = remember { MutableInteractionSource() }
-                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f))
+                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill).background(ControlFill)
                             .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onNext)
                             .heightIn(min = 44.dp).padding(start = 16.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(nextLabel ?: "Следующая серия", AniMixTheme.type.label, color = Color.White, maxLines = 1)
@@ -615,7 +606,7 @@ private fun PlayerOverlay(
 private fun RoundButton(icon: ImageVector, onClick: () -> Unit, size: Int, description: String, label: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
+        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape).background(ControlFill)
             .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -758,17 +749,34 @@ private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 44, 
     }
 }
 
-/** A labelled action in the player's top bar, readable over any frame. */
+/** Horizon Link in the player's top bar: the same plain, labelled white action as «Без рамок». */
 @Composable
 internal fun PlayerChip(text: String, icon: ImageVector, onClick: () -> Unit) {
+    TopAction(icon, text, onClick, showLabel = !LocalCompactPlayer.current)
+}
+
+/** Whether the player is too narrow for labels next to its top icons. */
+private val LocalCompactPlayer = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/**
+ * A plain white action in the top bar, as YouTube's top icons: no backing, a 44 dp target, and the
+ * name next to the icon where there is room; [active] tints it in the accent.
+ */
+@Composable
+internal fun TopAction(icon: ImageVector, label: String, onClick: () -> Unit, active: Boolean = false, showLabel: Boolean = true) {
+    val interaction = remember { MutableInteractionSource() }
+    val tint = if (active) AniMixTheme.colors.accent else Color.White
     Row(
-        Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.45f)).clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        Modifier.heightIn(min = 44.dp).widthIn(min = 44.dp).pressScale(interaction, pressed = 0.94f).clip(AniMixTheme.shapes.pill)
+            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .padding(horizontal = if (showLabel) 10.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, null, Modifier.size(16.dp), tint = Color.White)
-        Spacer(Modifier.width(6.dp))
-        Txt(text, AniMixTheme.type.label, color = Color.White, maxLines = 1)
+        Icon(icon, if (showLabel) null else label, Modifier.size(22.dp), tint = tint)
+        if (showLabel) {
+            Spacer(Modifier.width(6.dp))
+            Txt(label, AniMixTheme.type.label, color = tint, maxLines = 1)
+        }
     }
 }
 
@@ -780,11 +788,11 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
 }
 
 /**
- * The gear: quality (its short name rides on the icon, like YouTube's HD badge) and, in fullscreen,
- * «Без рамок». One small dark menu over the picture instead of separate chips.
+ * The gear: quality, with a short HD mark on the icon like YouTube's. «Без рамок» has its own named
+ * action in the top bar, so the menu holds only the choice of quality.
  */
 @Composable
-private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, fill: Boolean?, onFill: () -> Unit) {
+private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val colors = AniMixTheme.colors
     Box {
@@ -805,16 +813,6 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                         verticalAlignment = Alignment.CenterVertically) {
                         Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) colors.accent else Color.White, modifier = Modifier.weight(1f))
                         if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.accent)
-                    }
-                }
-                if (fill != null) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
-                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onFill() }.padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, null, Modifier.size(18.dp), tint = Color.White)
-                        Spacer(Modifier.width(12.dp))
-                        Txt("Без рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
-                        Txt(if (fill) "Вкл." else "Выкл.", AniMixTheme.type.label, color = if (fill) colors.accent else Color.White.copy(alpha = 0.6f))
                     }
                 }
             }
