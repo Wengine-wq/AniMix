@@ -49,16 +49,24 @@ private fun rememberSocialAction(): Triple<Boolean, String?, (suspend () -> Unit
     return Triple(busy, error, run)
 }
 
-/** Profile → «Друзья»: friends, sent requests, search and who sees the collection. */
+/** «Друзья»: friends with their presence, incoming and sent requests, and search by name. */
 @Composable
 fun FriendsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val account by graph.account.state.collectAsState()
     val social by graph.social.state.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     var found by remember { mutableStateOf<List<SocialUser>>(emptyList()) }
-    var visible by remember { mutableStateOf<Boolean?>(null) }
     val (busy, error, run) = rememberSocialAction()
-    LaunchedEffect(account.user?.id) { if (account.user != null) run { graph.social.refresh(); visible = graph.social.privacy() } }
+    LaunchedEffect(account.user?.id) { if (account.user != null) run { graph.social.refresh() } }
+    // Servers without presence in the list: ask each friend's overview once, like their profile does.
+    var presence by remember { mutableStateOf<Map<String, Pair<Boolean?, Long?>>>(emptyMap()) }
+    val friendIds = social.acceptedFriends().filter { it.online == null }.map { it.id }
+    LaunchedEffect(friendIds) {
+        friendIds.take(30).forEach { id ->
+            val raw = runCatching { graph.social.overview(id) }.getOrElse { if (it is CancellationException) throw it; null } ?: return@forEach
+            presence = presence + (id to (raw["online"]?.jsonPrimitive?.booleanOrNull to raw["last_seen_at"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 }))
+        }
+    }
     LaunchedEffect(query) {
         delay(400)
         found = runCatching { graph.social.search(query) }.getOrElse { if (it is CancellationException) throw it; emptyList() }
@@ -97,9 +105,8 @@ fun FriendsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues)
             SocialSection("Друзья · ${friends.size}")
             if (friends.isEmpty()) Txt("Найдите друзей по имени в поиске выше.", AniMixTheme.type.caption)
             friends.forEach { user ->
-                SocialUserRow(user, navigator) {
-                    Chip("Удалить", false, { if (!busy) run { graph.social.friendAction(user.id, remove = true) } }, icon = AniMixIcons.Close)
-                }
+                val known = presence[user.id]
+                SocialUserRow(user, navigator, online = user.online ?: known?.first, lastSeenAt = user.lastSeenAt ?: known?.second)
             }
             val sent = social.friends.filter { it.status == "outgoing" }
             if (sent.isNotEmpty()) {
@@ -111,13 +118,64 @@ fun FriendsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues)
                 }
             }
         }
-        visible?.let { value ->
-            Spacer(Modifier.height(28.dp))
-            Panel {
-                ToggleRow("Показывать друзьям коллекцию и статистику", value, { next -> run { graph.social.privacy(next); visible = next } },
-                    AniMixIcons.Bookmark, subtitle = "Списки, часы, активность и достижения. Позиции просмотра не показываются никому.", enabled = !busy)
-            }
-        }
+    }
+}
+
+/** Settings → «Приватность»: who sees the collection. Only an online profile has anything to share. */
+@Composable
+internal fun PrivacySection(graph: AppGraph, navigator: Navigator) {
+    val account by graph.account.state.collectAsState()
+    var visible by remember { mutableStateOf<Boolean?>(null) }
+    val (busy, error, run) = rememberSocialAction()
+    LaunchedEffect(account.user?.id) { if (account.user != null) run { visible = graph.social.privacy() } }
+    if (account.user == null) {
+        MessageState("Нечего скрывать", message = "Без входа всё хранится только на этом устройстве и никому не видно.", icon = AniMixIcons.Lock,
+            actionLabel = "Открыть аккаунт", onAction = { navigator.push(Route.SettingsSection("Account")) }, actionIcon = AniMixIcons.User)
+        return
+    }
+    Panel {
+        ToggleRow("Коллекция и статистика для друзей", visible == true, { next -> run { graph.social.privacy(next); visible = next } },
+            AniMixIcons.Bookmark, subtitle = "Списки, часы, активность и достижения видят только взаимные друзья", enabled = !busy && visible != null)
+    }
+    Txt("Имя, аватар и статус «в сети» видны всем, кто найдёт вас в поиске. Позиции просмотра не показываются никому.",
+        AniMixTheme.type.micro, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+    error?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
+}
+
+/** «был в сети 5 минут назад», «вчера в 21:40», «12 окт.»: when someone was last online. */
+internal fun lastSeenLabel(at: Long, now: Long = TrustedClockNow()): String {
+    if (at <= 0) return "Не в сети"
+    val minutes = ((now - at) / 60_000).coerceAtLeast(0)
+    val today = app.animix.core.localDayIndex(now)
+    val day = app.animix.core.localDayIndex(at)
+    val date = dayToDate(day)
+    val clock = app.animix.core.localTimeLabel(at)
+    return "Был в сети " + when {
+        minutes < 1 -> "только что"
+        minutes < 60 -> "$minutes ${plural(minutes, "минуту", "минуты", "минут")} назад"
+        day == today -> "сегодня в $clock"
+        day == today - 1 -> "вчера в $clock"
+        else -> "${date.day} ${MonthsShort[date.month - 1]}"
+    }
+}
+
+private fun TrustedClockNow() = app.animix.core.TrustedClock.now()
+private val MonthsShort = listOf("янв.", "февр.", "марта", "апр.", "мая", "июня", "июля", "авг.", "сент.", "окт.", "нояб.", "дек.")
+private fun plural(n: Long, one: String, few: String, many: String) = when {
+    n % 100 in 11..14 -> many; n % 10 == 1L -> one; n % 10 in 2..4 -> few; else -> many
+}
+
+/** A green dot online, a grey one with the last time otherwise; no dot when nothing is known. */
+@Composable
+internal fun PresenceLine(online: Boolean?, lastSeenAt: Long?, modifier: Modifier = Modifier) {
+    if (online == null && lastSeenAt == null) return
+    val colors = AniMixTheme.colors
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(if (online == true) colors.online else colors.textMuted))
+        Spacer(Modifier.width(6.dp))
+        Txt(if (online == true) "В сети" else lastSeenLabel(lastSeenAt ?: 0), AniMixTheme.type.caption,
+            color = if (online == true) colors.textPrimary else colors.textSecondary, maxLines = 1)
     }
 }
 
@@ -163,7 +221,8 @@ private fun SocialSection(title: String) {
 
 /** One person: avatar or initial, name (opens the profile), and the actions on the right. */
 @Composable
-private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: Boolean = false, actions: @Composable () -> Unit) {
+private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: Boolean = false, online: Boolean? = null, lastSeenAt: Long? = null,
+    actions: (@Composable () -> Unit)? = null) {
     val colors = AniMixTheme.colors
     Panel(Modifier.padding(bottom = 8.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -176,11 +235,15 @@ private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: 
                         Txt(user.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?", AniMixTheme.type.bodyStrong, color = colors.onAccent)
                     }
                     Spacer(Modifier.width(12.dp))
-                    Txt(user.name, AniMixTheme.type.bodyStrong, maxLines = 2, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Txt(user.name, AniMixTheme.type.bodyStrong, maxLines = 2)
+                        PresenceLine(online, lastSeenAt, Modifier.padding(top = 2.dp))
+                    }
+                    if (actions == null) Icon(AniMixIcons.ChevronRight, null, Modifier.size(16.dp), tint = colors.textMuted)
                 }
-                if (!actionsBelow) { Spacer(Modifier.width(8.dp)); actions() }
+                if (actions != null && !actionsBelow) { Spacer(Modifier.width(8.dp)); actions() }
             }
-            if (actionsBelow) Box(Modifier.fillMaxWidth().padding(top = 10.dp, start = 56.dp)) { actions() }
+            if (actions != null && actionsBelow) Box(Modifier.fillMaxWidth().padding(top = 10.dp, start = 56.dp)) { actions() }
         }
     }
 }
@@ -207,6 +270,9 @@ private fun SocialSearchField(value: String, onChange: (String) -> Unit) {
 @Composable
 fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, padding: PaddingValues) {
     val overview = rememberLoad(id) { graph.social.overview(id) }
+    val social by graph.social.state.collectAsState()
+    val (busy, actionError, run) = rememberSocialAction()
+    var confirmRemoval by remember(id) { mutableStateOf(false) }
     LaunchedEffect(id) { while (isActive) { delay(15_000); overview.refresh() } }
     ScreenColumn(padding) {
         PageHeader("Профиль", { navigator.back() }, Modifier.padding(top = 12.dp))
@@ -226,9 +292,9 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                     banner = user["banner_url"]?.jsonPrimitive?.contentOrNull?.let { ProfileMedia(url = it) })
                 val badge = graph.achievements.all.firstOrNull { it.id == profile.badgeAchievementId }
                     ?.let { app.animix.data.achievements.AchievementProgress(it, 1, awards.unlocked[it.id], awards.historical[it.id]) }
-                ProfileIdentity(profile, badge, level = lib?.level(awards.unlocked.size))
-                Spacer(Modifier.height(12.dp))
-                Txt(if (raw["online"]?.jsonPrimitive?.booleanOrNull == true) "В сети" else "Не в сети", AniMixTheme.type.caption)
+                ProfileIdentity(profile, badge, level = lib?.level(awards.unlocked.size),
+                    online = raw["online"]?.jsonPrimitive?.booleanOrNull ?: false,
+                    lastSeenAt = raw["last_seen_at"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 })
                 if (lib == null) {
                     Spacer(Modifier.height(24.dp))
                     Txt("Коллекция и подробная статистика видны взаимным друзьям с открытой коллекцией.", AniMixTheme.type.body)
@@ -264,6 +330,24 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                         }
                     }
                 }
+                // Friendship lives here, with the person, not as a button on every row of the list.
+                val status = social.friends.firstOrNull { it.id == id }?.status ?: "none"
+                Spacer(Modifier.height(32.dp))
+                when (status) {
+                    "friends" -> if (!confirmRemoval) SecondaryButton("Удалить из друзей", { confirmRemoval = true }, Modifier.fillMaxWidth(), icon = AniMixIcons.Close)
+                    else {
+                        Txt("Удалить «${profile.name}» из друзей?", AniMixTheme.type.bodyStrong)
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton("Отмена", { confirmRemoval = false }, Modifier.weight(1f))
+                            SecondaryButton("Удалить", { confirmRemoval = false; run { graph.social.friendAction(id, remove = true) } },
+                                Modifier.weight(1f), icon = AniMixIcons.Trash, enabled = !busy)
+                        }
+                    }
+                    "incoming" -> PrimaryButton("Принять заявку", { run { graph.social.friendAction(id) } }, Modifier.fillMaxWidth(), icon = AniMixIcons.Check, enabled = !busy)
+                    "outgoing" -> SecondaryButton("Отменить заявку", { run { graph.social.friendAction(id, remove = true) } }, Modifier.fillMaxWidth(), enabled = !busy)
+                    else -> PrimaryButton("Добавить в друзья", { run { graph.social.friendAction(id) } }, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !busy)
+                }
+                actionError?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
             }
         }
     }

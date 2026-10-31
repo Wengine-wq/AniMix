@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 /** Settings are grouped into categories; each opens its own page. */
 private enum class SettingsCategory(val title: String, val icon: ImageVector) {
     Account("Аккаунт", AniMixIcons.User),
+    Privacy("Приватность", AniMixIcons.Lock),
     Appearance("Внешний вид", AniMixIcons.Palette),
     Playback("Воспроизведение", AniMixIcons.Play),
     Lists("Списки", AniMixIcons.Bookmark),
@@ -48,18 +49,10 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
     ScreenColumn(contentPadding) {
         PageHeader("Настройки", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
-        Txt("Коллекция", AniMixTheme.type.heading)
-        Spacer(Modifier.height(12.dp))
+        // History, achievements and «О приложении» live in the profile menu; settings hold only settings.
+        val shown = SettingsCategory.entries.filter { it != SettingsCategory.About }
         Panel {
-            NavRow("История просмотров", AniMixIcons.History, { navigator.push(Route.History) })
-            Divider()
-            NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.Achievements) })
-        }
-        Spacer(Modifier.height(24.dp))
-        Txt("Приложение", AniMixTheme.type.heading)
-        Spacer(Modifier.height(12.dp))
-        Panel {
-            SettingsCategory.entries.forEachIndexed { index, category ->
+            shown.forEachIndexed { index, category ->
                 val summary = when (category) {
                     SettingsCategory.Appearance -> settings.themeMode.label
                     SettingsCategory.Playback -> if (settings.autoNextEpisode) "Автопереход вкл." else "Автопереход выкл."
@@ -71,10 +64,11 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Data -> "Объём и очистка"
                     SettingsCategory.Experimental -> if(settings.experimentalPicks)"Подборки" else "Выключены"
                     SettingsCategory.Account -> account.user?.name ?: "Локальный профиль"
+                    SettingsCategory.Privacy -> if (account.user != null) "Кто видит коллекцию" else "После входа"
                     SettingsCategory.About -> AppRelease.version
                 }
                 NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)
-                if (index < SettingsCategory.entries.lastIndex) Divider()
+                if (index < shown.lastIndex) Divider()
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -177,6 +171,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                     AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
             }
             SettingsCategory.Account -> AccountSection(graph, navigator)
+            SettingsCategory.Privacy -> PrivacySection(graph, navigator)
         }
     }
 }

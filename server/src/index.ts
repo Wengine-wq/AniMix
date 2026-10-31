@@ -498,9 +498,15 @@ async function friends(
       const peer = await store.userById(edge.peer_id);
       if (!peer) return null;
       const avatar = (await store.mediaForUser(peer.id)).find((row) => row.kind === 'avatar');
+      // Presence only between friends, the same rule as their profile overview.
+      const devices = edge.status === 'friends' && store instanceof PgStore ? await store.devices(peer.id) : null;
       return {
         id: peer.id, display_name: peer.display_name, status: edge.status,
         avatar_url: avatar ? media.publicUrl(avatar.object_key) : null,
+        ...(devices ? {
+          online: devices.some((row) => row.active && Date.now() - row.seen_at < 90000),
+          last_seen_at: devices.reduce((last, row) => Math.max(last, row.seen_at), 0),
+        } : {}),
       };
     }));
     return json(event, config, { users: users.filter((user) => user !== null) });

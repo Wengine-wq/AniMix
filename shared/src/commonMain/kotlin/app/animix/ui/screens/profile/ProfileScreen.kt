@@ -59,12 +59,15 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             }
             IconCircle(AniMixIcons.Edit, { navigator.push(Route.EditProfile()) }, contentDescription = "Редактировать профиль")
             Spacer(Modifier.width(8.dp))
-            IconCircle(AniMixIcons.Sliders, { navigator.push(Route.Settings) }, contentDescription = "Настройки")
+            // Menu, not just settings: achievements, friends, level, history, settings and «О приложении».
+            IconCircle(AniMixIcons.Menu, { navigator.push(Route.Menu) }, contentDescription = "Меню")
         }
         Spacer(Modifier.height(20.dp))
+        val self = social.devices.firstOrNull { it.id == graph.social.deviceId }
         ProfileIdentity(library.profile, badge, onEdit = { navigator.push(Route.EditProfile()) },
-            onBadge = { navigator.push(Route.Achievements) }, level = level)
-        if(account.user!=null)Txt(if(social.devices.any{it.id==graph.social.deviceId&&it.online()})"В сети" else "Онлайн-статус обновляется",AniMixTheme.type.caption,modifier=Modifier.padding(top=8.dp))
+            onBadge = { navigator.push(Route.Achievements) }, level = level,
+            online = if (account.user != null) self?.online() ?: (social.error == null) else null,
+            lastSeenAt = self?.seenAt)
         Spacer(Modifier.height(24.dp))
         Row(Modifier.fillMaxWidth()) {
             ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
@@ -104,7 +107,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
 
 @Composable
 internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?, onEdit: (() -> Unit)? = null, onBadge: (() -> Unit)? = null,
-    level: ProfileLevel? = null) {
+    level: ProfileLevel? = null, online: Boolean? = null, lastSeenAt: Long? = null) {
     val colors = AniMixTheme.colors
     val avatarInteraction = remember { MutableInteractionSource() }
     val badgeInteraction = remember { MutableInteractionSource() }
@@ -113,31 +116,37 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
         val avatarSize = if (wide) 104.dp else 88.dp
         val bannerHeight = if (wide) 204.dp else 152.dp
         Column {
-            Box(Modifier.fillMaxWidth().height(bannerHeight + avatarSize / 2)) {
+            // The avatar overlaps the banner's edge; the name and presence sit to its right, under the banner.
+            Box(Modifier.fillMaxWidth()) {
                 ProfileBanner(profile.banner, Modifier.fillMaxWidth().height(bannerHeight))
-                ProfileAvatar(profile, avatarSize, Modifier.align(Alignment.BottomStart).padding(start = 16.dp), level = level,
-                    clickModifier = Modifier
-                    .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
-                        .clickable(avatarInteraction, indication = null, role = Role.Button, onClick = onEdit)
-                        .focusOutline(avatarInteraction, CircleShape) else Modifier))
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Txt(profile.name, AniMixTheme.type.title, modifier = Modifier.weight(1f, fill = false))
-                if (badge != null) {
-                    Box(Modifier.size(44.dp).semantics { contentDescription = "Значок профиля: ${badge.achievement.name}" }
-                        .then(if (onBadge != null) Modifier.clip(CircleShape)
-                            .clickable(badgeInteraction, indication = null, role = Role.Button, onClick = onBadge)
-                            .focusOutline(badgeInteraction, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
-                        AchievementIcon(badge.achievement, true, 32.dp)
+                Row(Modifier.fillMaxWidth().padding(top = bannerHeight - avatarSize / 2, start = 16.dp)) {
+                    ProfileAvatar(profile, avatarSize, level = level,
+                        clickModifier = Modifier
+                        .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
+                            .clickable(avatarInteraction, indication = null, role = Role.Button, onClick = onEdit)
+                            .focusOutline(avatarInteraction, CircleShape) else Modifier))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f).padding(top = avatarSize / 2 + 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Txt(profile.name, if (wide) AniMixTheme.type.title else AniMixTheme.type.heading, modifier = Modifier.weight(1f, fill = false))
+                            if (badge != null) {
+                                Box(Modifier.size(40.dp).semantics { contentDescription = "Значок профиля: ${badge.achievement.name}" }
+                                    .then(if (onBadge != null) Modifier.clip(CircleShape)
+                                        .clickable(badgeInteraction, indication = null, role = Role.Button, onClick = onBadge)
+                                        .focusOutline(badgeInteraction, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+                                    AchievementIcon(badge.achievement, true, 28.dp)
+                                }
+                            }
+                        }
+                        profile.handle?.takeIf { it.isNotBlank() }?.let {
+                            Txt("@$it", AniMixTheme.type.caption, color = colors.textSecondary)
+                        }
+                        PresenceLine(online, lastSeenAt, Modifier.padding(top = 4.dp))
                     }
                 }
             }
-            profile.handle?.takeIf { it.isNotBlank() }?.let {
-                Txt("@$it", AniMixTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
-            }
             if (profile.about.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(16.dp))
                 Txt(profile.about, AniMixTheme.type.body, color = colors.textSecondary)
             }
             if (profile.createdAt > 0) {
@@ -216,8 +225,10 @@ private fun LevelRing(level: ProfileLevel, modifier: Modifier) {
 
 @Composable
 internal fun ProfileStat(value: String, label: String, modifier: Modifier) {
+    // Four numbers share one row: long ones and enlarged system text step down to `heading`, so they never touch.
+    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
     Column(modifier.padding(end = 8.dp)) {
-        Txt(value, if (value.length > 4) AniMixTheme.type.heading else AniMixTheme.type.title)
+        Txt(value, if (value.length > 3 || large) AniMixTheme.type.heading else AniMixTheme.type.title, maxLines = 1)
         Spacer(Modifier.height(4.dp))
         Txt(label, AniMixTheme.type.micro)
     }

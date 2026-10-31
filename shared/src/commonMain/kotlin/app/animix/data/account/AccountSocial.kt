@@ -10,8 +10,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.*
 import io.ktor.http.encodeURLParameter
 
+/** [online] and [lastSeenAt] (ms) come with the friends list from servers that send presence; older ones leave them null. */
 @Serializable data class SocialUser(val id:String, @SerialName("display_name") val name:String,
-    @SerialName("avatar_url") val avatar:String?=null, val status:String="none")
+    @SerialName("avatar_url") val avatar:String?=null, val status:String="none",
+    val online:Boolean?=null, @SerialName("last_seen_at") val lastSeenAt:Long?=null)
 @Serializable data class HorizonPlayback(val anime:Anime, val episode:String, val dubbingKey:String, val quality:String,
     val positionMs:Long, val playing:Boolean=true)
 @Serializable data class HorizonDevice(@SerialName("device_id") val id:String,val label:String,val platform:String,val active:Boolean,

@@ -336,7 +336,7 @@ fun AniMixPlayer(
     val frame: @Composable (Modifier) -> Unit = { frameModifier ->
         val focus = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-        Box(
+        BoxWithConstraints(
             frameModifier
                 .background(Color.Black)
                 .focusRequester(focus)
@@ -386,10 +386,13 @@ fun AniMixPlayer(
                     )
                 },
         ) {
+            val overlayVisible = controlsVisible || !state.playing || state.error != null
+            // The skip pill sits above the time pill, and above the bottom row when it is shown.
+            val skipLift = when { !overlayVisible -> 20.dp; playerHasBottomRow(fullscreen, maxHeight.value) -> 132.dp; else -> 84.dp }
             VideoArea(player, state, zoomed = fill && fullscreen)
             PlayerOverlay(
                 horizon = horizon,
-                visible = controlsVisible || !state.playing || state.error != null,
+                visible = overlayVisible,
                 state = state,
                 title = title,
                 subtitle = subtitle,
@@ -398,6 +401,7 @@ fun AniMixPlayer(
                 plan = plan,
                 fullscreen = fullscreen,
                 hasNext = onNext != null,
+                nextLabel = nextLabel,
                 onTogglePlay = ::togglePlay,
                 onSeekBy = { seekBy(it); show() },
                 onSeekTo = { seekTo(it); show() },
@@ -418,7 +422,7 @@ fun AniMixPlayer(
                 visible = activeSkip != null && !atEnd && state.error == null,
                 enter = fadeIn(tween(160)),
                 exit = fadeOut(tween(160)),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = if (controlsVisible) 84.dp else 20.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = skipLift),
             ) {
                 var label by remember { mutableStateOf("") }
                 activeSkip?.first?.let { label = it }
@@ -469,10 +473,15 @@ internal fun chapterAt(positionMs: Long, plan: SkipPlan): String? = when {
     else -> null
 }
 
+/** Room for the bottom row of the player (actions and the next episode), as in YouTube's large player. */
+internal fun playerHasBottomRow(fullscreen: Boolean, heightDp: Float): Boolean = fullscreen || heightDp >= 300f
+
 /**
- * Controls in the manner of today's YouTube: a soft shade only at the edges, the title on top,
- * a chaptered progress line over one row of controls, and settings behind a gear. Every control
- * here does something; nothing is shown for a feature that the screen does not have.
+ * The layout of YouTube's current player. A light shade over the picture; the title large on the
+ * top left and plain white icons on the top right; three round dark buttons in the middle; above a
+ * thin full-width progress line, the time in a dark pill on the left and fullscreen on the right;
+ * below it, when there is room, a dark panel of actions on the left and the next episode on the right.
+ * Every control works; nothing is drawn for a feature this screen doesn't have.
  */
 @Composable
 private fun PlayerOverlay(
@@ -486,6 +495,7 @@ private fun PlayerOverlay(
     plan: SkipPlan,
     fullscreen: Boolean,
     hasNext: Boolean,
+    nextLabel: String?,
     onTogglePlay: () -> Unit,
     onSeekBy: (Int) -> Unit,
     onSeekTo: (Long) -> Unit,
@@ -501,80 +511,105 @@ private fun PlayerOverlay(
 ) {
     val playingNow = state.playRequested || state.playing
     AnimatedVisibility(visible, enter = fadeIn(tween(180)), exit = fadeOut(tween(260)), modifier = Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x47000000))) {
             val compact = maxWidth < 480.dp
-            Box(Modifier.fillMaxWidth().height(96.dp).align(Alignment.TopStart)
-                .background(Brush.verticalGradient(listOf(Color(0x8C000000), Color.Transparent))))
-            Box(Modifier.fillMaxWidth().height(if (compact) 110.dp else 130.dp).align(Alignment.BottomStart)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
-            // Top: where you are, and the actions about this episode.
-            Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (fullscreen) {
-                    // Leaves fullscreen: the same as the system back gesture or Esc, but visible.
-                    OverlayIcon(AniMixIcons.Back, onFullscreen, description = "Назад")
-                    Spacer(Modifier.width(4.dp))
-                } else Spacer(Modifier.width(4.dp))
-                Column(Modifier.weight(1f)) {
-                    Txt(title, if (fullscreen && !compact) AniMixTheme.type.subheading else AniMixTheme.type.bodyStrong, color = Color.White, maxLines = 1)
-                    subtitle?.let { Txt(it, AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.72f), maxLines = 1) }
+            val bottomRow = playerHasBottomRow(fullscreen, maxHeight.value)
+            Box(Modifier.fillMaxWidth().height(110.dp).align(Alignment.TopStart)
+                .background(Brush.verticalGradient(listOf(Color(0x80000000), Color.Transparent))))
+            Box(Modifier.fillMaxWidth().height(140.dp).align(Alignment.BottomStart)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x80000000)))))
+
+            // Top: the episode in large white type, its context in grey; plain icons on the right.
+            Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(start = if (fullscreen) 8.dp else 16.dp, end = 8.dp, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                if (fullscreen) OverlayIcon(AniMixIcons.Back, onFullscreen, description = "Назад")
+                Column(Modifier.weight(1f).padding(start = if (fullscreen) 4.dp else 0.dp)) {
+                    Txt(title, if (compact) AniMixTheme.type.subheading else AniMixTheme.type.heading, color = Color.White, maxLines = 1)
+                    subtitle?.let { Txt(it, AniMixTheme.type.caption, color = Color.White.copy(alpha = 0.65f), maxLines = 1) }
                 }
-                if (horizon != null) {
-                    Spacer(Modifier.width(6.dp))
-                    horizon()
-                }
+                if (horizon != null) horizon()
                 if (onDownload != null) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
+                SettingsMenu(quality, qualities, onQuality, fill = fill.takeIf { fullscreen }, onFill = onFill)
             }
-            // Centre: one clear play button; on touch screens also the ±10 s seeks, without backing circles.
-            if (!isDesktop || !state.playing || state.buffering) {
-                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-                    if (!isDesktop) {
-                        OverlayIcon(AniMixIcons.SeekBack, { onSeekBy(-10) }, size = 56, description = "Назад на 10 секунд")
-                        Spacer(Modifier.width(if (compact) 28.dp else 44.dp))
-                    }
-                    val interaction = remember { MutableInteractionSource() }
-                    Box(
-                        Modifier.size(if (compact) 60.dp else 68.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.42f))
-                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(30.dp), color = Color.White)
-                        else Icon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play,
-                            if (playingNow) "Пауза" else "Смотреть", Modifier.size(30.dp), tint = Color.White)
-                    }
-                    if (!isDesktop) {
-                        Spacer(Modifier.width(if (compact) 28.dp else 44.dp))
-                        OverlayIcon(AniMixIcons.SeekForward, { onSeekBy(10) }, size = 56, description = "Вперёд на 10 секунд")
-                    }
+
+            // Middle: back 10 s, play or pause, forward 10 s — round dark buttons.
+            Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                val gap = if (compact) 28.dp else 44.dp
+                RoundButton(AniMixIcons.SeekBack, { onSeekBy(-10) }, if (compact) 48 else 56, "Назад на 10 секунд", label = "10")
+                Spacer(Modifier.width(gap))
+                val interaction = remember { MutableInteractionSource() }
+                Box(
+                    Modifier.size(if (compact) 64.dp else 76.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(32.dp), color = Color.White)
+                    else Icon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play,
+                        if (playingNow) "Пауза" else "Смотреть", Modifier.size(if (compact) 28.dp else 34.dp), tint = Color.White)
                 }
+                Spacer(Modifier.width(gap))
+                RoundButton(AniMixIcons.SeekForward, { onSeekBy(10) }, if (compact) 48 else 56, "Вперёд на 10 секунд", label = "10")
             }
-            // Bottom: the chaptered line, then one row — playback on the left, view on the right.
-            Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 12.dp).padding(bottom = 4.dp)) {
+
+            Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 12.dp).padding(bottom = if (bottomRow) 10.dp else 2.dp)) {
                 var scrub by remember { mutableStateOf<Long?>(null) }
+                // Above the line: where we are (and the chapter) on the left, fullscreen on the right.
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val position = scrub ?: state.positionMs
+                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Txt(timeLabel(position), AniMixTheme.type.label, color = Color.White, maxLines = 1)
+                        Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.65f), maxLines = 1)
+                        chapterAt(position, plan)?.let { Txt("  ·  $it", AniMixTheme.type.label, color = Color.White, maxLines = 1) }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (!bottomRow && hasNext) { RoundButton(AniMixIcons.Next, onNext, 40, "Следующая серия"); Spacer(Modifier.width(8.dp)) }
+                    RoundButton(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen, 40,
+                        if (fullscreen) "Выйти из полноэкранного режима" else "Во весь экран")
+                }
                 SeekBar(state.positionMs, state.durationMs, plan,
                     playing = state.playing && !state.buffering && !state.seeking,
                     onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) }, onCancel = { scrub = null })
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isDesktop) OverlayIcon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play, onTogglePlay,
-                        description = if (playingNow) "Пауза" else "Смотреть")
-                    if (hasNext) OverlayIcon(AniMixIcons.Next, onNext, description = "Следующая серия")
-                    OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
-                        description = if (state.volume > 0) "Выключить звук" else "Включить звук")
-                    if (isDesktop) VolumeBar(state.volume, onVolume)
-                    Spacer(Modifier.width(6.dp))
-                    val position = scrub ?: state.positionMs
-                    Txt(timeLabel(position), AniMixTheme.type.label, color = Color.White, maxLines = 1)
-                    Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
-                    chapterAt(position, plan)?.takeIf { !compact }?.let {
-                        Txt("  ·  $it", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.85f), maxLines = 1)
+                // Below the line, with room: the actions panel and the next episode, like YouTube's large player.
+                if (bottomRow) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f)).padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
+                            description = if (state.volume > 0) "Выключить звук" else "Включить звук")
+                        if (isDesktop) VolumeBar(state.volume, onVolume)
+                        if (fullscreen) OverlayIcon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, onFill,
+                            description = if (fill) "С рамками" else "Без рамок")
                     }
                     Spacer(Modifier.weight(1f))
-                    SettingsMenu(quality, qualities, onQuality, fill = fill.takeIf { fullscreen }, onFill = onFill)
-                    OverlayIcon(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen,
-                        description = if (fullscreen) "Выйти из полноэкранного режима" else "Во весь экран")
+                    if (hasNext) {
+                        val interaction = remember { MutableInteractionSource() }
+                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill).background(Color.Black.copy(alpha = 0.5f))
+                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onNext)
+                            .heightIn(min = 44.dp).padding(start = 16.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Txt(nextLabel ?: "Следующая серия", AniMixTheme.type.label, color = Color.White, maxLines = 1)
+                            Spacer(Modifier.width(8.dp))
+                            Icon(AniMixIcons.Next, null, Modifier.size(18.dp), tint = Color.White)
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/** A round dark button over the picture, as YouTube's middle and fullscreen controls. */
+@Composable
+private fun RoundButton(icon: ImageVector, onClick: () -> Unit, size: Int, description: String, label: String? = null) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
+            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // The seek arrows carry their step, "10", in the middle, as YouTube's do.
+        Icon(icon, description, Modifier.size((size * if (label != null) 0.6f else 0.46f).dp), tint = Color.White)
+        if (label != null) Txt(label, AniMixTheme.type.micro, color = Color.White, modifier = Modifier.padding(top = 1.dp))
     }
 }
 
@@ -663,7 +698,7 @@ private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing:
                 if (played > start) drawRoundRect(accent, Offset(start, y - track / 2), Size(played - start, track), radius)
             }
             // The thumb appears only when it can be grabbed, as on YouTube.
-            if (active || !isDesktop) drawCircle(accent, radius = if (drag != null) 8.dp.toPx() else 6.dp.toPx(), center = Offset(size.width * fraction, y))
+            drawCircle(accent, radius = if (drag != null) 8.dp.toPx() else 6.dp.toPx(), center = Offset(size.width * fraction, y))
         }
         val preview = drag ?: hover
         if (enabled && preview != null) {
@@ -748,7 +783,7 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 4.dp).clip(AniMixTheme.shapes.small)
                     .background(colors.accent).padding(horizontal = 3.dp))
         }
-        if (open) Popup(alignment = Alignment.BottomEnd, offset = androidx.compose.ui.unit.IntOffset(0, -56),
+        if (open) Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
             onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
             Column(Modifier.width(220.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
                 Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))

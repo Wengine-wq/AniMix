@@ -48,6 +48,8 @@ object AniMixIcons {
     )
     val Monitor = outline("Monitor", "M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 20h8M12 16v4")
     val More = outline("More", "M5 12h.01M12 12h.01M19 12h.01")
+    val Lock = outline("Lock", "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4")
+    val Menu = outline("Menu", "M4 6h16M4 12h16M4 18h16")
     val Settings = outline(
         "Settings",
         "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38" +
