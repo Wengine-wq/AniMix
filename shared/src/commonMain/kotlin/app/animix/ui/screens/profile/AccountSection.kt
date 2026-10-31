@@ -27,16 +27,14 @@ import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 
 /**
- * Settings → «Аккаунт»: the online AniMix profile (Google sign-in on the AniMix server), migration of
- * the AniMix 2.x local profile into it, Horizon Link devices and external account bindings.
+ * Settings → «Аккаунт», top to bottom: who you are and the one action that matters (sign in, or the
+ * sync state), this account's devices, the move from AniMix 2.x, linked services, and signing out last.
  */
 @Composable
 internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
-    val colors = AniMixTheme.colors
     val library by graph.library.state.collectAsState()
     val shikimori by graph.shikimoriAccount.user.collectAsState()
     val account by graph.account.state.collectAsState()
-    val sync by graph.accountSync.state.collectAsState()
     val uri = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     var browserSignIn by remember { mutableStateOf<Job?>(null) }
@@ -58,97 +56,159 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
         }
     }
     val user = account.user
-    val displayName = if (user != null && library.profile.accountId == user.id) library.profile.name else user?.name ?: library.profile.name
+    val profile = if (user != null && library.profile.accountId != user.id) library.profile.copy(name = user.name) else library.profile
     Column {
-        Panel {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
-                    Txt(displayName.take(1).uppercase(), AniMixTheme.type.heading, color = colors.onAccent)
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Txt(displayName, AniMixTheme.type.bodyStrong, maxLines = 1)
-                    Txt(if (user != null) "Онлайн-профиль AniMix" + (user.email?.let { " · $it" } ?: "")
-                        else "Локальный профиль: всё хранится на этом устройстве", AniMixTheme.type.caption, maxLines = 2)
-                }
+        // Who: the same avatar as the profile, the name and what kind of profile this is.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ProfileAvatar(profile, 72.dp)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Txt(profile.name, AniMixTheme.type.heading, maxLines = 2)
+                Txt(if (user != null) user.email ?: "Онлайн-профиль AniMix" else "Локальный профиль на этом устройстве",
+                    AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
             }
         }
-        Spacer(Modifier.height(12.dp))
-        if (user == null) {
-            PrimaryButton(if (account.busy) "Входим…" else "Войти или зарегистрироваться", ::signIn,
-                Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !account.busy && browserSignIn == null)
-            when {
-                account.error != null -> Txt(account.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
-                    modifier = Modifier.padding(top = 8.dp, start = 4.dp))
-                account.waitingForBrowser -> Unavailable("Завершите вход в браузере — AniMix продолжит сам.")
-                else -> Unavailable("Вход через Google. При первом входе создаётся онлайн-профиль AniMix.")
-            }
-        } else {
-            Txt(when {
-                sync.syncing -> "Синхронизация…"
-                sync.error != null -> sync.error!!
-                sync.lastSuccessAt != null && !sync.pending -> "Изменения синхронизированы"
-                sync.pending -> "Есть изменения для синхронизации"
-                else -> "Ожидаем синхронизацию"
-            }, AniMixTheme.type.caption, modifier = Modifier.padding(vertical = 8.dp))
-            SecondaryButton("Синхронизировать сейчас", graph.accountSync::requestSync, Modifier.fillMaxWidth(), enabled = !sync.syncing)
-            Spacer(Modifier.height(8.dp))
-            SecondaryButton("Выйти из аккаунта", graph.account::signOut, Modifier.fillMaxWidth(), icon = AniMixIcons.Close, enabled = !account.busy)
-            account.error?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 8.dp)) }
+        Spacer(Modifier.height(20.dp))
+        if (user == null) SignedOut(graph, waiting = browserSignIn != null, onSignIn = ::signIn)
+        else SyncPanel(graph)
+
+        if (user != null) {
+            Section("Устройства")
+            HorizonDevices(graph)
         }
 
-        Section("Миграция с AniMix 2.x")
-        LegacyMigrationSection(graph)
-
-        Section("Horizon Link")
-        HorizonDevices(graph)
+        Section("Перенос из AniMix 2.x")
+        LegacyMigrationSection(graph, navigator)
 
         Section("Привязки")
         Panel {
-            AccountRow(AniMixIcons.Share, "Shikimori", shikimori?.let { "Подключён: ${it.nickname}" } ?: "Не подключён · нужен для импорта списков",
+            AccountRow(AniMixIcons.Share, "Shikimori", shikimori?.let { "Подключён: ${it.nickname}" } ?: "Для импорта списков",
                 trailing = if (shikimori != null) "Открыть" else "Подключить",
                 onClick = { navigator.push(Route.SettingsSection("Import")) })
             Divider()
-            AccountRow(AniMixIcons.User, "Яндекс ID", "Вход в AniMix через Яндекс", trailing = "Недоступно", enabled = false)
-            Divider()
-            AccountRow(AniMixIcons.User, "Google", account.user?.email?.let { "Подключён: $it" } ?: "Вход в AniMix через Google",
-                trailing = if (account.user != null) "Подключён" else "Через «Войти»", enabled = account.user != null)
+            AccountRow(AniMixIcons.User, "Google", user?.email?.let { "Вход в AniMix: $it" } ?: "Вход в AniMix через Google",
+                trailing = if (user != null) "Подключён" else null)
         }
-        Unavailable("Передача из плеера сохраняет серию, озвучку, качество и позицию. Вход через Яндекс пока недоступен.")
+
+        if (user != null) {
+            Spacer(Modifier.height(32.dp))
+            SecondaryButton("Выйти из аккаунта", graph.account::signOut, Modifier.fillMaxWidth(), icon = AniMixIcons.Close, enabled = !account.busy)
+            Txt("Списки и история останутся на этом устройстве.", AniMixTheme.type.micro,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp), align = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+/** Not signed in: what an online profile gives, and one button. */
+@Composable
+private fun SignedOut(graph: AppGraph, waiting: Boolean, onSignIn: () -> Unit) {
+    val colors = AniMixTheme.colors
+    val account by graph.account.state.collectAsState()
+    Panel {
+        Column(Modifier.padding(16.dp)) {
+            Txt("Онлайн-профиль AniMix", AniMixTheme.type.subheading)
+            Spacer(Modifier.height(10.dp))
+            Benefit(AniMixIcons.Refresh, "Списки, история и достижения на телефоне и ПК")
+            Benefit(AniMixIcons.User, "Друзья и их коллекции")
+            Benefit(AniMixIcons.Share, "Продолжить серию на другом устройстве")
+            Spacer(Modifier.height(16.dp))
+            // Short enough for 130% text on a phone; the line below says the profile is created on first sign-in.
+            PrimaryButton(if (account.busy) "Входим…" else "Войти через Google", onSignIn,
+                Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !account.busy && !waiting)
+            Txt(when {
+                account.error != null -> account.error.orEmpty()
+                account.waitingForBrowser -> "Завершите вход в браузере — AniMix продолжит сам."
+                else -> "Регистрации нет: при первом входе профиль создаётся сам."
+            }, AniMixTheme.type.micro, color = if (account.error != null) colors.danger else colors.textSecondary,
+                modifier = Modifier.padding(top = 10.dp))
+        }
     }
 }
 
 @Composable
-private fun LegacyMigrationSection(graph: AppGraph) {
+private fun Benefit(icon: ImageVector, text: String) {
+    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(18.dp), tint = AniMixTheme.colors.accent)
+        Spacer(Modifier.width(12.dp))
+        Txt(text, AniMixTheme.type.caption, color = AniMixTheme.colors.textPrimary)
+    }
+}
+
+/** Signed in: the actual sync state in words and with a mark, and a manual retry. */
+@Composable
+private fun SyncPanel(graph: AppGraph) {
+    val colors = AniMixTheme.colors
+    val sync by graph.accountSync.state.collectAsState()
+    val account by graph.account.state.collectAsState()
+    val failed = sync.error != null && !sync.syncing
+    val done = sync.lastSuccessAt != null && !sync.pending && !failed
+    Panel {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(if (failed) colors.surfaceRaised else colors.accentSoft), contentAlignment = Alignment.Center) {
+                if (sync.syncing) LoadingIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Icon(if (failed) AniMixIcons.Retry else if (done) AniMixIcons.Check else AniMixIcons.Refresh, null, Modifier.size(18.dp),
+                    tint = if (failed) colors.danger else colors.accent)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Txt(when {
+                    sync.syncing -> "Синхронизируем…"
+                    failed -> "Не удалось синхронизировать"
+                    done -> "Всё синхронизировано"
+                    sync.pending -> "Есть несохранённые изменения"
+                    else -> "Ожидаем синхронизацию"
+                }, AniMixTheme.type.bodyStrong)
+                Txt(if (failed) sync.error.orEmpty() else "Списки, просмотр, достижения и профиль", AniMixTheme.type.caption, maxLines = 3)
+            }
+            Spacer(Modifier.width(8.dp))
+            Chip(if (failed) "Повторить" else "Обновить", false, { if (!sync.syncing) graph.accountSync.requestSync() }, icon = AniMixIcons.Refresh)
+        }
+    }
+    account.error?.let { Txt(it, AniMixTheme.type.caption, color = colors.danger, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
+}
+
+@Composable
+private fun LegacyMigrationSection(graph: AppGraph, navigator: Navigator) {
     val colors = AniMixTheme.colors
     val state by graph.legacy.state.collectAsState()
     val account by graph.account.state.collectAsState()
     val library by graph.library.state.collectAsState()
-    var local by remember { mutableStateOf(false) }
+    var local by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) { local = withContext(Dispatchers.Default) { graph.legacy.hasLocalData() } }
-    Txt("Локальный профиль AniMix 2.x: списки, оценки, просмотренные серии, часы просмотра и достижения. " +
-        "Списки попадают в историю просмотров и в онлайн-профиль, достижения — в коллекцию с обычным XP.",
-        AniMixTheme.type.caption)
-    Spacer(Modifier.height(12.dp))
-    if (local) {
-        Panel {
-            AccountRow(AniMixIcons.Monitor, if (Platform.name == "Android") "Перенести с этого устройства" else "Перенести с этого компьютера",
-                if (account.user != null) "В онлайн-профиль «${account.user?.name}» и на это устройство"
-                else "Пока только на это устройство: сначала войдите, чтобы списки попали в онлайн-профиль",
-                trailing = "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
-        }
-    } else {
-        Unavailable(if (Platform.name == "Android") "Данные AniMix 2.x на этом устройстве не найдены. Они остаются, если AniMix установлен поверх версии 2.x."
-            else "Данные AniMix 2.x на этом компьютере не найдены.")
-    }
+    val android = Platform.name == "Android"
     val done = state.result ?: library.legacyMigration
+    when (local) {
+        null -> Unit
+        true -> Panel {
+            AccountRow(AniMixIcons.Monitor, if (android) "Перенести с этого устройства" else "Перенести с этого компьютера",
+                if (account.user != null) "Списки, оценки, часы и достижения — в профиль «${account.user?.name}»"
+                else "Списки, оценки, часы и достижения. Войдите, чтобы они попали и в онлайн-профиль",
+                trailing = if (done != null) "Повторить" else "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
+        }
+        // Android keeps each app's data private: a separately installed 2.x can't be read from here.
+        false -> {
+            if (android) Txt("AniMix 2.x установлен отдельным приложением, и Android не даёт читать его данные. Перенесите списки одним из способов:",
+                AniMixTheme.type.caption)
+            else Txt("Данные AniMix 2.x на этом компьютере не найдены. Если 2.x был связан с Shikimori, импортируйте списки оттуда.",
+                AniMixTheme.type.caption)
+            Spacer(Modifier.height(12.dp))
+            Panel {
+                AccountRow(AniMixIcons.Share, "Импорт из Shikimori", "Если в 2.x был подключён Shikimori, списки уже там",
+                    trailing = "Открыть", onClick = { navigator.push(Route.SettingsSection("Import")) })
+                if (android) {
+                    Divider()
+                    AccountRow(AniMixIcons.Monitor, "Через AniMix на ПК", "Перенесите 2.x на компьютере под тем же аккаунтом — списки придут сюда сами")
+                }
+            }
+        }
+    }
     when {
         state.busy -> Row(Modifier.padding(top = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             LoadingIndicator(Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
             Txt(state.stage, AniMixTheme.type.caption)
         }
-        state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.accentText,
+        state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.danger,
             modifier = Modifier.padding(top = 10.dp, start = 4.dp))
         done != null -> Txt(
             "Перенесено${done.accountName?.let { " в онлайн-профиль «$it»" } ?: " на это устройство"}: " +
@@ -174,21 +234,20 @@ private fun BrowserWaitDialog(onCancel: () -> Unit) {
 
 @Composable
 private fun Section(title: String) {
-    Spacer(Modifier.height(28.dp))
+    Spacer(Modifier.height(32.dp))
     Txt(title, AniMixTheme.type.heading)
     Spacer(Modifier.height(12.dp))
 }
 
 @Composable
-private fun Unavailable(text: String) {
-    Txt(text, AniMixTheme.type.micro, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
-}
+internal fun AccountDivider() = Box(Modifier.fillMaxWidth().padding(start = 50.dp).height(1.dp).background(AniMixTheme.colors.outline))
 
 @Composable
-private fun Divider() = Box(Modifier.fillMaxWidth().padding(start = 50.dp).height(1.dp).background(AniMixTheme.colors.outline))
+private fun Divider() = AccountDivider()
 
+/** A row in an account panel; without [onClick] it only informs and shows no tap target. */
 @Composable
-private fun AccountRow(icon: ImageVector, title: String, subtitle: String, trailing: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
+internal fun AccountRow(icon: ImageVector, title: String, subtitle: String, trailing: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
     val colors = AniMixTheme.colors
     Row(
         Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 14.dp),

@@ -114,6 +114,12 @@ class Navigator {
         if (stack.lastOrNull()?.key != route.key) stack.add(route)
     }
 
+    /** Goes back when [route] is the screen right below, so the stack never repeats a page; pushes it otherwise. */
+    fun pushOrBack(route: Route) {
+        val stack = stacks.getValue(tab)
+        if (stack.size >= 2 && stack[stack.lastIndex - 1].key == route.key) stack.removeAt(stack.lastIndex) else push(route)
+    }
+
     /**
      * Opens an animix:// link: animix://anime/<shikimori id>, animix://yummy/<yummy id>, animix://search/<text>,
      * animix://settings or animix://<tab> (home, catalog, favorites, downloads, profile).

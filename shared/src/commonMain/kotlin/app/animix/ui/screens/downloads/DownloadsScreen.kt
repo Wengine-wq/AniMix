@@ -176,6 +176,15 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconCircle(AniMixIcons.Back, { navigator.back() }, contentDescription = "Назад")
+                        Spacer(Modifier.width(8.dp))
+                        // The poster and title lead to the anime page, like everywhere else in the app.
+                        val openInteraction = remember { MutableInteractionSource() }
+                        Row(Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
+                            .clickable(openInteraction, indication = null, role = Role.Button, enabled = anime.title.isNotEmpty()) {
+                                navigator.pushOrBack(Route.Detail(anime))
+                            }.focusOutline(openInteraction, AniMixTheme.shapes.medium).padding(4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                        RemoteImage(anime.posterUrl, Modifier.width(44.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Txt(anime.title, AniMixTheme.type.heading, maxLines = 2)
@@ -185,6 +194,11 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                                 else "В загрузках ${items.count { it.status == DownloadStatus.Completed }} из ${items.size} · ${megabytes(items.sumOf { it.downloadedBytes })}",
                                 AniMixTheme.type.caption,
                             )
+                            if (anime.title.isNotEmpty()) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Txt("Страница аниме", AniMixTheme.type.label, color = colors.accent)
+                                Icon(AniMixIcons.ChevronRight, null, Modifier.padding(start = 2.dp).size(14.dp), tint = colors.accent)
+                            }
+                        }
                         }
                         if (items.isNotEmpty()) IconCircle(AniMixIcons.Trash, { confirmRemoval = !confirmRemoval }, contentDescription = "Удалить тайтл из загрузок")
                     }
@@ -243,7 +257,7 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                 val groups = items.groupBy { it.studio to it.quality }
                 if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                     MessageState("Серий в загрузках нет", message = "Скачайте их со страницы аниме", icon = AniMixIcons.Download,
-                        actionLabel = "Скачать серии", onAction = { navigator.push(Route.Downloads(anime, add = true)) })
+                        actionLabel = "Скачать серии", onAction = { navigator.push(Route.Downloads(anime, add = true)) }, actionIcon = AniMixIcons.Download)
                 }
                 groups.entries.forEachIndexed { index, (variant, group) ->
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -476,8 +490,8 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     // Skip times stored when the episode was watched or queued work offline too.
                     skips = { duration -> graph.skips.plan(item.anime, item.episode, duration) },
                     initialPositionMs = library.entry(item.anime)?.episodePositions?.get(item.episode.number) ?: 0,
+                    // No Horizon Link offline: the file exists only on this device.
                     onPlayerBound = { player -> graph.social.bind(player,item.anime,item.episode.number,item.dubbingKey){item.quality} },
-                    horizon = { app.animix.ui.screens.profile.HorizonButton(graph) },
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
                     onCompleted = {
                         graph.library.saveEpisodePosition(item.anime, item.episode.number, 0)

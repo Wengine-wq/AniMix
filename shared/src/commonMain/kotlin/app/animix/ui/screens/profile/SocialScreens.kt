@@ -2,6 +2,7 @@ package app.animix.ui.screens.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
@@ -140,9 +141,10 @@ fun NotificationsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingV
             MessageState("Новых уведомлений нет", message = "Здесь появятся заявки в друзья.", icon = AniMixIcons.Bell)
             return@ScreenColumn
         }
-        Txt("Заявки в друзья", AniMixTheme.type.heading)
+        Txt("Заявки в друзья · ${requests.size}", AniMixTheme.type.heading)
+        Spacer(Modifier.height(12.dp))
         requests.forEach { user ->
-            SocialUserRow(user, navigator) {
+            SocialUserRow(user, navigator, actionsBelow = true) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip("Принять", true, { if (!busy) run { graph.social.friendAction(user.id) } }, icon = AniMixIcons.Check)
                     Chip("Отклонить", false, { if (!busy) run { graph.social.friendAction(user.id, remove = true) } }, icon = AniMixIcons.Close)
@@ -161,14 +163,24 @@ private fun SocialSection(title: String) {
 
 /** One person: avatar or initial, name (opens the profile), and the actions on the right. */
 @Composable
-private fun SocialUserRow(user: SocialUser, navigator: Navigator, actions: @Composable () -> Unit) {
+private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: Boolean = false, actions: @Composable () -> Unit) {
+    val colors = AniMixTheme.colors
     Panel(Modifier.padding(bottom = 8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                NavRow(user.name, AniMixIcons.User, { navigator.push(Route.FriendProfile(user.id)) })
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { navigator.push(Route.FriendProfile(user.id)) }
+                    .padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accentGradient),
+                        contentAlignment = Alignment.Center) {
+                        Txt(user.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?", AniMixTheme.type.bodyStrong, color = colors.onAccent)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Txt(user.name, AniMixTheme.type.bodyStrong, maxLines = 2, modifier = Modifier.weight(1f))
+                }
+                if (!actionsBelow) { Spacer(Modifier.width(8.dp)); actions() }
             }
-            Spacer(Modifier.width(8.dp))
-            actions()
+            if (actionsBelow) Box(Modifier.fillMaxWidth().padding(top = 10.dp, start = 56.dp)) { actions() }
         }
     }
 }
@@ -342,15 +354,14 @@ fun HorizonIncoming(graph: AppGraph, navigator: Navigator) {
 internal fun HorizonDevices(graph: AppGraph) {
     val social by graph.social.state.collectAsState()
     LaunchedEffect(Unit) { runCatching { graph.social.refresh() } }
-    Txt("Начали серию на одном устройстве — продолжите на другом: кнопка «Horizon Link» в плеере. Нужен один аккаунт и интернет на обоих.",
-        AniMixTheme.type.caption)
-    Spacer(Modifier.height(12.dp))
     Panel {
-        if (social.devices.isEmpty()) NavRow("Это устройство", AniMixIcons.Monitor, {}, trailing = Platform.name)
-        social.devices.sortedByDescending { it.seenAt }.forEach { device ->
+        if (social.devices.isEmpty()) AccountRow(AniMixIcons.Monitor, "Это устройство", Platform.name)
+        social.devices.sortedByDescending { it.seenAt }.forEachIndexed { index, device ->
             val self = device.id == graph.social.deviceId
-            NavRow(device.label + if (self) " · это устройство" else "", deviceIcon(device), {},
-                trailing = if (device.online()) "В сети" else "Не в сети")
+            if (index > 0) AccountDivider()
+            AccountRow(deviceIcon(device), device.label, if (self) "Это устройство" else if (device.online()) "В сети" else "Не в сети")
         }
     }
+    Txt("Начали серию на одном устройстве — продолжите на другом кнопкой «Horizon Link» в плеере.",
+        AniMixTheme.type.micro, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
 }

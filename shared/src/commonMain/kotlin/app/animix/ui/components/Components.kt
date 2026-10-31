@@ -402,9 +402,11 @@ fun MessageState(
     icon: ImageVector? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    actionIcon: ImageVector = AniMixIcons.Refresh,
 ) {
     val colors = AniMixTheme.colors
-    Column(modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    // Always centred across the page, also inside left-aligned columns.
+    Column(modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (icon != null) {
             Box(Modifier.size(64.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
                 Icon(icon, null, Modifier.size(28.dp), tint = colors.accent)
@@ -418,7 +420,7 @@ fun MessageState(
         }
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(16.dp))
-            SecondaryButton(actionLabel, onAction, icon = AniMixIcons.Refresh)
+            SecondaryButton(actionLabel, onAction, icon = actionIcon)
         }
     }
 }

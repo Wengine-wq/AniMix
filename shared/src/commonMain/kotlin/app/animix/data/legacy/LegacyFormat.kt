@@ -74,7 +74,15 @@ object LegacyFormat {
         fun value(key: String): JsonElement? = root["flutter.$key"]
         fun embedded(key: String): JsonElement? = (value(key) as? JsonPrimitive)?.contentOrNull
             ?.let { runCatching { AppJson.parseToJsonElement(it) }.getOrNull() }
-        val entries = merge(entries(embedded("animix_library_cache_v2")), entries(embedded("local_library_v1")))
+        // The achievement service of 2.x also kept every list status, and those keys survive sign-out and
+        // a cleared account cache. They are the oldest source: any real list record wins over them.
+        val tracked = root.mapNotNull { (key, element) ->
+            val id = key.removePrefix("flutter.local_achievements_v1_status_").takeIf { it != key }?.toIntOrNull()?.takeIf { it > 0 }
+                ?: return@mapNotNull null
+            val status = status((element as? JsonPrimitive)?.contentOrNull) ?: return@mapNotNull null
+            LegacyEntry(id, status, null, 0, updatedAt = -1)
+        }
+        val entries = merge(entries(embedded("animix_library_cache_v2")), entries(embedded("local_library_v1")), tracked)
         val awards = root.mapNotNull { (key, element) ->
             val id = key.removePrefix("flutter.local_achievements_v1_").takeIf { it != key } ?: return@mapNotNull null
             if (id.startsWith("status_") || id.startsWith("daily_") || id == "library_ids") return@mapNotNull null

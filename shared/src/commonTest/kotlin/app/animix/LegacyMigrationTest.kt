@@ -53,6 +53,22 @@ class LegacyMigrationTest {
         assertTrue(LegacyFormat.parsePreferences("not json").isEmpty)
     }
 
+    @Test fun statusesKeptByAwardsFillListsWithoutCache() {
+        // After sign-out 2.x drops its account cache, but its award tracker still knows every status.
+        val snapshot = LegacyFormat.parsePreferences("""
+            {
+              "flutter.local_achievements_v1_status_16498": "completed",
+              "flutter.local_achievements_v1_status_5114": "on_hold",
+              "flutter.local_achievements_v1_status_x": "completed",
+              "flutter.local_library_v1": "[{\"shikimori_id\":5114,\"status\":\"dropped\",\"score\":7,\"episodes_watched\":4,\"updated_at\":200}]"
+            }
+        """.trimIndent())
+        assertEquals(setOf(16498, 5114), snapshot.entries.map { it.shikimoriId }.toSet())
+        assertEquals(ListStatus.Completed, snapshot.entries.first { it.shikimoriId == 16498 }.status)
+        // A real list record wins over the tracker.
+        assertEquals(ListStatus.Dropped, snapshot.entries.first { it.shikimoriId == 5114 }.status)
+    }
+
     @Test fun localMigrationBringsListsHoursAndAwardsWithXpOnce() = runTest {
         val disk = disk()
         val library = Library(disk, backgroundScope).apply { load() }

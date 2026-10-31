@@ -1,4 +1,4 @@
-package app.animix.ui.screens.home
+﻿package app.animix.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,6 +60,7 @@ import app.animix.ui.theme.LocalUiPerformance
 import kotlinx.coroutines.launch
 import app.animix.ui.components.accentGlow
 import app.animix.ui.components.highlight
+import app.animix.ui.components.pressScale
 import app.animix.ui.components.rim
 import app.animix.data.library.ContinueItem
 import app.animix.data.library.continueWatching
@@ -96,6 +97,7 @@ import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 
 
+
 internal fun carouselStartPage(count: Int): Int = if (count <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % count }
 internal fun carouselItem(page: Int, count: Int): Int = if (count <= 1) 0 else ((page % count) + count) % count
 
@@ -123,6 +125,10 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
         item(key = "update") { UpdateOffer(graph) }
+        // «Итоги года» lead the page while they are relevant, above the ongoing banner.
+        item(key = "year-review") {
+            YearReviewCard(library) { year -> navigator.push(Route.YearInReview(year)) }
+        }
         item(key = "hero") {
             when (val state = ongoingState) {
                 Load.Loading -> HomeHeroPlaceholder()
@@ -140,9 +146,6 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                     d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
                 navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
             }) { navigator.push(Route.History) }
-        }
-        item(key = "year-review") {
-            YearReviewCard(library) { year -> navigator.push(Route.YearInReview(year)) }
         }
         if (picksOn) item(key = "recommendations") {
             LoadingShelf("Подобрано для вас", picksState, open, picks::refresh)
@@ -453,57 +456,87 @@ private fun UpdateOffer(graph: AppGraph) {
 private fun YearReviewCard(library: app.animix.data.library.LibraryData, onOpen: (Int) -> Unit) {
     val colors = AniMixTheme.colors
     val access = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
-    if(access.open && access.year in library.reviewedYears){
-        androidx.compose.material3.TextButton(onClick={onOpen(access.year)},modifier=Modifier.padding(horizontal=20.dp)){
-            Icon(AniMixIcons.History,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Txt("Итоги ${access.year}",AniMixTheme.type.label)
-        }
-        return
-    }
+    val seen = access.open && access.year in library.reviewedYears
     val posters = remember(library, access.year) {
         library.entries.values.sortedByDescending { entry ->
             entry.viewing.values.count { v -> v.completedAt?.let { app.animix.data.library.dayToDate(app.animix.core.localDayIndex(it)).year == access.year } == true }
         }.take(3).map { it.anime.posterUrl }
     }
-    Box(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+    val interaction = remember { MutableInteractionSource() }
+    // A banner at the top of the page, in the hero's geometry: big and pink while it is new,
+    // a slimmer card of the same kind after the last slide was seen, a progress card until it opens.
+    BoxWithConstraints(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+        val wide = maxWidth > 700.dp
+        val height = when { !access.open -> null; seen -> 96.dp; wide -> 220.dp; else -> 168.dp }
         Row(
-            Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large)
-                .background(if (access.open) colors.accentGradient else Brush.linearGradient(listOf(colors.surfaceRaised, colors.surfaceRaised)))
-                .rim(AniMixTheme.shapes.large, accent = !access.open)
-                .then(if (access.open) Modifier.clickable { onOpen(access.year) } else Modifier)
-                .padding(16.dp),
+            Modifier.fillMaxWidth().then(if (height != null) Modifier.height(height) else Modifier)
+                .then(if (access.open && !seen) Modifier.accentGlow(AniMixTheme.shapes.large) else Modifier)
+                .pressScale(interaction)
+                .clip(AniMixTheme.shapes.large)
+                .background(when {
+                    access.open && !seen -> colors.accentGradient
+                    else -> Brush.linearGradient(listOf(colors.surfaceRaised, colors.accentSoft))
+                })
+                .then(if (access.open && !seen) Modifier.highlight(AniMixTheme.shapes.large) else Modifier)
+                .rim(AniMixTheme.shapes.large, accent = true)
+                .then(if (access.open) Modifier.clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button) { onOpen(access.year) } else Modifier)
+                .padding(horizontal = if (wide) 24.dp else 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                val text = if (access.open) colors.onAccent else colors.textPrimary
-                Txt("Итоги ${access.year}", AniMixTheme.type.title, color = text)
+            val big = access.open && !seen
+            val text = if (big) colors.onAccent else colors.textPrimary
+            Column(Modifier.weight(1f).then(if (big) Modifier.fillMaxHeight() else Modifier)) {
+                Txt(when { big -> "Новое · только раз в году"; seen -> "Ваш год в AniMix"; else -> "Скоро" },
+                    AniMixTheme.type.micro, color = if (big) colors.onAccent.copy(alpha = 0.85f) else colors.accentText)
+                if (big) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(4.dp))
+                Txt("Итоги ${access.year}", if (big && wide) AniMixTheme.type.display else if (big) AniMixTheme.type.title else AniMixTheme.type.heading,
+                    color = text, maxLines = 1)
                 Spacer(Modifier.height(4.dp))
                 Txt(
                     when {
-                        access.early -> "Открыты досрочно: вы посмотрели ${access.titlesWatched} тайтла в AniMix"
+                        seen -> "Пересмотреть свои итоги"
+                        access.early -> "Открыты досрочно: ${access.titlesWatched} тайтлов в AniMix. Смотрите!"
                         access.open -> "Ваш год в AniMix готов — смотрите"
-                        else -> "Откроются ${access.opensOn.day} декабря. Досрочно — после ${access.titlesNeeded} тайтлов"
+                        else -> "Откроются ${access.opensOn.day} декабря, досрочно — после ${access.titlesNeeded} тайтлов"
                     },
-                    AniMixTheme.type.caption, color = if (access.open) colors.onAccent.copy(alpha = 0.85f) else colors.textSecondary,
+                    AniMixTheme.type.caption, color = if (big) colors.onAccent.copy(alpha = 0.85f) else colors.textSecondary, maxLines = 2,
                 )
+                if (big && wide) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(colors.onAccent.copy(alpha = 0.14f))
+                        .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(AniMixIcons.Play, null, Modifier.size(15.dp), tint = colors.onAccent)
+                        Spacer(Modifier.width(6.dp))
+                        Txt("Смотреть итоги", AniMixTheme.type.label, color = colors.onAccent)
+                    }
+                }
                 if (!access.open) {
                     Spacer(Modifier.height(10.dp))
                     ProgressLine(access.titlesWatched.toFloat() / access.titlesNeeded)
                     Txt("${access.titlesWatched} из ${access.titlesNeeded} тайтлов", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
                 }
             }
-            if (access.open && posters.isNotEmpty()) {
-                Spacer(Modifier.width(12.dp))
-                Box(Modifier.width(96.dp).height(80.dp), contentAlignment = Alignment.Center) {
-                    posters.forEachIndexed { i, url ->
-                        RemoteImage(url, Modifier.width(52.dp).aspectRatio(0.7f).graphicsLayer {
-                            rotationZ = (i - (posters.size - 1) / 2f) * 10f
-                            translationX = (i - (posters.size - 1) / 2f) * 22.dp.toPx()
-                        }, shape = AniMixTheme.shapes.small)
+            when {
+                access.open && posters.isNotEmpty() -> {
+                    Spacer(Modifier.width(12.dp))
+                    val poster = if (big) (if (wide) 96.dp else 70.dp) else 44.dp
+                    Box(Modifier.width(poster * 2f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        posters.forEachIndexed { i, url ->
+                            RemoteImage(url, Modifier.width(poster).aspectRatio(0.7f).graphicsLayer {
+                                rotationZ = (i - (posters.size - 1) / 2f) * 10f
+                                translationX = (i - (posters.size - 1) / 2f) * (poster * 0.42f).toPx()
+                            }.rim(AniMixTheme.shapes.small, accent = false), shape = AniMixTheme.shapes.small)
+                        }
                     }
                 }
-            } else if (!access.open) {
-                Spacer(Modifier.width(12.dp))
-                Icon(AniMixIcons.Star, null, Modifier.size(28.dp), tint = colors.textMuted)
+                access.open -> {
+                    Spacer(Modifier.width(12.dp))
+                    Icon(AniMixIcons.Play, null, Modifier.size(24.dp), tint = if (big) colors.onAccent else colors.accent)
+                }
+                else -> {
+                    Spacer(Modifier.width(12.dp))
+                    Icon(AniMixIcons.Star, null, Modifier.size(28.dp), tint = colors.accent)
+                }
             }
         }
     }
