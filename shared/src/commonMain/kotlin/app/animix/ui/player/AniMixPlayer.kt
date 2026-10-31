@@ -40,6 +40,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import app.animix.core.Platform
 import app.animix.core.Settings
@@ -461,6 +462,18 @@ fun AniMixPlayer(
     }
 }
 
+/** The part of the episode the position is in, as YouTube names chapters. */
+internal fun chapterAt(positionMs: Long, plan: SkipPlan): String? = when {
+    plan.opening?.let { positionMs >= it.start * 1000L && positionMs < it.end * 1000L } == true -> "Опенинг"
+    plan.ending?.let { positionMs >= it.start * 1000L && positionMs < it.end * 1000L } == true -> "Эндинг"
+    else -> null
+}
+
+/**
+ * Controls in the manner of today's YouTube: a soft shade only at the edges, the title on top,
+ * a chaptered progress line over one row of controls, and settings behind a gear. Every control
+ * here does something; nothing is shown for a feature that the screen does not have.
+ */
 @Composable
 private fun PlayerOverlay(
     horizon: (@Composable () -> Unit)?,
@@ -486,77 +499,94 @@ private fun PlayerOverlay(
     onVolume: (Float) -> Unit,
     onNext: () -> Unit,
 ) {
+    val playingNow = state.playRequested || state.playing
     AnimatedVisibility(visible, enter = fadeIn(tween(180)), exit = fadeOut(tween(260)), modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize()) {
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(0f to Color(0x99000000), 0.3f to Color(0x14000000), 0.62f to Color(0x14000000), 1f to Color(0xC0000000)),
-                ),
-            )
-            Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val compact = maxWidth < 480.dp
+            Box(Modifier.fillMaxWidth().height(96.dp).align(Alignment.TopStart)
+                .background(Brush.verticalGradient(listOf(Color(0x8C000000), Color.Transparent))))
+            Box(Modifier.fillMaxWidth().height(if (compact) 110.dp else 130.dp).align(Alignment.BottomStart)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
+            // Top: where you are, and the actions about this episode.
+            Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (fullscreen) {
                     // Leaves fullscreen: the same as the system back gesture or Esc, but visible.
-                    OverlayIcon(AniMixIcons.Back, onFullscreen, size = 40)
-                    Spacer(Modifier.width(6.dp))
-                }
+                    OverlayIcon(AniMixIcons.Back, onFullscreen, description = "Назад")
+                    Spacer(Modifier.width(4.dp))
+                } else Spacer(Modifier.width(4.dp))
                 Column(Modifier.weight(1f)) {
-                    Txt(title, AniMixTheme.type.bodyStrong, color = Color.White, maxLines = 1)
+                    Txt(title, if (fullscreen && !compact) AniMixTheme.type.subheading else AniMixTheme.type.bodyStrong, color = Color.White, maxLines = 1)
                     subtitle?.let { Txt(it, AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.72f), maxLines = 1) }
                 }
-                if (qualities.size > 1) QualityMenu(quality, qualities, onQuality)
-                else GlassChip(quality) {}
                 if (horizon != null) {
                     Spacer(Modifier.width(6.dp))
                     horizon()
                 }
-                if (onDownload != null) {
-                    Spacer(Modifier.width(6.dp))
-                    OverlayIcon(AniMixIcons.Download, onDownload)
-                }
+                if (onDownload != null) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
             }
-            Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-                OverlayIcon(AniMixIcons.SeekBack, { onSeekBy(-10) }, size = 52, label = "10")
-                Spacer(Modifier.width(28.dp))
-                run {
+            // Centre: one clear play button; on touch screens also the ±10 s seeks, without backing circles.
+            if (!isDesktop || !state.playing || state.buffering) {
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                    if (!isDesktop) {
+                        OverlayIcon(AniMixIcons.SeekBack, { onSeekBy(-10) }, size = 56, description = "Назад на 10 секунд")
+                        Spacer(Modifier.width(if (compact) 28.dp else 44.dp))
+                    }
                     val interaction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(68.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.38f))
-                            .clickable(interaction, indication = null, onClick = onTogglePlay),
+                        Modifier.size(if (compact) 60.dp else 68.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(30.dp), color = Color.White)
-                        else Icon(if (state.playRequested || state.playing) AniMixIcons.Pause else AniMixIcons.Play,
-                            if (state.playRequested || state.playing) "Пауза" else "Смотреть", Modifier.size(32.dp), tint = Color.White)
+                        else Icon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play,
+                            if (playingNow) "Пауза" else "Смотреть", Modifier.size(30.dp), tint = Color.White)
+                    }
+                    if (!isDesktop) {
+                        Spacer(Modifier.width(if (compact) 28.dp else 44.dp))
+                        OverlayIcon(AniMixIcons.SeekForward, { onSeekBy(10) }, size = 56, description = "Вперёд на 10 секунд")
                     }
                 }
-                Spacer(Modifier.width(28.dp))
-                OverlayIcon(AniMixIcons.SeekForward, { onSeekBy(10) }, size = 52, label = "10")
             }
-            Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 14.dp).padding(bottom = 8.dp)) {
+            // Bottom: the chaptered line, then one row — playback on the left, view on the right.
+            Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 12.dp).padding(bottom = 4.dp)) {
                 var scrub by remember { mutableStateOf<Long?>(null) }
                 SeekBar(state.positionMs, state.durationMs, plan,
                     playing = state.playing && !state.buffering && !state.seeking,
                     onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) }, onCancel = { scrub = null })
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Txt("${timeLabel(scrub ?: state.positionMs)} / ${timeLabel(state.durationMs)}", AniMixTheme.type.micro, color = Color.White)
-                    Spacer(Modifier.weight(1f))
-                    OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute, size = 38)
+                    if (isDesktop) OverlayIcon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play, onTogglePlay,
+                        description = if (playingNow) "Пауза" else "Смотреть")
+                    if (hasNext) OverlayIcon(AniMixIcons.Next, onNext, description = "Следующая серия")
+                    OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
+                        description = if (state.volume > 0) "Выключить звук" else "Включить звук")
                     if (isDesktop) VolumeBar(state.volume, onVolume)
-                    if (hasNext) OverlayIcon(AniMixIcons.Next, onNext, size = 38)
-                    if (fullscreen) OverlayIcon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, onFill, size = 38)
-                    OverlayIcon(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen, size = 38)
+                    Spacer(Modifier.width(6.dp))
+                    val position = scrub ?: state.positionMs
+                    Txt(timeLabel(position), AniMixTheme.type.label, color = Color.White, maxLines = 1)
+                    Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                    chapterAt(position, plan)?.takeIf { !compact }?.let {
+                        Txt("  ·  $it", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.85f), maxLines = 1)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    SettingsMenu(quality, qualities, onQuality, fill = fill.takeIf { fullscreen }, onFill = onFill)
+                    OverlayIcon(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen,
+                        description = if (fullscreen) "Выйти из полноэкранного режима" else "Во весь экран")
                 }
             }
         }
     }
 }
 
-/** The progress line with opening and ending marked, so a skip is visible before it happens. */
+/**
+ * The progress line split into chapters at the opening and ending, so a skip is visible before it
+ * happens. It thickens under the pointer or finger, and the time under it floats above the line.
+ */
 @Composable
 private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing: Boolean, onScrub: (Long) -> Unit, onSeek: (Long) -> Unit, onCancel: () -> Unit) {
     val accent = AniMixTheme.colors.accent
     var drag by remember { mutableStateOf<Float?>(null) }
+    var hover by remember { mutableStateOf<Float?>(null) }
     val enabled = durationMs > 0
     val smooth = LocalUiPerformance.current.animations
     val displayed = remember { mutableLongStateOf(positionMs) }
@@ -569,69 +599,115 @@ private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing:
             }
         }
     }
+    val active = drag != null || hover != null
+    val thickness by app.animix.ui.theme.animateMotionFloatAsState(if (active) 5f else 3f, tween(120))
     val seekNow by rememberUpdatedState(onSeek)
     val scrubNow by rememberUpdatedState(onScrub)
     val cancelNow by rememberUpdatedState(onCancel)
-    Canvas(
-        Modifier.fillMaxWidth().height(32.dp)
-            .pointerInput(enabled, durationMs) {
-                if (!enabled) return@pointerInput
-                detectTapGestures { offset -> seekNow(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong()) }
+    // Chapter edges as fractions of the episode: the line gets a small gap at each.
+    val edges = if (enabled) listOfNotNull(plan.opening, plan.ending).flatMap { listOf(it.start, it.end) }
+        .map { (it * 1000f / durationMs).coerceIn(0f, 1f) }.filter { it > 0.002f && it < 0.998f }.sorted() else emptyList()
+    BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp)) {
+        val widthPx = constraints.maxWidth.toFloat()
+        Canvas(
+            Modifier.fillMaxSize()
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: continue
+                            if (change.type != androidx.compose.ui.input.pointer.PointerType.Mouse) continue
+                            hover = when (event.type) {
+                                PointerEventType.Exit -> null
+                                PointerEventType.Move, PointerEventType.Enter -> (change.position.x / size.width).coerceIn(0f, 1f)
+                                else -> hover
+                            }
+                        }
+                    }
+                }
+                .pointerInput(enabled, durationMs) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures { offset -> seekNow(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong()) }
+                }
+                .pointerInput(enabled, durationMs) {
+                    if (!enabled) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset -> drag = (offset.x / size.width).coerceIn(0f, 1f); scrubNow((drag!! * durationMs).toLong()) },
+                        onHorizontalDrag = { change, _ ->
+                            drag = (change.position.x / size.width).coerceIn(0f, 1f)
+                            change.consume()
+                            scrubNow((drag!! * durationMs).toLong())
+                        },
+                        onDragEnd = { drag?.let { seekNow((it * durationMs).toLong()) }; drag = null },
+                        onDragCancel = { drag = null; cancelNow() },
+                    )
+                },
+        ) {
+            val fraction = drag ?: if (enabled) (displayed.longValue.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+            val track = thickness.dp.toPx()
+            val gap = 2.dp.toPx()
+            val y = size.height / 2
+            val radius = CornerRadius(track / 2)
+            val bounds = listOf(0f) + edges + listOf(1f)
+            for (i in 0 until bounds.size - 1) {
+                val start = bounds[i] * size.width + if (i > 0) gap / 2 else 0f
+                val end = bounds[i + 1] * size.width - if (i < bounds.size - 2) gap / 2 else 0f
+                if (end <= start) continue
+                drawRoundRect(Color.White.copy(alpha = 0.28f), Offset(start, y - track / 2), Size(end - start, track), radius)
+                hover?.let { h ->
+                    val to = minOf(end, h * size.width)
+                    if (to > start) drawRoundRect(Color.White.copy(alpha = 0.22f), Offset(start, y - track / 2), Size(to - start, track), radius)
+                }
+                val played = minOf(end, fraction * size.width)
+                if (played > start) drawRoundRect(accent, Offset(start, y - track / 2), Size(played - start, track), radius)
             }
-            .pointerInput(enabled, durationMs) {
-                if (!enabled) return@pointerInput
-                detectHorizontalDragGestures(
-                    onDragStart = { offset -> drag = (offset.x / size.width).coerceIn(0f, 1f); scrubNow((drag!! * durationMs).toLong()) },
-                    onHorizontalDrag = { change, _ ->
-                        drag = (change.position.x / size.width).coerceIn(0f, 1f)
-                        change.consume()
-                        scrubNow((drag!! * durationMs).toLong())
-                    },
-                    onDragEnd = { drag?.let { seekNow((it * durationMs).toLong()) }; drag = null },
-                    onDragCancel = { drag = null; cancelNow() },
-                )
-            },
-    ) {
-        val fraction = drag ?: if (enabled) (displayed.longValue.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-        val track = 3.dp.toPx()
-        val y = size.height / 2
-        val radius = CornerRadius(track / 2)
-        drawRoundRect(Color.White.copy(alpha = 0.26f), Offset(0f, y - track / 2), Size(size.width, track), radius)
-        if (enabled) {
-            listOfNotNull(plan.opening, plan.ending).forEach { range ->
-                val start = (range.start * 1000f / durationMs).coerceIn(0f, 1f) * size.width
-                val end = (range.end * 1000f / durationMs).coerceIn(0f, 1f) * size.width
-                if (end > start) drawRoundRect(Color.White.copy(alpha = 0.5f), Offset(start, y - track / 2), Size(end - start, track), radius)
+            // The thumb appears only when it can be grabbed, as on YouTube.
+            if (active || !isDesktop) drawCircle(accent, radius = if (drag != null) 8.dp.toPx() else 6.dp.toPx(), center = Offset(size.width * fraction, y))
+        }
+        val preview = drag ?: hover
+        if (enabled && preview != null) {
+            val ms = (preview * durationMs).toLong()
+            var bubbleWidth by remember { mutableIntStateOf(0) }
+            val x = (preview * widthPx - bubbleWidth / 2f).coerceIn(0f, (widthPx - bubbleWidth).coerceAtLeast(0f))
+            Column(
+                Modifier.offset { androidx.compose.ui.unit.IntOffset(x.toInt(), (-34).dp.roundToPx()) }
+                    .onSizeChanged { bubbleWidth = it.width }
+                    .clip(AniMixTheme.shapes.small).background(Color(0xE6141418)).padding(horizontal = 10.dp, vertical = 5.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                chapterAt(ms, plan)?.let { Txt(it, AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.75f), maxLines = 1) }
+                Txt(timeLabel(ms), AniMixTheme.type.label, color = Color.White, maxLines = 1)
             }
         }
-        drawRoundRect(accent, Offset(0f, y - track / 2), Size(size.width * fraction, track), radius)
-        drawCircle(accent, radius = if (drag != null) 8.dp.toPx() else 6.dp.toPx(), center = Offset(size.width * fraction, y))
     }
 }
 
 @Composable
 private fun VolumeBar(volume: Float, onVolume: (Float) -> Unit) {
     Canvas(
-        Modifier.width(84.dp).height(26.dp).padding(end = 6.dp)
+        Modifier.width(76.dp).height(26.dp).padding(end = 4.dp)
             .pointerInput(Unit) { detectTapGestures { onVolume((it.x / size.width).coerceIn(0f, 1f)) } }
             .pointerInput(Unit) { detectHorizontalDragGestures { change, _ -> onVolume((change.position.x / size.width).coerceIn(0f, 1f)) } },
     ) {
         val track = 3.dp.toPx()
         val y = size.height / 2
-        drawRoundRect(Color.White.copy(alpha = 0.26f), Offset(0f, y - track / 2), Size(size.width, track), CornerRadius(track / 2))
+        drawRoundRect(Color.White.copy(alpha = 0.28f), Offset(0f, y - track / 2), Size(size.width, track), CornerRadius(track / 2))
         drawRoundRect(Color.White, Offset(0f, y - track / 2), Size(size.width * volume, track), CornerRadius(track / 2))
+        drawCircle(Color.White, 5.dp.toPx(), Offset(size.width * volume, y))
     }
 }
 
+/** A plain white icon button over the picture: 44 dp to tap, no backing. */
 @Composable
-private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 40, label: String? = null) {
+private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 44, description: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape).background(if (label != null) Color.Black.copy(alpha = 0.3f) else Color.Transparent).clickable(interaction, indication = null, onClick = onClick),
+        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape)
+            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, Modifier.size((size * if (label != null) 0.62f else 0.52f).dp), tint = Color.White)
-        if (label != null) Txt(label, AniMixTheme.type.micro, color = Color.White, modifier = Modifier.padding(top = 1.dp))
+        Icon(icon, description, Modifier.size((size * 0.5f).dp), tint = Color.White)
     }
 }
 
@@ -656,27 +732,44 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
     ) { Txt(text, AniMixTheme.type.label, color = Color.White, maxLines = 1) }
 }
 
+/**
+ * The gear: quality (its short name rides on the icon, like YouTube's HD badge) and, in fullscreen,
+ * «Без рамок». One small dark menu over the picture instead of separate chips.
+ */
 @Composable
-private fun QualityMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit) {
+private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, fill: Boolean?, onFill: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val animated = LocalUiPerformance.current.animations
-    val options: @Composable () -> Unit = {
-        qualities.forEach { label ->
-            val selected = label == quality
-            Row(Modifier.widthIn(min = 140.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) AniMixTheme.colors.accent else AniMixTheme.colors.textPrimary, modifier = Modifier.weight(1f))
-                if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
-            }
-        }
-    }
+    val colors = AniMixTheme.colors
     Box {
-        GlassChip(quality) { open = true }
-        if (animated) {
-            DropdownMenu(open, onDismissRequest = { open = false }, containerColor = AniMixTheme.colors.surfaceRaised, shape = AniMixTheme.shapes.medium) { options() }
-        } else if (open) {
-            Popup(alignment = Alignment.TopEnd, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
-                Panel(Modifier.width(160.dp)) { options() }
+        Box(Modifier.size(44.dp)) {
+            OverlayIcon(AniMixIcons.Settings, { open = !open }, description = "Настройки плеера · качество $quality")
+            // Only a short HD mark, as on YouTube; the exact quality is one tap away in the menu.
+            if ((lines(quality) ?: 0) >= 720) Txt("HD", AniMixTheme.type.micro, color = colors.onAccent, maxLines = 1,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 4.dp).clip(AniMixTheme.shapes.small)
+                    .background(colors.accent).padding(horizontal = 3.dp))
+        }
+        if (open) Popup(alignment = Alignment.BottomEnd, offset = androidx.compose.ui.unit.IntOffset(0, -56),
+            onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+            Column(Modifier.width(220.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
+                Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                qualities.forEach { label ->
+                    val selected = label == quality
+                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) colors.accent else Color.White, modifier = Modifier.weight(1f))
+                        if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.accent)
+                    }
+                }
+                if (fill != null) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onFill() }.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, null, Modifier.size(18.dp), tint = Color.White)
+                        Spacer(Modifier.width(12.dp))
+                        Txt("Без рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
+                        Txt(if (fill) "Вкл." else "Выкл.", AniMixTheme.type.label, color = if (fill) colors.accent else Color.White.copy(alpha = 0.6f))
+                    }
+                }
             }
         }
     }
@@ -817,7 +910,9 @@ private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boole
             val (width, height) = if (containerAspect > videoAspect) maxHeight * videoAspect to maxHeight else maxWidth to maxWidth / videoAspect
             NativeVideoSurface(player, Modifier.requiredSize(width * zoom, height * zoom))
         } else {
-            NativeVideoSurface(player, Modifier.fillMaxSize())
+            // Ambient glow only where there are bars to fill, and never in battery saving.
+            val bars = videoAspect > 0f && containerAspect > 0f && abs(containerAspect - videoAspect) / videoAspect > 0.02f
+            NativeVideoSurface(player, Modifier.fillMaxSize(), ambient = bars && !LocalUiPerformance.current.batterySaver)
         }
     }
 }

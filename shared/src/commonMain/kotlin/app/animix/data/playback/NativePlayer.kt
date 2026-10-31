@@ -31,5 +31,9 @@ interface NativePlayer {
 }
 
 expect fun createNativePlayer(): NativePlayer
-@Composable expect fun NativeVideoSurface(player: NativePlayer, modifier: Modifier)
+/**
+ * The decoded picture, fitted. With [ambient] the bars around a picture of another shape glow with
+ * its own colours, softly blurred and dimmed, as in YouTube's ambient mode.
+ */
+@Composable expect fun NativeVideoSurface(player: NativePlayer, modifier: Modifier, ambient: Boolean = false)
 @Composable expect fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit)

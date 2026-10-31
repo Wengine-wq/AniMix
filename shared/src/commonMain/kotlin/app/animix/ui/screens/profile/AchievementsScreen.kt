@@ -184,7 +184,7 @@ private fun AchievementRow(progress: AchievementProgress) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ProgressBar(progress.fraction, Modifier.weight(1f))
                         Spacer(Modifier.width(8.dp))
-                        Txt("${progress.current.coerceAtMost(progress.target).compact()} / ${progress.target.compact()}", AniMixTheme.type.micro)
+                        Txt(progressLabel(progress), AniMixTheme.type.micro)
                     }
                 }
             }
@@ -200,8 +200,19 @@ private fun SecretIcon(size: androidx.compose.ui.unit.Dp) {
     }
 }
 
-/** 36000 seconds reads better as "10 ч". */
-private fun Int.compact(): String = if (this >= 3600 && this % 3600 == 0) "${this / 3600} ч" else toString()
+/**
+ * "3 / 10" for counts; watch time is measured in seconds but always shown in hours on both sides,
+ * with tenths below 100 hours ("9,4 / 10 ч"), so a raw second count never reads as hours.
+ */
+internal fun progressLabel(progress: app.animix.data.achievements.AchievementProgress): String {
+    val current = progress.current.coerceIn(0, progress.target)
+    if (progress.achievement.trigger.metric != "watch_seconds") return "$current / ${progress.target}"
+    fun hours(seconds: Int): String {
+        val tenths = seconds / 360
+        return if (tenths >= 1000 || tenths % 10 == 0) "${tenths / 10}" else "${tenths / 10},${tenths % 10}"
+    }
+    return "${hours(current)} / ${hours(progress.target)} ч"
+}
 
 /** A quiet glass toast at the top when an achievement unlocks. */
 @Composable

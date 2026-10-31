@@ -13,9 +13,34 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
+import android.view.SurfaceView
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -101,7 +126,7 @@ internal class AndroidNativePlayer : NativePlayer {
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@Composable actual fun NativeVideoSurface(player: NativePlayer, modifier: Modifier) {
+@Composable actual fun NativeVideoSurface(player: NativePlayer, modifier: Modifier, ambient: Boolean) {
     val backend = player as AndroidNativePlayer
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, player) {
@@ -109,17 +134,47 @@ internal class AndroidNativePlayer : NativePlayer {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    AndroidView(
-        factory = { context -> PlayerView(context).apply {
-            useController = false
-            this.player = backend.engine
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            keepScreenOn = true
-        } },
-        update = { it.player = backend.engine },
-        onRelease = { it.player = null },
-        modifier = modifier,
-    )
+    var view by remember { mutableStateOf<PlayerView?>(null) }
+    var glow by remember { mutableStateOf<ImageBitmap?>(null) }
+    // A tiny copy of the SurfaceView a few times a second: its colours, stretched and blurred, fill the bars.
+    LaunchedEffect(ambient, view) {
+        val surface = view?.videoSurfaceView as? SurfaceView
+        if (!ambient || surface == null) { glow = null; return@LaunchedEffect }
+        val handler = Handler(Looper.getMainLooper())
+        while (isActive) {
+            if (surface.holder.surface?.isValid == true && surface.width > 0) {
+                val bitmap = Bitmap.createBitmap(32, 18, Bitmap.Config.ARGB_8888)
+                val copied = suspendCancellableCoroutine { done ->
+                    runCatching { PixelCopy.request(surface, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, handler) }
+                        .onFailure { if (done.isActive) done.resume(false) }
+                }
+                if (copied) glow = bitmap.asImageBitmap()
+            }
+            delay(250)
+        }
+    }
+    Box(modifier) {
+        glow?.let { picture ->
+            Image(picture, null, Modifier.fillMaxSize().blur(48.dp, BlurredEdgeTreatment.Rectangle), contentScale = ContentScale.FillBounds,
+                filterQuality = FilterQuality.Low)
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+        }
+        AndroidView(
+            factory = { context -> PlayerView(context).apply {
+                useController = false
+                this.player = backend.engine
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                keepScreenOn = true
+                // Transparent around the fitted picture, so the glow underneath can show in the bars.
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                view = this
+            } },
+            update = { it.player = backend.engine },
+            onRelease = { it.player = null; view = null },
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
 
 @Composable actual fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {

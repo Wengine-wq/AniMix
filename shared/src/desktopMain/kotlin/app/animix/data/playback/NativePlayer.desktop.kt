@@ -105,9 +105,32 @@ internal class FrameSink {
         image
     }
 
+    private var glow: Image? = null
+    private var glowAt = 0L
+
+    /**
+     * UI thread: a tiny copy of the latest frame for the ambient glow, refreshed a few times a second.
+     * Stretched and blurred it gives the colours of the scene without costing a full-size blur per frame.
+     */
+    fun glow(): Image? {
+        val source = image ?: return glow
+        val now = System.nanoTime()
+        if (glow != null && now - glowAt < 180_000_000L) return glow
+        glowAt = now
+        val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(GLOW_WIDTH, GLOW_HEIGHT)
+        surface.canvas.drawImageRect(source, Rect.makeWH(source.width.toFloat(), source.height.toFloat()),
+            Rect.makeWH(GLOW_WIDTH.toFloat(), GLOW_HEIGHT.toFloat()), videoSampling, null, true)
+        glow?.close()
+        glow = surface.makeImageSnapshot()
+        surface.close()
+        return glow
+    }
+
     fun clear() = synchronized(lock) {
         image?.close()
         image = null
+        glow?.close()
+        glow = null
         fresh = false
     }
 }
@@ -237,7 +260,15 @@ internal class DesktopNativePlayer : NativePlayer {
 
 private val videoSampling = FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)
 
-@Composable actual fun NativeVideoSurface(player: NativePlayer, modifier: Modifier) {
+private const val GLOW_WIDTH = 32
+private const val GLOW_HEIGHT = 18
+// Lazy: loading this file (e.g. for the audio player in tests) must not touch Skia's native library.
+private val glowPaint by lazy {
+    org.jetbrains.skia.Paint().apply { imageFilter = org.jetbrains.skia.ImageFilter.makeBlur(80f, 80f, org.jetbrains.skia.FilterTileMode.CLAMP) }
+}
+private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x59000000 } }
+
+@Composable actual fun NativeVideoSurface(player: NativePlayer, modifier: Modifier, ambient: Boolean) {
     val sink = (player as DesktopNativePlayer).frames
     val tick by sink.frames.collectAsState()
     Canvas(modifier.background(Color.Black)) {
@@ -246,6 +277,15 @@ private val videoSampling = FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)
         val scale = minOf(size.width / image.width, size.height / image.height)
         val width = image.width * scale
         val height = image.height * scale
+        // Bars of at least a few pixels glow with the scene; the picture itself is drawn on top.
+        if (ambient && (size.width - width > 8f || size.height - height > 8f)) sink.glow()?.let { glow ->
+            drawIntoCanvas { canvas ->
+                val native = canvas.nativeCanvas
+                native.drawImageRect(glow, Rect.makeWH(glow.width.toFloat(), glow.height.toFloat()),
+                    Rect.makeXYWH(-size.width * 0.1f, -size.height * 0.1f, size.width * 1.2f, size.height * 1.2f), videoSampling, glowPaint, true)
+                native.drawRect(Rect.makeWH(size.width, size.height), glowScrim)
+            }
+        }
         drawIntoCanvas { canvas ->
             canvas.nativeCanvas.drawImageRect(
                 image,

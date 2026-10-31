@@ -9,25 +9,43 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.animix.data.AppRelease
 import app.animix.ui.components.Txt
-import app.animix.ui.components.AniMixMascot
+import androidx.compose.foundation.Image
+import app.animix.resources.Res
+import app.animix.resources.animix_logo
+import app.animix.ui.components.accentGlow
+import org.jetbrains.compose.resources.painterResource
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 
 /** Release notes and future plans stay visibly separate; this page never advertises a live account. */
 @Composable
 internal fun AboutSection() {
+    // The app's own mark, as on the home screen of the device; the mascot stays with empty states.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        AniMixMascot(Modifier.size(width = 112.dp, height = 160.dp), contentDescription = "Маскот AniMix")
+        Image(painterResource(Res.drawable.animix_logo), "Логотип AniMix",
+            Modifier.size(88.dp).accentGlow(AniMixTheme.shapes.large, strength = 0.18f))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Txt("AniMix", AniMixTheme.type.title)
-            Txt("Версия ${AppRelease.version}", AniMixTheme.type.caption)
+            Txt("Версия ${AppRelease.version} · ${AppRelease.name}", AniMixTheme.type.caption)
+            Txt("«${AppRelease.title}»", AniMixTheme.type.label, color = AniMixTheme.colors.accentText, modifier = Modifier.padding(top = 4.dp))
         }
     }
     Spacer(Modifier.height(16.dp))
-    Txt(AppRelease.name, AniMixTheme.type.heading, color = AniMixTheme.colors.accentText)
-    Spacer(Modifier.height(8.dp))
     Txt("Перерождение первого AniMix. Просмотр, свободное время и своя коллекция — в одном приложении на телефоне и ПК.", AniMixTheme.type.body)
+
+    Spacer(Modifier.height(32.dp))
+    Txt("Что нового в ${AppRelease.version}", AniMixTheme.type.heading)
+    Spacer(Modifier.height(12.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        AppRelease.changes.forEach { change ->
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(AniMixIcons.Check, null, Modifier.padding(top = 2.dp).size(16.dp), tint = AniMixTheme.colors.accentText)
+                Spacer(Modifier.width(10.dp))
+                Txt(change, AniMixTheme.type.caption, color = AniMixTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+            }
+        }
+    }
 
     Spacer(Modifier.height(32.dp))
     Txt("Что есть в этой версии", AniMixTheme.type.heading)

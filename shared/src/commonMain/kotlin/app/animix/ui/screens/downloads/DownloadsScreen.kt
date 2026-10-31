@@ -177,15 +177,13 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconCircle(AniMixIcons.Back, { navigator.back() }, contentDescription = "Назад")
                         Spacer(Modifier.width(8.dp))
-                        // The poster and title lead to the anime page, like everywhere else in the app.
+                        // The title leads to the anime page; the line under it says so.
                         val openInteraction = remember { MutableInteractionSource() }
                         Row(Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
                             .clickable(openInteraction, indication = null, role = Role.Button, enabled = anime.title.isNotEmpty()) {
                                 navigator.pushOrBack(Route.Detail(anime))
                             }.focusOutline(openInteraction, AniMixTheme.shapes.medium).padding(4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                        RemoteImage(anime.posterUrl, Modifier.width(44.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
-                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Txt(anime.title, AniMixTheme.type.heading, maxLines = 2)
                             Txt(

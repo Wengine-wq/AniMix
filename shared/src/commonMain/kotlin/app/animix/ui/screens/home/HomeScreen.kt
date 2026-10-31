@@ -1,4 +1,4 @@
-﻿package app.animix.ui.screens.home
+package app.animix.ui.screens.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -98,6 +98,14 @@ import app.animix.ui.theme.AniMixTheme
 
 
 
+/** Bullet lines of the first list in GitHub release notes ("- …" or "* …"), without markdown emphasis. */
+internal fun releaseChanges(notes: String): List<String> {
+    val lines = notes.lines().map { it.trim() }
+    val start = lines.indexOfFirst { it.startsWith("- ") || it.startsWith("* ") }.takeIf { it >= 0 } ?: return emptyList()
+    return lines.drop(start).takeWhile { it.startsWith("- ") || it.startsWith("* ") }
+        .map { it.drop(2).replace("**", "").replace("`", "").trim() }.filter { it.isNotEmpty() }
+}
+
 internal fun carouselStartPage(count: Int): Int = if (count <= 1) 0 else (Int.MAX_VALUE / 2).let { it - it % count }
 internal fun carouselItem(page: Int, count: Int): Int = if (count <= 1) 0 else ((page % count) + count) % count
 
@@ -122,13 +130,13 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     val topState = top.value
     val picksState = picks.value
 
+    // Seen «Итоги года» become the first quick chip; until then they get their own banner under the chips.
+    val review = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
+    val reviewSeen = review.open && review.year in library.reviewedYears
+
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
         item(key = "update") { UpdateOffer(graph) }
-        // «Итоги года» lead the page while they are relevant, above the ongoing banner.
-        item(key = "year-review") {
-            YearReviewCard(library) { year -> navigator.push(Route.YearInReview(year)) }
-        }
         item(key = "hero") {
             when (val state = ongoingState) {
                 Load.Loading -> HomeHeroPlaceholder()
@@ -138,7 +146,11 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             }
         }
         item(key = "filters") {
-            QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) })
+            QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
+                review = review.year.takeIf { reviewSeen }, onReview = { navigator.push(Route.YearInReview(review.year)) })
+        }
+        if (!reviewSeen) item(key = "year-review") {
+            YearReviewCard(library, review) { year -> navigator.push(Route.YearInReview(year)) }
         }
         item(key = "continue") {
             ContinueShelf(continueItems, onOpen = { item ->
@@ -309,7 +321,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
 }
 
 @Composable
-private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
+private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, review: Int? = null, onReview: () -> Unit = {}) {
     val presets = listOf(
         Triple("Онгоинги", CatalogQuery(status = "ongoing"), AniMixIcons.Clock),
         Triple("Новинки", CatalogQuery(order = CatalogOrder.AiredOn, status = "released"), AniMixIcons.Star),
@@ -320,6 +332,8 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Already seen: the year stays one tap away, first in the row and in the accent, without a banner.
+        if (review != null) item(key = "review") { Chip("Итоги $review", selected = true, onClick = onReview, icon = AniMixIcons.Star) }
         items(presets) { (label, query, icon) ->
             Chip(label, selected = false, onClick = { onOpen(query, label) }, icon = icon)
         }
@@ -434,9 +448,26 @@ private fun UpdateOffer(graph: AppGraph) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Txt("Доступна версия ${update.label}", AniMixTheme.type.subheading)
-                Txt(update.notes.lineSequence().map { it.trim().trimStart('#', '-', '*', ' ') }.firstOrNull { it.isNotBlank() } ?: update.title,
-                    AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+                Txt(update.title, AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
             }
+        }
+        // What changed compared with this version: the first list of the release notes, three lines
+        // at first, the rest on request, so the card stays a card and not a changelog page.
+        val changes = remember(update.notes) { releaseChanges(update.notes) }
+        if (changes.isNotEmpty()) {
+            var expanded by remember(update.version) { mutableStateOf(false) }
+            Spacer(Modifier.height(14.dp))
+            Txt("Что изменилось", AniMixTheme.type.micro, color = colors.textSecondary)
+            Spacer(Modifier.height(6.dp))
+            (if (expanded) changes else changes.take(3)).forEach { change ->
+                Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                    Icon(AniMixIcons.Check, null, Modifier.padding(top = 2.dp).size(14.dp), tint = colors.accent)
+                    Spacer(Modifier.width(10.dp))
+                    Txt(change, AniMixTheme.type.caption, color = colors.textPrimary)
+                }
+            }
+            if (changes.size > 3) Txt(if (expanded) "Свернуть" else "Ещё ${changes.size - 3}", AniMixTheme.type.label, color = colors.accent,
+                modifier = Modifier.padding(top = 4.dp).clip(AniMixTheme.shapes.pill).clickable { expanded = !expanded }.padding(vertical = 6.dp))
         }
         if (state.downloading) {
             Spacer(Modifier.height(12.dp))
@@ -452,90 +483,82 @@ private fun UpdateOffer(graph: AppGraph) {
     }
 }
 
+/**
+ * «Итоги года» under the quick chips, at the same place in every state: a quiet card with the way to
+ * open them early until they open, then a pink banner in the hero's geometry until the last slide is
+ * seen. After that they live on as the first quick chip (see [QuickFilters]).
+ */
 @Composable
-private fun YearReviewCard(library: app.animix.data.library.LibraryData, onOpen: (Int) -> Unit) {
+private fun YearReviewCard(library: app.animix.data.library.LibraryData, access: app.animix.data.library.ReviewAccess, onOpen: (Int) -> Unit) {
     val colors = AniMixTheme.colors
-    val access = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
-    val seen = access.open && access.year in library.reviewedYears
+    if (!access.open) {
+        Row(
+            Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp).fillMaxWidth().clip(AniMixTheme.shapes.large)
+                .background(colors.surface).rim(AniMixTheme.shapes.large, accent = false).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
+                Icon(AniMixIcons.Star, null, Modifier.size(20.dp), tint = colors.accent)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Txt("Итоги ${access.year} · с ${access.opensOn.day} декабря", AniMixTheme.type.bodyStrong)
+                Txt("Досрочно — после ${access.titlesNeeded} тайтлов, досмотренных в AniMix", AniMixTheme.type.caption,
+                    modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ProgressLine(access.titlesWatched.toFloat() / access.titlesNeeded, Modifier.weight(1f))
+                    Spacer(Modifier.width(10.dp))
+                    Txt("${access.titlesWatched} из ${access.titlesNeeded}", AniMixTheme.type.micro)
+                }
+            }
+        }
+        return
+    }
     val posters = remember(library, access.year) {
         library.entries.values.sortedByDescending { entry ->
             entry.viewing.values.count { v -> v.completedAt?.let { app.animix.data.library.dayToDate(app.animix.core.localDayIndex(it)).year == access.year } == true }
         }.take(3).map { it.anime.posterUrl }
     }
     val interaction = remember { MutableInteractionSource() }
-    // A banner at the top of the page, in the hero's geometry: big and pink while it is new,
-    // a slimmer card of the same kind after the last slide was seen, a progress card until it opens.
-    BoxWithConstraints(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+    BoxWithConstraints(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
         val wide = maxWidth > 700.dp
-        val height = when { !access.open -> null; seen -> 96.dp; wide -> 220.dp; else -> 168.dp }
         Row(
-            Modifier.fillMaxWidth().then(if (height != null) Modifier.height(height) else Modifier)
-                .then(if (access.open && !seen) Modifier.accentGlow(AniMixTheme.shapes.large) else Modifier)
+            Modifier.fillMaxWidth().height(if (wide) 220.dp else 168.dp)
+                .accentGlow(AniMixTheme.shapes.large)
                 .pressScale(interaction)
                 .clip(AniMixTheme.shapes.large)
-                .background(when {
-                    access.open && !seen -> colors.accentGradient
-                    else -> Brush.linearGradient(listOf(colors.surfaceRaised, colors.accentSoft))
-                })
-                .then(if (access.open && !seen) Modifier.highlight(AniMixTheme.shapes.large) else Modifier)
-                .rim(AniMixTheme.shapes.large, accent = true)
-                .then(if (access.open) Modifier.clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button) { onOpen(access.year) } else Modifier)
-                .padding(horizontal = if (wide) 24.dp else 16.dp, vertical = 16.dp),
+                .background(colors.accentGradient)
+                .highlight(AniMixTheme.shapes.large)
+                .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button) { onOpen(access.year) }
+                .padding(horizontal = if (wide) 28.dp else 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val big = access.open && !seen
-            val text = if (big) colors.onAccent else colors.textPrimary
-            Column(Modifier.weight(1f).then(if (big) Modifier.fillMaxHeight() else Modifier)) {
-                Txt(when { big -> "Новое · только раз в году"; seen -> "Ваш год в AniMix"; else -> "Скоро" },
-                    AniMixTheme.type.micro, color = if (big) colors.onAccent.copy(alpha = 0.85f) else colors.accentText)
-                if (big) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(4.dp))
-                Txt("Итоги ${access.year}", if (big && wide) AniMixTheme.type.display else if (big) AniMixTheme.type.title else AniMixTheme.type.heading,
-                    color = text, maxLines = 1)
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                Txt("Новое · только раз в году", AniMixTheme.type.micro, color = colors.onAccent.copy(alpha = 0.8f))
+                Spacer(Modifier.weight(1f))
+                Txt("Итоги ${access.year}", if (wide) AniMixTheme.type.display else AniMixTheme.type.title, color = colors.onAccent, maxLines = 1)
                 Spacer(Modifier.height(4.dp))
-                Txt(
-                    when {
-                        seen -> "Пересмотреть свои итоги"
-                        access.early -> "Открыты досрочно: ${access.titlesWatched} тайтлов в AniMix. Смотрите!"
-                        access.open -> "Ваш год в AniMix готов — смотрите"
-                        else -> "Откроются ${access.opensOn.day} декабря, досрочно — после ${access.titlesNeeded} тайтлов"
-                    },
-                    AniMixTheme.type.caption, color = if (big) colors.onAccent.copy(alpha = 0.85f) else colors.textSecondary, maxLines = 2,
-                )
-                if (big && wide) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(colors.onAccent.copy(alpha = 0.14f))
-                        .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(AniMixIcons.Play, null, Modifier.size(15.dp), tint = colors.onAccent)
-                        Spacer(Modifier.width(6.dp))
-                        Txt("Смотреть итоги", AniMixTheme.type.label, color = colors.onAccent)
-                    }
-                }
-                if (!access.open) {
-                    Spacer(Modifier.height(10.dp))
-                    ProgressLine(access.titlesWatched.toFloat() / access.titlesNeeded)
-                    Txt("${access.titlesWatched} из ${access.titlesNeeded} тайтлов", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
+                Txt(if (access.early) "Открыты досрочно — ваш год в AniMix готов" else "Ваш год в AniMix готов",
+                    AniMixTheme.type.caption, color = colors.onAccent.copy(alpha = 0.85f), maxLines = 2)
+                Spacer(Modifier.height(if (wide) 16.dp else 12.dp))
+                Row(Modifier.clip(AniMixTheme.shapes.pill).background(colors.onAccent.copy(alpha = 0.14f))
+                    .padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(AniMixIcons.Play, null, Modifier.size(14.dp), tint = colors.onAccent)
+                    Spacer(Modifier.width(6.dp))
+                    Txt("Смотреть", AniMixTheme.type.label, color = colors.onAccent)
                 }
             }
-            when {
-                access.open && posters.isNotEmpty() -> {
-                    Spacer(Modifier.width(12.dp))
-                    val poster = if (big) (if (wide) 96.dp else 70.dp) else 44.dp
-                    Box(Modifier.width(poster * 2f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        posters.forEachIndexed { i, url ->
-                            RemoteImage(url, Modifier.width(poster).aspectRatio(0.7f).graphicsLayer {
-                                rotationZ = (i - (posters.size - 1) / 2f) * 10f
-                                translationX = (i - (posters.size - 1) / 2f) * (poster * 0.42f).toPx()
-                            }.rim(AniMixTheme.shapes.small, accent = false), shape = AniMixTheme.shapes.small)
-                        }
+            if (posters.isNotEmpty()) {
+                Spacer(Modifier.width(12.dp))
+                val poster = if (wide) 96.dp else 66.dp
+                Box(Modifier.width(poster * 2f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    posters.forEachIndexed { i, url ->
+                        RemoteImage(url, Modifier.width(poster).aspectRatio(0.7f).graphicsLayer {
+                            rotationZ = (i - (posters.size - 1) / 2f) * 10f
+                            translationX = (i - (posters.size - 1) / 2f) * (poster * 0.42f).toPx()
+                        }.rim(AniMixTheme.shapes.small, accent = false), shape = AniMixTheme.shapes.small)
                     }
-                }
-                access.open -> {
-                    Spacer(Modifier.width(12.dp))
-                    Icon(AniMixIcons.Play, null, Modifier.size(24.dp), tint = if (big) colors.onAccent else colors.accent)
-                }
-                else -> {
-                    Spacer(Modifier.width(12.dp))
-                    Icon(AniMixIcons.Star, null, Modifier.size(28.dp), tint = colors.accent)
                 }
             }
         }
