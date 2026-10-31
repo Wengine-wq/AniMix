@@ -36,4 +36,9 @@ expect fun createNativePlayer(): NativePlayer
  * its own colours, softly blurred and dimmed, as in YouTube's ambient mode.
  */
 @Composable expect fun NativeVideoSurface(player: NativePlayer, modifier: Modifier, ambient: Boolean = false)
+/**
+ * A tiny copy of the current frame, refreshed a few times a second while [enabled]: what the player's
+ * glass capsules blur. Stretched over the picture it reads as frosted glass at almost no cost.
+ */
+@Composable expect fun rememberFrameBackdrop(player: NativePlayer, enabled: Boolean): androidx.compose.ui.graphics.ImageBitmap?
 @Composable expect fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit)

@@ -9,6 +9,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.window.Window
@@ -260,8 +262,8 @@ internal class DesktopNativePlayer : NativePlayer {
 
 private val videoSampling = FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)
 
-private const val GLOW_WIDTH = 32
-private const val GLOW_HEIGHT = 18
+private const val GLOW_WIDTH = 48
+private const val GLOW_HEIGHT = 27
 // Lazy: loading this file (e.g. for the audio player in tests) must not touch Skia's native library.
 private val glowPaint by lazy {
     org.jetbrains.skia.Paint().apply { imageFilter = org.jetbrains.skia.ImageFilter.makeBlur(80f, 80f, org.jetbrains.skia.FilterTileMode.CLAMP) }
@@ -297,6 +299,21 @@ private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x590
             )
         }
     }
+}
+
+@Composable actual fun rememberFrameBackdrop(player: NativePlayer, enabled: Boolean): androidx.compose.ui.graphics.ImageBitmap? {
+    val sink = (player as DesktopNativePlayer).frames
+    var backdrop by androidx.compose.runtime.remember(player) { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    androidx.compose.runtime.LaunchedEffect(player, enabled) {
+        if (!enabled) { backdrop = null; return@LaunchedEffect }
+        while (isActive) {
+            // current() refreshes the full frame on the UI thread; glow() then scales it down.
+            sink.current()
+            sink.glow()?.let { backdrop = org.jetbrains.skia.Bitmap.makeFromImage(it).asComposeImageBitmap() }
+            delay(200)
+        }
+    }
+    return backdrop
 }
 
 @Composable actual fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {

@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
@@ -79,6 +80,8 @@ internal class AndroidNativePlayer : NativePlayer {
     private val mutable = MutableStateFlow(PlayerSnapshot())
     override val state = mutable.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** The SurfaceView showing this player, for frame copies (glass and ambient glow). */
+    internal val surface = MutableStateFlow<SurfaceView?>(null)
     private var released = false
 
     init {
@@ -134,25 +137,7 @@ internal class AndroidNativePlayer : NativePlayer {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    var view by remember { mutableStateOf<PlayerView?>(null) }
-    var glow by remember { mutableStateOf<ImageBitmap?>(null) }
-    // A tiny copy of the SurfaceView a few times a second: its colours, stretched and blurred, fill the bars.
-    LaunchedEffect(ambient, view) {
-        val surface = view?.videoSurfaceView as? SurfaceView
-        if (!ambient || surface == null) { glow = null; return@LaunchedEffect }
-        val handler = Handler(Looper.getMainLooper())
-        while (isActive) {
-            if (surface.holder.surface?.isValid == true && surface.width > 0) {
-                val bitmap = Bitmap.createBitmap(32, 18, Bitmap.Config.ARGB_8888)
-                val copied = suspendCancellableCoroutine { done ->
-                    runCatching { PixelCopy.request(surface, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, handler) }
-                        .onFailure { if (done.isActive) done.resume(false) }
-                }
-                if (copied) glow = bitmap.asImageBitmap()
-            }
-            delay(250)
-        }
-    }
+    val glow = rememberFrameBackdrop(player, ambient)
     Box(modifier) {
         glow?.let { picture ->
             Image(picture, null, Modifier.fillMaxSize().blur(48.dp, BlurredEdgeTreatment.Rectangle), contentScale = ContentScale.FillBounds,
@@ -168,13 +153,37 @@ internal class AndroidNativePlayer : NativePlayer {
                 // Transparent around the fitted picture, so the glow underneath can show in the bars.
                 setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                view = this
+                backend.surface.value = videoSurfaceView as? SurfaceView
             } },
             update = { it.player = backend.engine },
-            onRelease = { it.player = null; view = null },
+            onRelease = { it.player = null; backend.surface.value = null },
             modifier = Modifier.fillMaxSize(),
         )
     }
+}
+
+/** PixelCopy of the SurfaceView into a 48×27 bitmap, four times a second. */
+@Composable actual fun rememberFrameBackdrop(player: NativePlayer, enabled: Boolean): ImageBitmap? {
+    val backend = player as AndroidNativePlayer
+    val surface by backend.surface.collectAsState()
+    var backdrop by remember(player) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(enabled, surface) {
+        val view = surface
+        if (!enabled || view == null) { backdrop = null; return@LaunchedEffect }
+        val handler = Handler(Looper.getMainLooper())
+        while (isActive) {
+            if (view.holder.surface?.isValid == true && view.width > 0) {
+                val bitmap = Bitmap.createBitmap(48, 27, Bitmap.Config.ARGB_8888)
+                val copied = suspendCancellableCoroutine { done ->
+                    runCatching { PixelCopy.request(view, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, handler) }
+                        .onFailure { if (done.isActive) done.resume(false) }
+                }
+                if (copied) backdrop = bitmap.asImageBitmap()
+            }
+            delay(250)
+        }
+    }
+    return backdrop
 }
 
 @Composable actual fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {

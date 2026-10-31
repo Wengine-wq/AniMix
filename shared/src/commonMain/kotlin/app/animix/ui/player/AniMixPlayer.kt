@@ -41,6 +41,18 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.animix.ui.theme.AniMixMotion
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import app.animix.core.Platform
 import app.animix.core.Settings
@@ -389,7 +401,11 @@ fun AniMixPlayer(
             val overlayVisible = controlsVisible || !state.playing || state.error != null
             // The skip pill sits above the time pill, and above the bottom row when it is shown.
             val skipLift = when { !overlayVisible -> 20.dp; playerHasBottomRow(fullscreen, maxHeight.value) -> 132.dp; else -> 84.dp }
-            VideoArea(player, state, zoomed = fill)
+            // Glass needs the frame only while the controls are on screen.
+            val backdrop = rememberUpdatedState(rememberFrameBackdrop(player, enabled = overlayVisible && !LocalUiPerformance.current.batterySaver))
+            val picture = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+            VideoArea(player, state, zoomed = fill, onPicture = { picture.value = it })
+            CompositionLocalProvider(LocalPlayerGlass provides remember(backdrop, picture) { PlayerGlass(backdrop, picture) }) {
             PlayerOverlay(
                 horizon = horizon,
                 visible = overlayVisible,
@@ -402,6 +418,8 @@ fun AniMixPlayer(
                 fullscreen = fullscreen,
                 hasNext = onNext != null,
                 nextLabel = nextLabel,
+                autoNext = settings.autoNextEpisode,
+                onAutoNext = { onAutoNextChoice(it); show() },
                 onTogglePlay = ::togglePlay,
                 onSeekBy = { seekBy(it); show() },
                 onSeekTo = { seekTo(it); show() },
@@ -415,6 +433,7 @@ fun AniMixPlayer(
                 onVolume = { player.setVolume(it); show() },
                 onNext = { nextCallback?.invoke() },
             )
+            }
             seekFeedback?.let { seconds ->
                 SeekBubble(seconds, Modifier.align(if (seconds < 0) BiasAlignment(-0.6f, 0f) else BiasAlignment(0.6f, 0f)))
             }
@@ -473,18 +492,45 @@ internal fun chapterAt(positionMs: Long, plan: SkipPlan): String? = when {
     else -> null
 }
 
-/** Solid dark backing of the middle buttons and pills, as in YouTube: the picture never shows through them. */
-private val ControlFill = Color(0xF2161618)
+/** What the glass capsules show through: the latest small frame copy and where the picture sits on screen. */
+private class PlayerGlass(val backdrop: State<ImageBitmap?>, val picture: MutableState<androidx.compose.ui.geometry.Rect>)
+private val LocalPlayerGlass = androidx.compose.runtime.staticCompositionLocalOf<PlayerGlass?> { null }
+
+/**
+ * Frosted glass over the video, as YouTube's capsules: the part of the frame behind the capsule,
+ * from a small frame copy stretched over the picture (so it is already soft), dimmed a little for
+ * white icons. Without a frame copy (battery saving, before the first frame) it is a translucent dark fill.
+ */
+@Composable
+private fun Modifier.frameGlass(shape: androidx.compose.ui.graphics.Shape): Modifier {
+    val glass = LocalPlayerGlass.current
+    var bounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    return this
+        .onGloballyPositioned { bounds = it.boundsInRoot() }
+        .clip(shape)
+        .drawBehind {
+            val image = glass?.backdrop?.value
+            val picture = glass?.picture?.value
+            if (image != null && picture != null && picture.width > 0f) {
+                drawImage(image, srcOffset = IntOffset.Zero, srcSize = IntSize(image.width, image.height),
+                    dstOffset = IntOffset((picture.left - bounds.left).roundToInt(), (picture.top - bounds.top).roundToInt()),
+                    dstSize = IntSize(picture.width.roundToInt(), picture.height.roundToInt()), filterQuality = FilterQuality.Low)
+                drawRect(Color.White.copy(alpha = 0.10f))
+                drawRect(Color.Black.copy(alpha = 0.30f))
+            } else drawRect(Color.Black.copy(alpha = 0.55f))
+        }
+        .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
+}
 
 /** Room for the bottom row of the player (actions and the next episode), as in YouTube's large player. */
 internal fun playerHasBottomRow(fullscreen: Boolean, heightDp: Float): Boolean = fullscreen || heightDp >= 300f
 
 /**
- * The layout of YouTube's current player. A light shade over the picture; the title large on the
- * top left and plain white icons on the top right; three round dark buttons in the middle; above a
- * thin full-width progress line, the time in a dark pill on the left and fullscreen on the right;
- * below it, when there is room, a dark panel of actions on the left and the next episode on the right.
- * Every control works; nothing is drawn for a feature this screen doesn't have.
+ * The layout of YouTube's current player. A light shade over the picture; the title large on the top
+ * left; on the top right the autoplay switch and plain white actions; three glass buttons in the
+ * middle; above a thin full-width progress line, the time in a glass capsule on the left and a plain
+ * fullscreen icon on the right; below it, when there is room, a glass capsule of actions on the left
+ * and the next episode on the right. Every control works; nothing is drawn for a missing feature.
  */
 @Composable
 private fun PlayerOverlay(
@@ -499,6 +545,8 @@ private fun PlayerOverlay(
     fullscreen: Boolean,
     hasNext: Boolean,
     nextLabel: String?,
+    autoNext: Boolean,
+    onAutoNext: (Boolean) -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBy: (Int) -> Unit,
     onSeekTo: (Long) -> Unit,
@@ -514,15 +562,15 @@ private fun PlayerOverlay(
 ) {
     val playingNow = state.playRequested || state.playing
     AnimatedVisibility(visible, enter = fadeIn(tween(180)), exit = fadeOut(tween(260)), modifier = Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x29000000))) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x26000000))) {
             val compact = maxWidth < 480.dp
             val bottomRow = playerHasBottomRow(fullscreen, maxHeight.value)
             Box(Modifier.fillMaxWidth().height(110.dp).align(Alignment.TopStart)
                 .background(Brush.verticalGradient(listOf(Color(0x80000000), Color.Transparent))))
-            Box(Modifier.fillMaxWidth().height(140.dp).align(Alignment.BottomStart)
+            Box(Modifier.fillMaxWidth().height(150.dp).align(Alignment.BottomStart)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x80000000)))))
 
-            // Top: the episode in large white type, its context in grey; plain icons on the right.
+            // Top: the episode in large white type with its context; autoplay and plain actions on the right.
             Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(start = if (fullscreen) 8.dp else 16.dp, end = 8.dp, top = 10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (fullscreen) OverlayIcon(AniMixIcons.Back, onFullscreen, description = "Назад")
@@ -530,64 +578,73 @@ private fun PlayerOverlay(
                     Txt(title, if (compact) AniMixTheme.type.subheading else AniMixTheme.type.heading, color = Color.White, maxLines = 1)
                     subtitle?.let { Txt(it, AniMixTheme.type.caption, color = Color.White.copy(alpha = 0.65f), maxLines = 1) }
                 }
+                if (hasNext) AutoplaySwitch(autoNext, onAutoNext)
                 if (horizon != null) CompositionLocalProvider(LocalCompactPlayer provides compact) { horizon() }
                 // «Без рамок» works in any size of the player and is named, not hidden behind the gear.
                 TopAction(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, "Без рамок", onFill, active = fill, showLabel = !compact)
-                if (onDownload != null) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
+                // A small player has no bottom row: «Скачать» joins the top actions there.
+                if (onDownload != null && !bottomRow) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
                 SettingsMenu(quality, qualities, onQuality)
             }
 
-            // Middle: back 10 s, play or pause, forward 10 s — round dark buttons.
+            // Middle: back 10 s, play or pause, forward 10 s — glass circles, the middle one larger.
             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-                val gap = if (compact) 28.dp else 44.dp
-                RoundButton(AniMixIcons.SeekBack, { onSeekBy(-10) }, if (compact) 48 else 56, "Назад на 10 секунд", label = "10")
+                val gap = if (compact) 24.dp else 40.dp
+                RoundButton(AniMixIcons.SeekBack, { onSeekBy(-10) }, if (compact) 44 else 52, "Назад на 10 секунд", label = "10")
                 Spacer(Modifier.width(gap))
                 val interaction = remember { MutableInteractionSource() }
                 Box(
-                    Modifier.size(if (compact) 64.dp else 76.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape)
-                        .background(ControlFill)
+                    Modifier.size(if (compact) 60.dp else 72.dp).pressScale(interaction, pressed = 0.92f).frameGlass(CircleShape)
                         .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(32.dp), color = Color.White)
+                    if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(30.dp), color = Color.White)
                     else Icon(if (playingNow) AniMixIcons.Pause else AniMixIcons.Play,
-                        if (playingNow) "Пауза" else "Смотреть", Modifier.size(if (compact) 28.dp else 34.dp), tint = Color.White)
+                        if (playingNow) "Пауза" else "Смотреть", Modifier.size(if (compact) 26.dp else 32.dp), tint = Color.White)
                 }
                 Spacer(Modifier.width(gap))
-                RoundButton(AniMixIcons.SeekForward, { onSeekBy(10) }, if (compact) 48 else 56, "Вперёд на 10 секунд", label = "10")
+                RoundButton(AniMixIcons.SeekForward, { onSeekBy(10) }, if (compact) 44 else 52, "Вперёд на 10 секунд", label = "10")
             }
 
             Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 12.dp).padding(bottom = if (bottomRow) 10.dp else 2.dp)) {
                 var scrub by remember { mutableStateOf<Long?>(null) }
-                // Above the line: where we are (and the chapter) on the left, fullscreen on the right.
+                // Above the line: the time (and chapter) in a capsule on the left, fullscreen on the right.
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     val position = scrub ?: state.positionMs
-                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(ControlFill).padding(horizontal = 12.dp, vertical = 6.dp),
+                    Row(Modifier.frameGlass(AniMixTheme.shapes.pill).padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Txt(timeLabel(position), AniMixTheme.type.label, color = Color.White, maxLines = 1)
-                        Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.65f), maxLines = 1)
-                        chapterAt(position, plan)?.let { Txt("  ·  $it", AniMixTheme.type.label, color = Color.White, maxLines = 1) }
+                        Txt(" / ${timeLabel(state.durationMs)}", AniMixTheme.type.label, color = Color.White.copy(alpha = 0.7f), maxLines = 1)
+                    }
+                    chapterAt(position, plan)?.let {
+                        Spacer(Modifier.width(6.dp))
+                        Txt(it, AniMixTheme.type.label, color = Color.White, maxLines = 1,
+                            modifier = Modifier.frameGlass(AniMixTheme.shapes.pill).padding(horizontal = 12.dp, vertical = 6.dp))
                     }
                     Spacer(Modifier.weight(1f))
-                    if (!bottomRow && hasNext) { RoundButton(AniMixIcons.Next, onNext, 40, "Следующая серия"); Spacer(Modifier.width(8.dp)) }
-                    RoundButton(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen, 40,
-                        if (fullscreen) "Выйти из полноэкранного режима" else "Во весь экран")
+                    if (!bottomRow && hasNext) OverlayIcon(AniMixIcons.Next, onNext, description = "Следующая серия")
+                    OverlayIcon(if (fullscreen) AniMixIcons.Collapse else AniMixIcons.Expand, onFullscreen,
+                        description = if (fullscreen) "Выйти из полноэкранного режима" else "Во весь экран")
                 }
                 SeekBar(state.positionMs, state.durationMs, plan,
                     playing = state.playing && !state.buffering && !state.seeking,
                     onScrub = { scrub = it; onScrub() }, onSeek = { scrub = null; onSeekTo(it) }, onCancel = { scrub = null })
-                // Below the line, with room: the actions panel and the next episode, like YouTube's large player.
+                // Below the line, with room: a capsule of actions and the next episode, like YouTube's large player.
                 if (bottomRow) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.clip(AniMixTheme.shapes.pill).background(ControlFill).padding(horizontal = 4.dp),
+                    Row(Modifier.frameGlass(AniMixTheme.shapes.pill).padding(start = 2.dp, end = if (isDesktop) 14.dp else 2.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
                             description = if (state.volume > 0) "Выключить звук" else "Включить звук")
                         if (isDesktop) VolumeBar(state.volume, onVolume)
                     }
+                    if (onDownload != null) {
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.frameGlass(CircleShape)) { OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию") }
+                    }
                     Spacer(Modifier.weight(1f))
                     if (hasNext) {
                         val interaction = remember { MutableInteractionSource() }
-                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill).background(ControlFill)
+                        Row(Modifier.pressScale(interaction).frameGlass(AniMixTheme.shapes.pill)
                             .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onNext)
                             .heightIn(min = 44.dp).padding(start = 16.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(nextLabel ?: "Следующая серия", AniMixTheme.type.label, color = Color.White, maxLines = 1)
@@ -601,12 +658,32 @@ private fun PlayerOverlay(
     }
 }
 
-/** A round dark button over the picture, as YouTube's middle and fullscreen controls. */
+/**
+ * YouTube's autoplay switch: a small glass track with a white knob that shows play when the next
+ * episode starts by itself and pause when it doesn't. The 44 dp target is larger than the track.
+ */
+@Composable
+private fun AutoplaySwitch(on: Boolean, onChange: (Boolean) -> Unit) {
+    val colors = AniMixTheme.colors
+    val knob by app.animix.ui.theme.animateMotionFloatAsState(if (on) 1f else 0f, tween(AniMixMotion.Fast))
+    Box(Modifier.size(width = 52.dp, height = 44.dp)
+        .clickable(role = androidx.compose.ui.semantics.Role.Switch, onClickLabel = "Автопереход") { onChange(!on) }
+        .semantics { contentDescription = if (on) "Автопереход включён" else "Автопереход выключен" },
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.size(width = 36.dp, height = 16.dp).clip(AniMixTheme.shapes.pill)
+            .background(if (on) colors.accent.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.3f)))
+        Box(Modifier.offset(x = (-10 + 20 * knob).dp).size(22.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+            Icon(if (on) AniMixIcons.Play else AniMixIcons.Pause, null, Modifier.size(11.dp), tint = Color(0xFF161618))
+        }
+    }
+}
+
+/** A round glass button over the picture, as YouTube's middle controls. */
 @Composable
 private fun RoundButton(icon: ImageVector, onClick: () -> Unit, size: Int, description: String, label: String? = null) {
     val interaction = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape).background(ControlFill)
+        Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).frameGlass(CircleShape)
             .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -721,21 +798,28 @@ private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing:
     }
 }
 
+/**
+ * Volume as a thin line with a knob, inset by the knob's radius on both ends so it sits evenly
+ * inside its capsule: at 0 and 100% the knob touches the line's ends, never the capsule's edge.
+ */
 @Composable
 private fun VolumeBar(volume: Float, onVolume: (Float) -> Unit) {
+    val knob = 6.dp
+    fun level(x: Float, width: Float, inset: Float) = ((x - inset) / (width - 2 * inset)).coerceIn(0f, 1f)
     Canvas(
-        Modifier.width(76.dp).height(26.dp).padding(end = 4.dp)
-            .pointerInput(Unit) { detectTapGestures { onVolume((it.x / size.width).coerceIn(0f, 1f)) } }
-            .pointerInput(Unit) { detectHorizontalDragGestures { change, _ -> onVolume((change.position.x / size.width).coerceIn(0f, 1f)) } },
+        Modifier.width(88.dp).height(32.dp)
+            .pointerInput(Unit) { detectTapGestures { onVolume(level(it.x, size.width.toFloat(), knob.toPx())) } }
+            .pointerInput(Unit) { detectHorizontalDragGestures { change, _ -> onVolume(level(change.position.x, size.width.toFloat(), knob.toPx())) } },
     ) {
+        val inset = knob.toPx()
         val track = 3.dp.toPx()
         val y = size.height / 2
-        drawRoundRect(Color.White.copy(alpha = 0.28f), Offset(0f, y - track / 2), Size(size.width, track), CornerRadius(track / 2))
-        drawRoundRect(Color.White, Offset(0f, y - track / 2), Size(size.width * volume, track), CornerRadius(track / 2))
-        drawCircle(Color.White, 5.dp.toPx(), Offset(size.width * volume, y))
+        val length = size.width - 2 * inset
+        drawRoundRect(Color.White.copy(alpha = 0.3f), Offset(inset, y - track / 2), Size(length, track), CornerRadius(track / 2))
+        drawRoundRect(Color.White, Offset(inset, y - track / 2), Size(length * volume.coerceIn(0f, 1f), track), CornerRadius(track / 2))
+        drawCircle(Color.White, inset, Offset(inset + length * volume.coerceIn(0f, 1f), y))
     }
 }
-
 /** A plain white icon button over the picture: 44 dp to tap, no backing. */
 @Composable
 private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 44, description: String? = null) {
@@ -946,11 +1030,20 @@ private const val MaxFillZoom = 1.3f
 
 /** The native surface, fitted, or zoomed to fill in borderless mode. */
 @Composable
-private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boolean) {
-    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boolean, onPicture: (androidx.compose.ui.geometry.Rect) -> Unit = {}) {
+    var area by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { area = it.boundsInRoot() }, contentAlignment = Alignment.Center) {
         val videoAspect = if (state.videoWidth > 0 && state.videoHeight > 0) state.videoWidth.toFloat() / state.videoHeight else 0f
         val containerAspect = if (maxHeight.value > 0) maxWidth.value / maxHeight.value else 0f
         val zoom = if (zoomed) fillZoom(containerAspect, videoAspect) else 1f
+        // Where the picture is drawn on screen (fitted, or zoomed past the edges), for the glass capsules.
+        LaunchedEffect(area, videoAspect, zoom) {
+            if (area.width <= 0f || videoAspect <= 0f) return@LaunchedEffect
+            val fitWidth = if (area.width / area.height > videoAspect) area.height * videoAspect else area.width
+            val width = fitWidth * zoom
+            val height = width / videoAspect
+            onPicture(androidx.compose.ui.geometry.Rect(area.center.x - width / 2, area.center.y - height / 2, area.center.x + width / 2, area.center.y + height / 2))
+        }
         if (zoom > 1.001f) {
             val (width, height) = if (containerAspect > videoAspect) maxHeight * videoAspect to maxHeight else maxWidth to maxWidth / videoAspect
             NativeVideoSurface(player, Modifier.requiredSize(width * zoom, height * zoom))
