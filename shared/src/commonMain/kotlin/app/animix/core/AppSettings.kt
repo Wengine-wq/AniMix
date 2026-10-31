@@ -40,6 +40,8 @@ data class Settings(
     val preferredQuality: String? = null,
     /** Fullscreen video zoomed to fill the screen, cropping at most a little of the edges. */
     val fillScreen: Boolean = false,
+    /** The bars around a picture of another shape glow with its colours (YouTube's ambient mode). */
+    val ambientGlow: Boolean = true,
     /** Quality for downloads; asked on the first download, changeable in settings. */
     val downloadQuality: String? = null,
     /** «Экспериментальные функции»: the AniPulse weekly digest, off until the viewer opts in. */

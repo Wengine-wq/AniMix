@@ -123,6 +123,8 @@ fun AniMixPlayer(
     onQualityChange: (String) -> Unit = {},
     onAutoNextChoice: (Boolean) -> Unit = {},
     onFillScreenChange: (Boolean) -> Unit = {},
+    /** The viewer switched the glow around letterboxed pictures on or off in the player's gear. */
+    onAmbientGlowChange: (Boolean) -> Unit = {},
     onPlayback: (PlaybackUpdate) -> Unit = {},
     /** An opening or ending was skipped; the argument is the seconds saved. */
     onSkip: (Int) -> Unit = {},
@@ -404,7 +406,7 @@ fun AniMixPlayer(
             // Glass needs the frame only while the controls are on screen.
             val backdrop = rememberUpdatedState(rememberFrameBackdrop(player, enabled = overlayVisible && !LocalUiPerformance.current.batterySaver))
             val picture = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
-            VideoArea(player, state, zoomed = fill, onPicture = { picture.value = it })
+            VideoArea(player, state, zoomed = fill, glow = settings.ambientGlow, onPicture = { picture.value = it })
             CompositionLocalProvider(LocalPlayerGlass provides remember(backdrop, picture) { PlayerGlass(backdrop, picture) }) {
             PlayerOverlay(
                 horizon = horizon,
@@ -420,6 +422,8 @@ fun AniMixPlayer(
                 nextLabel = nextLabel,
                 autoNext = settings.autoNextEpisode,
                 onAutoNext = { onAutoNextChoice(it); show() },
+                ambientGlow = settings.ambientGlow,
+                onAmbientGlow = { onAmbientGlowChange(it); show() },
                 onTogglePlay = ::togglePlay,
                 onSeekBy = { seekBy(it); show() },
                 onSeekTo = { seekTo(it); show() },
@@ -547,6 +551,8 @@ private fun PlayerOverlay(
     nextLabel: String?,
     autoNext: Boolean,
     onAutoNext: (Boolean) -> Unit,
+    ambientGlow: Boolean,
+    onAmbientGlow: (Boolean) -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBy: (Int) -> Unit,
     onSeekTo: (Long) -> Unit,
@@ -584,7 +590,7 @@ private fun PlayerOverlay(
                 TopAction(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, "Без рамок", onFill, active = fill, showLabel = !compact)
                 // A small player has no bottom row: «Скачать» joins the top actions there.
                 if (onDownload != null && !bottomRow) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
-                SettingsMenu(quality, qualities, onQuality)
+                SettingsMenu(quality, qualities, onQuality, glow = ambientGlow, onGlow = onAmbientGlow)
             }
 
             // Middle: back 10 s, play or pause, forward 10 s — glass circles, the middle one larger.
@@ -872,11 +878,11 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
 }
 
 /**
- * The gear: quality, with a short HD mark on the icon like YouTube's. «Без рамок» has its own named
- * action in the top bar, so the menu holds only the choice of quality.
+ * The gear: quality (with a short HD mark on the icon like YouTube's) and the glow around letterboxed
+ * pictures. «Без рамок» has its own named action in the top bar.
  */
 @Composable
-private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit) {
+private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, glow: Boolean, onGlow: (Boolean) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val colors = AniMixTheme.colors
     Box {
@@ -898,6 +904,13 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                         Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) colors.accent else Color.White, modifier = Modifier.weight(1f))
                         if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.accent)
                     }
+                }
+                // The glow around letterboxed pictures, for those who prefer plain black bars.
+                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onGlow(!glow) }.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Txt("Свечение рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
+                    Txt(if (glow) "Вкл." else "Выкл.", AniMixTheme.type.label, color = if (glow) colors.accent else Color.White.copy(alpha = 0.6f))
                 }
             }
         }
@@ -1030,7 +1043,7 @@ private const val MaxFillZoom = 1.3f
 
 /** The native surface, fitted, or zoomed to fill in borderless mode. */
 @Composable
-private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boolean, onPicture: (androidx.compose.ui.geometry.Rect) -> Unit = {}) {
+private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boolean, glow: Boolean = true, onPicture: (androidx.compose.ui.geometry.Rect) -> Unit = {}) {
     var area by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { area = it.boundsInRoot() }, contentAlignment = Alignment.Center) {
         val videoAspect = if (state.videoWidth > 0 && state.videoHeight > 0) state.videoWidth.toFloat() / state.videoHeight else 0f
@@ -1050,7 +1063,7 @@ private fun VideoArea(player: NativePlayer, state: PlayerSnapshot, zoomed: Boole
         } else {
             // Ambient glow only where there are bars to fill, and never in battery saving.
             val bars = videoAspect > 0f && containerAspect > 0f && abs(containerAspect - videoAspect) / videoAspect > 0.02f
-            NativeVideoSurface(player, Modifier.fillMaxSize(), ambient = bars && !LocalUiPerformance.current.batterySaver)
+            NativeVideoSurface(player, Modifier.fillMaxSize(), ambient = glow && bars && !LocalUiPerformance.current.batterySaver)
         }
     }
 }

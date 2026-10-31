@@ -309,6 +309,7 @@ private fun PlayerArea(
                     if (yes) graph.achievements.settingEnabled("autoNextEpisode")
                 },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
+                    onAmbientGlowChange = { value -> graph.settings.update { it.copy(ambientGlow = value) } },
                 onPlayback = { update -> graph.library.recordPlayback(anime, episode.number, update.credit,
                     update.durationMs, update.opening, update.ending, update.reachedEnd,
                     app.animix.data.library.PlaybackContext(dubbing.studio, offline = false, platform = app.animix.core.Platform.name)) },

@@ -198,7 +198,8 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
         }
         Spacer(Modifier.height(10.dp))
-        Txt(anime.title, type.label, maxLines = 2, minLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
+        // The year and episodes follow the title directly; rows of cards still line up at the posters.
+        Txt(anime.title, type.label, maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
         Spacer(Modifier.height(2.dp))
         Txt(anime.metaLine(), type.micro, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
     }

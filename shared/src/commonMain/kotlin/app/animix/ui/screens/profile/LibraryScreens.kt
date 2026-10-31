@@ -58,7 +58,9 @@ fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVa
     // null stands for «Избранное».
     var selectedName by rememberSaveable { mutableStateOf<String?>(null) }
     var chosen by rememberSaveable { mutableStateOf(false) }
-    val status: ListStatus? = if (chosen) ListStatus.entries.firstOrNull { it.name == selectedName } else categories.first()
+    // Until a chip is tapped, open the first list that has something in it, not an empty «Избранное».
+    val firstFilled = categories.firstOrNull { item -> if (item == null) library.favorites.isNotEmpty() else library.entries.values.any { it.status == item } }
+    val status: ListStatus? = if (chosen) ListStatus.entries.firstOrNull { it.name == selectedName } else firstFilled ?: categories.first()
     val entries = if (status == null) library.favorites else library.inStatus(status)
     LibraryGrid(
         title = "Списки",

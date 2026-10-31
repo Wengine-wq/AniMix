@@ -409,6 +409,7 @@ private fun FlowSessionScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                     onQualityChange = { quality -> graph.settings.update { it.copy(preferredQuality = quality) } },
                     fullscreen = fullscreen, onFullscreenChange = { fullscreen = it },
                     onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
+                    onAmbientGlowChange = { value -> graph.settings.update { it.copy(ambientGlow = value) } },
                     maxStartQuality = graph.connection.playbackCap(),
                     onApproachingEnd = {
                         val next = state.queue.getOrNull(state.index + 1)

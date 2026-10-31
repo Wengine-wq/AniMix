@@ -118,7 +118,11 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 Divider()
                 ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
                 Divider()
-                ToggleRow("Без рамок на весь экран", settings.fillScreen, { v -> graph.settings.update { it.copy(fillScreen = v) } }, AniMixIcons.Fill, subtitle = "Заполняет экран, обрезая лишь узкие полосы по краям")
+                ToggleRow("Без рамок", settings.fillScreen, { v -> graph.settings.update { it.copy(fillScreen = v) } }, AniMixIcons.Fill, subtitle = "Заполняет плеер, обрезая лишь узкие полосы по краям")
+                Divider()
+                ToggleRow("Свечение рамок", settings.ambientGlow, { v -> graph.settings.update { it.copy(ambientGlow = v) } }, AniMixIcons.Sun,
+                    subtitle = if (settings.batterySaver) "Отключено режимом экономии батареи" else "Поля вокруг кадра другой формы светятся цветами сцены",
+                    enabled = !settings.batterySaver)
             }
             SettingsCategory.Lists -> Panel {
                 ToggleRow("Избранное в конце списков", settings.favoritesLast, { v -> graph.settings.update { it.copy(favoritesLast = v) } }, AniMixIcons.Heart, subtitle = "По умолчанию «Избранное» идёт первым")

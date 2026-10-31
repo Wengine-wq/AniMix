@@ -58,7 +58,7 @@ fun HistoryScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
                 top = contentPadding.calculateTopPadding() + 12.dp,
                 bottom = contentPadding.calculateBottomPadding() + 24.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
                 Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -77,8 +77,15 @@ fun HistoryScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
                     )
                 }
             } else {
-                items(entries, key = { it.anime.key }) { entry ->
-                    HistoryRow(entry) { navigator.push(Route.Watch(entry.anime)) }
+                // Grouped by day under one heading each, so a row no longer repeats its date.
+                val today = app.animix.core.localDayIndex()
+                entries.groupBy { app.animix.core.localDayIndex(it.updatedAt) }.forEach { (day, group) ->
+                    item(key = "day:$day") {
+                        Txt(dayHeading(day, today), AniMixTheme.type.heading, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp))
+                    }
+                    items(group, key = { it.anime.key }) { entry ->
+                        HistoryRow(entry) { navigator.push(Route.Watch(entry.anime)) }
+                    }
                 }
             }
         }
@@ -101,9 +108,20 @@ private fun HistoryRow(entry: LibraryEntry, onClick: () -> Unit) {
                 Txt(entry.anime.title, AniMixTheme.type.bodyStrong, maxLines = 2)
                 Spacer(Modifier.height(2.dp))
                 Txt(line, AniMixTheme.type.caption, maxLines = 1)
-                Txt(formatDate(entry.updatedAt / 1000), AniMixTheme.type.micro)
+                Txt("в ${app.animix.core.localTimeLabel(entry.updatedAt)}", AniMixTheme.type.micro)
             }
         }
+    }
+}
+
+/** «Сегодня», «Вчера», «28 октября» or «28 октября 2025» for another year. */
+internal fun dayHeading(day: Long, today: Long): String {
+    val date = app.animix.data.library.dayToDate(day)
+    val months = listOf("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
+    return when (day) {
+        today -> "Сегодня"
+        today - 1 -> "Вчера"
+        else -> "${date.day} ${months[date.month - 1]}" + if (date.year != app.animix.data.library.dayToDate(today).year) " ${date.year}" else ""
     }
 }
 
