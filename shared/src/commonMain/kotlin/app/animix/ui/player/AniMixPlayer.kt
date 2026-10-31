@@ -578,8 +578,20 @@ private fun PlayerOverlay(
                         OverlayIcon(if (state.volume > 0) AniMixIcons.Volume else AniMixIcons.Muted, onMute,
                             description = if (state.volume > 0) "Выключить звук" else "Включить звук")
                         if (isDesktop) VolumeBar(state.volume, onVolume)
-                        if (fullscreen) OverlayIcon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, onFill,
-                            description = if (fill) "С рамками" else "Без рамок")
+                    }
+                    // «Без рамок» in words, not a lone icon: it is the mode people look for on a wide phone.
+                    if (fullscreen) {
+                        Spacer(Modifier.width(8.dp))
+                        val interaction = remember { MutableInteractionSource() }
+                        Row(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill)
+                            .background(if (fill) AniMixTheme.colors.accent.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.5f))
+                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onClick = onFill)
+                            .heightIn(min = 44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val tint = if (fill) AniMixTheme.colors.onAccent else Color.White
+                            Icon(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, null, Modifier.size(18.dp), tint = tint)
+                            Spacer(Modifier.width(8.dp))
+                            Txt("Без рамок", AniMixTheme.type.label, color = tint, maxLines = 1)
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     if (hasNext) {
