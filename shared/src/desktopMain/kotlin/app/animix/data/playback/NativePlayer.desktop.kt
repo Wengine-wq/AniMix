@@ -108,31 +108,43 @@ internal class FrameSink {
     }
 
     private var glow: Image? = null
+    private var glowPrevious: Image? = null
     private var glowAt = 0L
 
     /**
-     * UI thread: a tiny copy of the latest frame for the ambient glow, refreshed a few times a second.
-     * Stretched and blurred it gives the colours of the scene without costing a full-size blur per frame.
+     * UI thread: a tiny, already blurred copy of the latest frame for the ambient glow and the
+     * player's glass, refreshed about twice a second. The blur runs on 48×27 pixels, never on the
+     * full frame, and drawing it stretched costs nothing per frame.
      */
     fun glow(): Image? {
         val source = image ?: return glow
         val now = System.nanoTime()
-        if (glow != null && now - glowAt < 180_000_000L) return glow
+        if (glow != null && now - glowAt < GLOW_REFRESH_NANOS) return glow
         glowAt = now
-        val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(GLOW_WIDTH, GLOW_HEIGHT)
-        surface.canvas.drawImageRect(source, Rect.makeWH(source.width.toFloat(), source.height.toFloat()),
+        val small = org.jetbrains.skia.Surface.makeRasterN32Premul(GLOW_WIDTH, GLOW_HEIGHT)
+        small.canvas.drawImageRect(source, Rect.makeWH(source.width.toFloat(), source.height.toFloat()),
             Rect.makeWH(GLOW_WIDTH.toFloat(), GLOW_HEIGHT.toFloat()), videoSampling, null, true)
-        glow?.close()
-        glow = surface.makeImageSnapshot()
-        surface.close()
+        val sharp = small.makeImageSnapshot()
+        val soft = org.jetbrains.skia.Surface.makeRasterN32Premul(GLOW_WIDTH, GLOW_HEIGHT)
+        soft.canvas.drawImage(sharp, 0f, 0f, glowBlur)
+        sharp.close(); small.close()
+        glowPrevious?.close()
+        glowPrevious = glow
+        glow = soft.makeImageSnapshot()
+        soft.close()
         return glow
     }
 
+    /** The glow before the last refresh and how far (0..1) the new one has faded in over it. */
+    fun glowFade(): Pair<Image?, Float> =
+        glowPrevious to ((System.nanoTime() - glowAt).toFloat() / GLOW_REFRESH_NANOS).coerceIn(0f, 1f)
     fun clear() = synchronized(lock) {
         image?.close()
         image = null
         glow?.close()
         glow = null
+        glowPrevious?.close()
+        glowPrevious = null
         fresh = false
     }
 }
@@ -265,9 +277,12 @@ private val videoSampling = FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE)
 private const val GLOW_WIDTH = 48
 private const val GLOW_HEIGHT = 27
 // Lazy: loading this file (e.g. for the audio player in tests) must not touch Skia's native library.
-private val glowPaint by lazy {
-    org.jetbrains.skia.Paint().apply { imageFilter = org.jetbrains.skia.ImageFilter.makeBlur(80f, 80f, org.jetbrains.skia.FilterTileMode.CLAMP) }
+private const val GLOW_REFRESH_NANOS = 600_000_000L
+// Blur on the 48×27 copy: a couple of its pixels is a wide, soft glow once stretched over the bars.
+private val glowBlur by lazy {
+    org.jetbrains.skia.Paint().apply { imageFilter = org.jetbrains.skia.ImageFilter.makeBlur(2.5f, 2.5f, org.jetbrains.skia.FilterTileMode.CLAMP) }
 }
+private val glowFadePaint by lazy { org.jetbrains.skia.Paint() }
 private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x59000000 } }
 
 @Composable actual fun NativeVideoSurface(player: NativePlayer, modifier: Modifier, ambient: Boolean) {
@@ -283,8 +298,12 @@ private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x590
         if (ambient && (size.width - width > 8f || size.height - height > 8f)) sink.glow()?.let { glow ->
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
-                native.drawImageRect(glow, Rect.makeWH(glow.width.toFloat(), glow.height.toFloat()),
-                    Rect.makeXYWH(-size.width * 0.1f, -size.height * 0.1f, size.width * 1.2f, size.height * 1.2f), videoSampling, glowPaint, true)
+                val target = Rect.makeXYWH(-size.width * 0.1f, -size.height * 0.1f, size.width * 1.2f, size.height * 1.2f)
+                // The new glow fades in over the previous one, so scene changes never flash in the bars.
+                val (previous, fade) = sink.glowFade()
+                if (previous != null && fade < 1f) native.drawImageRect(previous, Rect.makeWH(previous.width.toFloat(), previous.height.toFloat()), target, videoSampling, null, true)
+                glowFadePaint.alpha = if (previous != null) (fade * 255).toInt() else 255
+                native.drawImageRect(glow, Rect.makeWH(glow.width.toFloat(), glow.height.toFloat()), target, videoSampling, glowFadePaint, true)
                 native.drawRect(Rect.makeWH(size.width, size.height), glowScrim)
             }
         }
@@ -310,7 +329,7 @@ private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x590
             // current() refreshes the full frame on the UI thread; glow() then scales it down.
             sink.current()
             sink.glow()?.let { backdrop = org.jetbrains.skia.Bitmap.makeFromImage(it).asComposeImageBitmap() }
-            delay(200)
+            delay(600)
         }
     }
     return backdrop

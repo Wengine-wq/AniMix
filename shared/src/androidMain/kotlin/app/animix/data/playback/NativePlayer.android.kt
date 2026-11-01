@@ -139,9 +139,11 @@ internal class AndroidNativePlayer : NativePlayer {
     }
     val glow = rememberFrameBackdrop(player, ambient)
     Box(modifier) {
-        glow?.let { picture ->
-            Image(picture, null, Modifier.fillMaxSize().blur(48.dp, BlurredEdgeTreatment.Rectangle), contentScale = ContentScale.FillBounds,
-                filterQuality = FilterQuality.Low)
+        // The copy is already blurred; a new one fades in over the last, so the bars change smoothly.
+        if (glow != null) {
+            androidx.compose.animation.Crossfade(glow, animationSpec = androidx.compose.animation.core.tween(600), label = "glow") { picture ->
+                if (picture != null) Image(picture, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds, filterQuality = FilterQuality.Low)
+            }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
         }
         AndroidView(
@@ -162,7 +164,7 @@ internal class AndroidNativePlayer : NativePlayer {
     }
 }
 
-/** PixelCopy of the SurfaceView into a 48×27 bitmap, four times a second. */
+/** PixelCopy of the SurfaceView into a 48×27 bitmap, blurred on the CPU, about twice a second. */
 @Composable actual fun rememberFrameBackdrop(player: NativePlayer, enabled: Boolean): ImageBitmap? {
     val backend = player as AndroidNativePlayer
     val surface by backend.surface.collectAsState()
@@ -178,12 +180,33 @@ internal class AndroidNativePlayer : NativePlayer {
                     runCatching { PixelCopy.request(view, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, handler) }
                         .onFailure { if (done.isActive) done.resume(false) }
                 }
-                if (copied) backdrop = bitmap.asImageBitmap()
+                if (copied) backdrop = softened(bitmap).asImageBitmap()
             }
-            delay(250)
+            delay(600)
         }
     }
     return backdrop
+}
+
+/** Two passes of a 3×3 box blur on the 48×27 copy: a soft glow once stretched, without RenderEffect. */
+private fun softened(bitmap: Bitmap): Bitmap {
+    val w = bitmap.width; val h = bitmap.height
+    var pixels = IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h) }
+    repeat(2) {
+        val out = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            var r = 0; var g = 0; var b = 0; var n = 0
+            for (dy in -1..1) for (dx in -1..1) {
+                val px = (x + dx).coerceIn(0, w - 1); val py = (y + dy).coerceIn(0, h - 1)
+                val c = pixels[py * w + px]
+                r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF; n++
+            }
+            out[y * w + x] = (0xFF shl 24) or ((r / n) shl 16) or ((g / n) shl 8) or (b / n)
+        }
+        pixels = out
+    }
+    bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
+    return bitmap
 }
 
 @Composable actual fun PlayerFullscreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {

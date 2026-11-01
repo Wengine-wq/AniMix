@@ -41,8 +41,9 @@ data class EpisodeSkips(
 data class SkipPlan(val opening: SkipRange?, val ending: SkipRange?)
 
 /**
- * Opening and ending times. YummyAnime times come with the episode and win;
- * AniSkip (by MAL id, which Shikimori shares) fills in what they lack, for old and new titles.
+ * Opening and ending times. YummyAnime times come with the episode and win; AniSkip (by MAL id,
+ * which Shikimori shares) fills in what they lack; an episode nobody timed borrows the median of its
+ * neighbours' times on a release of the same length.
  * Every answer is stored on disk, so downloaded episodes can skip without a network.
  */
 class SkipTimes(
@@ -63,11 +64,31 @@ class SkipTimes(
     suspend fun plan(anime: Anime, episode: Episode, durationSeconds: Double?): SkipPlan {
         val known = SkipPlan(episode.opening, episode.ending)
         if (known.opening != null && known.ending != null) return known
-        val stored = fetch(anime, episode.number) ?: return known
+        val stored = fetch(anime, episode.number)
+        val opening = known.opening ?: stored?.openings?.bestFor(durationSeconds)
+        val ending = known.ending ?: stored?.endings?.bestFor(durationSeconds)
+        if (opening != null && ending != null) return SkipPlan(opening, ending)
+        // Not timed for this episode: borrow from the same title's neighbours, which nearly always
+        // share the opening's place and the ending's distance from the end.
+        val neighbours = neighbours(anime, episode.number)
         return SkipPlan(
-            opening = known.opening ?: stored.openings.bestFor(durationSeconds),
-            ending = known.ending ?: stored.endings.bestFor(durationSeconds),
+            opening = opening ?: inferOpening(neighbours, durationSeconds),
+            ending = ending ?: inferEnding(neighbours, durationSeconds),
         )
+    }
+
+    /**
+     * Skips of nearby episodes of [anime]: the ones already on the device, and up to two neighbours
+     * on each side fetched now (AniSkip often has a few episodes of a season timed, not all).
+     */
+    private suspend fun neighbours(anime: Anime, number: String): List<EpisodeSkips> {
+        val episode = number.toDoubleOrNull()?.takeIf { it >= 1 && it == floor(it) }?.toInt() ?: return emptyList()
+        if (!anime.hasMalId) return emptyList()
+        val near = listOf(episode - 1, episode + 1, episode - 2, episode + 2).filter { it >= 1 }
+        val fetched = near.mapNotNull { runCatching { fetch(anime, it.toString()) }.getOrElse { e -> if (e is CancellationException) throw e; null } }
+        val prefix = "${anime.id}:"
+        val known = all().filterKeys { it.startsWith(prefix) && it != "$prefix$episode" }.values
+        return (fetched + known).distinct()
     }
 
     /** Fetches and stores skips ahead of time, e.g. for episodes queued for download. */
@@ -141,6 +162,31 @@ class SkipTimes(
         const val MISSING_TTL = 24L * 60 * 60 * 1000
         val serializer = MapSerializer(String.serializer(), EpisodeSkips.serializer())
     }
+}
+
+/**
+ * An opening placed like the neighbours' openings: the median start and length of those timed on a
+ * release of about the same length (±15 s). At least two agreeing episodes are needed.
+ */
+internal fun inferOpening(neighbours: List<EpisodeSkips>, durationSeconds: Double?): SkipRange? {
+    val near = neighbours.flatMap { it.openings }.filter { durationSeconds == null || it.episodeLength == null || abs(it.episodeLength - durationSeconds) <= 15 }
+    if (near.size < 2) return null
+    val start = near.map { it.start }.sorted()[near.size / 2]
+    val length = near.map { it.end - it.start }.sorted()[near.size / 2]
+    if (length !in 30.0..150.0) return null
+    return SkipRange(floor(start).toInt(), ceil(length).toInt())
+}
+
+/** An ending at the neighbours' median distance from the end of the episode, for a known length only. */
+internal fun inferEnding(neighbours: List<EpisodeSkips>, durationSeconds: Double?): SkipRange? {
+    val duration = durationSeconds?.takeIf { it > 0 } ?: return null
+    val near = neighbours.flatMap { it.endings }.filter { it.episodeLength != null && abs(it.episodeLength - duration) <= 15 }
+    if (near.size < 2) return null
+    val fromEnd = near.map { it.episodeLength!! - it.start }.sorted()[near.size / 2]
+    val length = near.map { it.end - it.start }.sorted()[near.size / 2]
+    if (length !in 30.0..150.0 || fromEnd < length) return null
+    val start = floor(duration - fromEnd).toInt()
+    return SkipRange(start, minOf(ceil(length).toInt(), (duration - start).toInt()))
 }
 
 /** Shikimori ids are MyAnimeList ids, which AniSkip is keyed by. */

@@ -344,6 +344,10 @@ fun AniMixPlayer(
     val activeSkip = when {
         skipTarget(state.positionMs, plan.opening) != null -> "Пропустить опенинг" to skipTarget(state.positionMs, plan.opening)!!
         skipTarget(state.positionMs, plan.ending) != null -> "Пропустить эндинг" to skipTarget(state.positionMs, plan.ending)!!
+        // No timing for this release: while the controls are up in the first minutes, offer the usual
+        // length of an opening, as streaming players do. Never automatic, never once the controls hide.
+        plan.opening == null && controlsVisible && state.durationMs >= 600_000 && state.positionMs in 3_000 until 240_000 ->
+            "Пропустить 1:30" to (state.positionMs + 90_000)
         else -> null
     }
 
@@ -502,8 +506,8 @@ private val LocalPlayerGlass = androidx.compose.runtime.staticCompositionLocalOf
 
 /**
  * Frosted glass over the video, as YouTube's capsules: the part of the frame behind the capsule,
- * from a small frame copy stretched over the picture (so it is already soft), dimmed a little for
- * white icons. Without a frame copy (battery saving, before the first frame) it is a translucent dark fill.
+ * from a small blurred frame copy stretched over the picture, dimmed so the glass reads as dark and
+ * white icons stay crisp. Without a frame copy (battery saving, before the first frame) it is a translucent dark fill.
  */
 @Composable
 private fun Modifier.frameGlass(shape: androidx.compose.ui.graphics.Shape): Modifier {
@@ -519,9 +523,9 @@ private fun Modifier.frameGlass(shape: androidx.compose.ui.graphics.Shape): Modi
                 drawImage(image, srcOffset = IntOffset.Zero, srcSize = IntSize(image.width, image.height),
                     dstOffset = IntOffset((picture.left - bounds.left).roundToInt(), (picture.top - bounds.top).roundToInt()),
                     dstSize = IntSize(picture.width.roundToInt(), picture.height.roundToInt()), filterQuality = FilterQuality.Low)
-                drawRect(Color.White.copy(alpha = 0.10f))
-                drawRect(Color.Black.copy(alpha = 0.30f))
-            } else drawRect(Color.Black.copy(alpha = 0.55f))
+                // Mostly dark: the scene only tints the glass, so icons stay crisp over any frame.
+                drawRect(Color.Black.copy(alpha = 0.58f))
+            } else drawRect(Color.Black.copy(alpha = 0.66f))
         }
         .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
 }
@@ -775,7 +779,9 @@ private fun SeekBar(positionMs: Long, durationMs: Long, plan: SkipPlan, playing:
                 val start = bounds[i] * size.width + if (i > 0) gap / 2 else 0f
                 val end = bounds[i + 1] * size.width - if (i < bounds.size - 2) gap / 2 else 0f
                 if (end <= start) continue
-                drawRoundRect(Color.White.copy(alpha = 0.28f), Offset(start, y - track / 2), Size(end - start, track), radius)
+                // Opening and ending stand out as lighter segments of the line, so a skip is visible before it happens.
+                val middle = ((bounds[i] + bounds[i + 1]) / 2 * durationMs).toLong()
+                drawRoundRect(Color.White.copy(alpha = if (chapterAt(middle, plan) != null) 0.55f else 0.28f), Offset(start, y - track / 2), Size(end - start, track), radius)
                 hover?.let { h ->
                     val to = minOf(end, h * size.width)
                     if (to > start) drawRoundRect(Color.White.copy(alpha = 0.22f), Offset(start, y - track / 2), Size(to - start, track), radius)
