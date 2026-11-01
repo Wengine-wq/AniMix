@@ -74,14 +74,13 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
         // The person stays on the page itself; their numbers sit on frosted plates over the soft
         // backdrop of their own banner, one plate per subject.
         GlassPlate {
-            Row(Modifier.fillMaxWidth()) {
-                ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
-                ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
-                ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
-                // Friends live with the other numbers of the profile; a tap opens the list.
-                ProfileStat(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей",
-                    Modifier.weight(1f).clickable { navigator.push(Route.Friends) })
-            }
+            // Friends live with the other numbers of the profile; a tap opens the list.
+            ProfileStats(listOf(
+                StatItem(profileHours(stats.totalMinutes), "часов в AniMix"),
+                StatItem(stats.episodes.toString(), "серий"),
+                StatItem(stats.completed.toString(), "завершено"),
+                StatItem(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей") { navigator.push(Route.Friends) },
+            ))
         }
         Spacer(Modifier.height(16.dp))
         GlassPlate { CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) }) }
@@ -241,17 +240,46 @@ private fun LevelRing(level: ProfileLevel, modifier: Modifier) {
     }
 }
 
+/** 12 345 → "12 345" with a narrow no-break space, as Russian typography groups thousands. */
+internal fun groupThousands(value: Long): String = value.toString().reversed().chunked(3).joinToString(" ").reversed()
+
+/** One number of a profile: the value, its label and, for friends, where a tap leads. */
+internal data class StatItem(val value: String, val label: String, val onClick: (() -> Unit)? = null)
+
+/**
+ * The profile's numbers. Thousands get a narrow space ("2 249"); all values share one size — the largest
+ * at which every value fits its column whole — so no number looks louder than another or wraps. On a
+ * narrow screen or with large text the four become a 2 × 2 grid so labels keep whole words.
+ */
 @Composable
-internal fun ProfileStat(value: String, label: String, modifier: Modifier) {
-    // Four numbers share one row: long ones and enlarged system text step down to `heading`, so they never touch.
-    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
-    Column(modifier.padding(end = 8.dp)) {
-        Txt(value, if (value.length > 3 || large) AniMixTheme.type.heading else AniMixTheme.type.title, maxLines = 1)
-        Spacer(Modifier.height(4.dp))
-        Txt(label, AniMixTheme.type.micro)
+internal fun ProfileStats(items: List<StatItem>) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth / items.size < 86.dp * density.fontScale) 2 else items.size
+        val columnWidth = with(density) { (maxWidth / columns - 8.dp).roundToPx() }
+        val shown = items.map { item -> item.value.toLongOrNull()?.takeIf { it >= 1000 }?.let(::groupThousands) ?: item.value }
+        val type = AniMixTheme.type
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val style = listOf(type.title, type.heading, type.subheading).firstOrNull { candidate ->
+            shown.all { measurer.measure(it, candidate, softWrap = false, maxLines = 1).size.width <= columnWidth }
+        } ?: type.body
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            items.indices.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { index ->
+                        val item = items[index]
+                        Column(Modifier.weight(1f).padding(end = 8.dp)
+                            .then(if (item.onClick != null) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = item.onClick) else Modifier)) {
+                            Txt(shown[index], style, maxLines = 1)
+                            Spacer(Modifier.height(4.dp))
+                            Txt(item.label, AniMixTheme.type.micro, maxLines = 2)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
-
 @Composable
 internal fun CollectionDistribution(library: LibraryData, onOpen: (() -> Unit)?) {
     val colors = AniMixTheme.colors
@@ -262,8 +290,9 @@ internal fun CollectionDistribution(library: LibraryData, onOpen: (() -> Unit)?)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt("Коллекция", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
         // Lists are edited where they live: the «Списки» tab, one tap from here.
-        Txt("$total тайтлов" + if(onOpen!=null)" · открыть" else "", AniMixTheme.type.label, color = colors.accent,
-            modifier = Modifier.clip(AniMixTheme.shapes.pill).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen) else Modifier).padding(horizontal = 8.dp, vertical = 8.dp))
+        // The total is in the ring; the corner only offers to open the lists.
+        if (onOpen != null) Txt("Открыть", AniMixTheme.type.label, color = colors.accent,
+            modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 8.dp))
     }
     Spacer(Modifier.height(20.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {

@@ -303,12 +303,12 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                     // The same plates as one's own profile.
                     Spacer(Modifier.height(24.dp))
                     GlassPlate {
-                        Row {
-                            ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
-                            ProfileStat("${stats.episodes}", "серий", Modifier.weight(1f))
-                            ProfileStat("${stats.completed}", "завершено", Modifier.weight(1f))
-                            ProfileStat("${awards.unlocked.size + awards.historical.keys.count { it !in awards.unlocked }}", "достижений", Modifier.weight(1f))
-                        }
+                        ProfileStats(listOf(
+                            StatItem(profileHours(stats.totalMinutes), "часов в AniMix"),
+                            StatItem("${stats.episodes}", "серий"),
+                            StatItem("${stats.completed}", "завершено"),
+                            StatItem("${awards.unlocked.size + awards.historical.keys.count { it !in awards.unlocked }}", "достижений"),
+                        ))
                     }
                     Spacer(Modifier.height(16.dp))
                     GlassPlate { CollectionDistribution(lib, null) }
