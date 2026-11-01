@@ -148,6 +148,8 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
         if (initialized) {
             AppShell(graph, navigator, onExit)
             app.animix.ui.screens.profile.HorizonIncoming(graph,navigator)
+            // Once per launch, over any screen; «Позже» leaves it in Settings until the next start.
+            app.animix.ui.screens.home.UpdateDialog(graph)
         }
         else Box(Modifier.fillMaxSize().background(AniMixTheme.colors.background).padding(20.dp), contentAlignment = Alignment.Center) {
             if (startupError == null) LoadingIndicator()

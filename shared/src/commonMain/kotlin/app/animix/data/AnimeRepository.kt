@@ -49,9 +49,22 @@ class AnimeRepository(
         close + base + rest
     }
 
-    /** Titles similar to this one (Shikimori recommendations; none for YummyAnime-only titles). */
-    suspend fun similar(anime: Anime): List<Anime> =
-        if (anime.source == AnimeSource.Shikimori) shikimori.similar(anime.id) else emptyList()
+    /**
+     * «Похожее»: Shikimori's candidates with their genres, re-ranked by [TitleLinks.rankSimilar] against
+     * this title, without its own franchise and the viewer's dropped titles. None for YummyAnime-only titles.
+     */
+    suspend fun similar(anime: Anime, library: app.animix.data.library.LibraryData? = null): List<Anime> {
+        if (anime.source != AnimeSource.Shikimori) return emptyList()
+        val candidates = shikimori.similar(anime.id)
+        if (candidates.isEmpty()) return emptyList()
+        val detail = runCatching { shikimori.detail(anime.id) }.getOrElse { if (it is CancellationException) throw it; null }
+        // The recommendations come without genres; one request by ids brings them for the first thirty.
+        val withGenres = runCatching { shikimori.byIds(candidates.take(30).map { it.id }) }
+            .getOrElse { if (it is CancellationException) throw it; emptyList() }.associateBy { it.id }
+        val pool = candidates.map { withGenres[it.id] ?: it }
+        val base = detail?.anime?.takeIf { it.genres.isNotEmpty() } ?: anime
+        return TitleLinks.rankSimilar(base, pool, franchise = detail?.related.orEmpty().map { it.key }.toSet(), library = library)
+    }
 
     suspend fun yummyReviews(anime: Anime): List<Review> = yummy.reviews(anime)
 

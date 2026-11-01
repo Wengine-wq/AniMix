@@ -49,6 +49,18 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
     ScreenColumn(contentPadding) {
         PageHeader("Настройки", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
+        // An update put off with «Позже» waits here until the next launch shows it again.
+        val updates by graph.updates.state.collectAsState()
+        if (updates.available != null) {
+            Panel {
+                Column(Modifier.padding(16.dp)) {
+                    app.animix.ui.screens.home.UpdateDetails(graph)
+                    Spacer(Modifier.height(14.dp))
+                    PrimaryButton("Обновить", graph.updates::install, Modifier.fillMaxWidth(), icon = AniMixIcons.Download, enabled = !updates.downloading)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
         // History, achievements and «О приложении» live in the profile menu; settings hold only settings.
         val shown = SettingsCategory.entries.filter { it != SettingsCategory.About }
         Panel {

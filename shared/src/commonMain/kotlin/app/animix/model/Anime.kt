@@ -83,10 +83,13 @@ data class AnimeDetail(
     val studios: List<String>,
     val screenshots: List<String>,
     val nextEpisodeAt: String?,
+    /** Related titles in AniMix's watch order (see TitleLinks). */
     val related: List<Anime>,
     /** Shikimori discussion topic of this anime. */
     val topicId: Int? = null,
     val commentsCount: Int = 0,
+    /** Shikimori's relation of each related title («Продолжение», «Предыстория»), by [Anime.key]. */
+    val relatedLabels: Map<String, String> = emptyMap(),
 )
 
 @Serializable

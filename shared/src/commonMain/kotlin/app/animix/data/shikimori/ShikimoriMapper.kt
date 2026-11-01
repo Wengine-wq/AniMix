@@ -29,7 +29,11 @@ internal fun AnimeDto.toAnime(): Anime = Anime(
         .mapNotNull { it.russian?.takeIf(String::isNotBlank) },
 )
 
-internal fun AnimeDto.toDetail(): AnimeDetail = AnimeDetail(
+internal fun AnimeDto.toDetail(): AnimeDetail {
+    val ordered = app.animix.data.TitleLinks.orderRelated(related.orEmpty().mapNotNull { item ->
+        item.anime?.toAnime()?.let { app.animix.data.TitleLinks.Related(it, item.relationKind, item.relationText?.takeIf(String::isNotBlank)) }
+    })
+    return AnimeDetail(
     anime = toAnime(),
     description = descriptionHtml?.takeIf { it.isNotBlank() }?.let(RichTextParser::parseHtml)
         ?: description?.let(RichTextParser::parseBbCode) ?: RichText.Empty,
@@ -38,10 +42,12 @@ internal fun AnimeDto.toDetail(): AnimeDetail = AnimeDetail(
     studios = studios.orEmpty().map { it.name },
     screenshots = screenshots.orEmpty().mapNotNull { it.originalUrl ?: it.x332Url },
     nextEpisodeAt = nextEpisodeAt,
-    related = related.orEmpty().mapNotNull { it.anime?.toAnime() }.filter { it.id > 0 }.distinctBy { it.id },
+    related = ordered.map { it.anime },
     topicId = topic?.id?.toIntOrNull(),
     commentsCount = topic?.commentsCount ?: 0,
+    relatedLabels = ordered.mapNotNull { r -> r.label?.let { r.anime.key to it } }.toMap(),
 )
+}
 
 private fun absoluteShikimori(path: String): String =
     if (path.startsWith("http")) path else "${ShikimoriApi.BASE_URL}${if (path.startsWith("/")) path else "/$path"}"

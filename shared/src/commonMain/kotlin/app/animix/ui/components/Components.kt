@@ -188,7 +188,7 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
 
 /** Poster card used in shelves and grids. */
 @Composable
-fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, caption: String? = null) {
     val type = AniMixTheme.type
     val interaction = remember { MutableInteractionSource() }
     Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)
@@ -201,7 +201,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
         // The year and episodes follow the title directly; rows of cards still line up at the posters.
         Txt(anime.title, type.label, maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
         Spacer(Modifier.height(2.dp))
-        Txt(anime.metaLine(), type.micro, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
+        Txt(caption ?: anime.metaLine(), type.micro, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
     }
 }
 

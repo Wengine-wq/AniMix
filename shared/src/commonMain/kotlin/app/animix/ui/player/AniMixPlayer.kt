@@ -902,8 +902,9 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
         if (open) Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
             onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
             Column(Modifier.width(220.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
-                Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                qualities.forEach { label ->
+                // A downloaded file has one quality: nothing to choose, so no list.
+                if (qualities.size > 1) Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                if (qualities.size > 1) qualities.forEach { label ->
                     val selected = label == quality
                     Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically) {
@@ -912,7 +913,7 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                     }
                 }
                 // The glow around letterboxed pictures, for those who prefer plain black bars.
-                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                if (qualities.size > 1) Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
                 Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onGlow(!glow) }.padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Txt("Свечение рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))

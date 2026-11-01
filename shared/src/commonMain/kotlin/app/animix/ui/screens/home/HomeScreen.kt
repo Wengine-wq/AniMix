@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -136,7 +137,6 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
-        item(key = "update") { UpdateOffer(graph) }
         item(key = "hero") {
             when (val state = ongoingState) {
                 Load.Loading -> HomeHeroPlaceholder()
@@ -429,60 +429,68 @@ internal fun HomeHeroPlaceholder() {
 }
 
 /**
- * «Итоги года» on the home screen: open from 20 December, or earlier after three titles
- * watched in AniMix; until then the card says when and how far along the viewer is.
+ * A newer release from GitHub, as a dialog over the app once per launch: what changed, «Обновить» and
+ * «Позже». «Позже» hides it until the next launch; meanwhile the update waits in «Настройки».
  */
-/** A newer release from GitHub: one quiet card under the header until updated or put off. */
 @Composable
-private fun UpdateOffer(graph: AppGraph) {
-    val colors = AniMixTheme.colors
+fun UpdateDialog(graph: AppGraph) {
     val state by graph.updates.state.collectAsState()
-    val settings by graph.settings.state.collectAsState()
+    var later by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { graph.updates.check() }
     val update = state.available ?: return
-    if (settings.dismissedUpdate == update.version && !state.downloading && state.message == null) return
-    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth()
-        .clip(AniMixTheme.shapes.large).background(colors.surfaceRaised).rim(AniMixTheme.shapes.large, accent = true).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(AniMixIcons.Download, null, Modifier.size(22.dp), tint = colors.accent)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Txt("Доступна версия ${update.label}", AniMixTheme.type.subheading)
-                Txt(update.title, AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+    if (later == update.version && !state.downloading && state.message == null) return
+    androidx.compose.ui.window.Dialog(onDismissRequest = { if (!state.downloading) later = update.version }) {
+        Column(Modifier.widthIn(max = 420.dp).clip(AniMixTheme.shapes.large).background(AniMixTheme.colors.surfaceRaised)
+            .rim(AniMixTheme.shapes.large, accent = false).padding(20.dp)) {
+            UpdateDetails(graph)
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton("Обновить", graph.updates::install, Modifier.weight(1f), icon = AniMixIcons.Download, enabled = !state.downloading)
+                SecondaryButton("Позже", { later = update.version }, Modifier.weight(1f), enabled = !state.downloading)
             }
-        }
-        // What changed compared with this version: the first list of the release notes, three lines
-        // at first, the rest on request, so the card stays a card and not a changelog page.
-        val changes = remember(update.notes) { releaseChanges(update.notes) }
-        if (changes.isNotEmpty()) {
-            var expanded by remember(update.version) { mutableStateOf(false) }
-            Spacer(Modifier.height(14.dp))
-            Txt("Что изменилось", AniMixTheme.type.micro, color = colors.textSecondary)
-            Spacer(Modifier.height(6.dp))
-            (if (expanded) changes else changes.take(3)).forEach { change ->
-                Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
-                    Icon(AniMixIcons.Check, null, Modifier.padding(top = 2.dp).size(14.dp), tint = colors.accent)
-                    Spacer(Modifier.width(10.dp))
-                    Txt(change, AniMixTheme.type.caption, color = colors.textPrimary)
-                }
-            }
-            if (changes.size > 3) Txt(if (expanded) "Свернуть" else "Ещё ${changes.size - 3}", AniMixTheme.type.label, color = colors.accent,
-                modifier = Modifier.padding(top = 4.dp).clip(AniMixTheme.shapes.pill).clickable { expanded = !expanded }.padding(vertical = 6.dp))
-        }
-        if (state.downloading) {
-            Spacer(Modifier.height(12.dp))
-            ProgressLine(state.progress)
-            Txt("Скачиваем · ${(state.progress * 100).toInt()} %", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
-        }
-        state.message?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp)) }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PrimaryButton("Обновить", graph.updates::install, Modifier.weight(1f), icon = AniMixIcons.Download, enabled = !state.downloading)
-            SecondaryButton("Позже", { graph.settings.update { it.copy(dismissedUpdate = update.version) } }, Modifier.weight(1f), enabled = !state.downloading)
         }
     }
 }
 
+/** The update's name, what changed (three lines, the rest on request), download progress and errors. */
+@Composable
+fun UpdateDetails(graph: AppGraph) {
+    val colors = AniMixTheme.colors
+    val state by graph.updates.state.collectAsState()
+    val update = state.available ?: return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
+            Icon(AniMixIcons.Download, null, Modifier.size(20.dp), tint = colors.accent)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt("Доступна версия ${update.label}", AniMixTheme.type.subheading)
+            Txt(update.title, AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+    val changes = remember(update.notes) { releaseChanges(update.notes) }
+    if (changes.isNotEmpty()) {
+        var expanded by remember(update.version) { mutableStateOf(false) }
+        Spacer(Modifier.height(16.dp))
+        Txt("Что изменилось", AniMixTheme.type.micro, color = colors.textSecondary)
+        Spacer(Modifier.height(6.dp))
+        (if (expanded) changes else changes.take(3)).forEach { change ->
+            Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                Icon(AniMixIcons.Check, null, Modifier.padding(top = 2.dp).size(14.dp), tint = colors.accent)
+                Spacer(Modifier.width(10.dp))
+                Txt(change, AniMixTheme.type.caption, color = colors.textPrimary)
+            }
+        }
+        if (changes.size > 3) Txt(if (expanded) "Свернуть" else "Ещё ${changes.size - 3}", AniMixTheme.type.label, color = colors.accent,
+            modifier = Modifier.padding(top = 4.dp).clip(AniMixTheme.shapes.pill).clickable { expanded = !expanded }.padding(vertical = 6.dp))
+    }
+    if (state.downloading) {
+        Spacer(Modifier.height(12.dp))
+        ProgressLine(state.progress)
+        Txt("Скачиваем · ${(state.progress * 100).toInt()} %", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
+    }
+    state.message?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp)) }
+}
 /**
  * «Итоги года» under the quick chips, at the same place in every state: a quiet card with the way to
  * open them early until they open, then a pink banner in the hero's geometry until the last slide is

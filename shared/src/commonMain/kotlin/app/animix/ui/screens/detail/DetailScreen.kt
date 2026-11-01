@@ -85,7 +85,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
     val anime = ready?.anime ?: opened
 
     val similar = rememberLoad(anime.key to anime.title.isNotEmpty()) {
-        if (anime.title.isBlank()) emptyList() else graph.anime.similar(anime)
+        if (anime.title.isBlank()) emptyList() else graph.anime.similar(anime, graph.library.state.value)
     }
     LaunchedEffect(ready?.anime) { ready?.anime?.let(graph.library::refreshMetadata) }
     Ambient(null)
@@ -155,7 +155,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                         icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
                     is Load.Ready -> Description(state.value)
                 }
-                mascotCosplayFor(anime)?.let { cosplay ->
+                mascotCosplayFor(anime)?.takeIf { app.animix.ui.components.MascotShown }?.let { cosplay ->
                     Spacer(Modifier.height(24.dp))
                     MascotCosplayNote(cosplay)
                 }
@@ -170,7 +170,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     }
                 }
                 ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
-                    AnimeShelf("Связанное", related, navigator)
+                    AnimeShelf("Связанное", related, navigator, labels = ready.relatedLabels)
                 }
                 if (anime.title.isNotBlank() && similar.value is Load.Loading) {
                     AnimeShelfPlaceholder("Похожее", Modifier.padding(top = 28.dp), cardWidth = 120.dp, horizontalPadding = 0.dp)
@@ -194,13 +194,15 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
 }
 
 @Composable
-private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator) {
+private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator, labels: Map<String, String> = emptyMap()) {
     Spacer(Modifier.height(28.dp))
     SectionHeader(title)
     Spacer(Modifier.height(12.dp))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(items, key = { it.key }) { item ->
-            AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp))
+            // In «Связанное» the line under the title says how it relates: «Продолжение · 2017».
+            AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp),
+                caption = labels[item.key]?.let { label -> listOfNotNull(label, item.year?.toString()).joinToString(" · ") })
         }
     }
 }

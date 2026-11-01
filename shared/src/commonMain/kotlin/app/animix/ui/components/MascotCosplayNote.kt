@@ -19,6 +19,7 @@ import org.jetbrains.compose.resources.painterResource
 /** A single quiet character illustration in the title's content, outside playback/actions. */
 @Composable
 fun MascotCosplayNote(cosplay: MascotCosplay, modifier: Modifier = Modifier) {
+    if (!MascotShown) return
     val artwork = when (cosplay) {
         MascotCosplay.Nezuko -> Res.drawable.animix_cosplay_demon
         MascotCosplay.Miku -> Res.drawable.animix_cosplay_quintuplets

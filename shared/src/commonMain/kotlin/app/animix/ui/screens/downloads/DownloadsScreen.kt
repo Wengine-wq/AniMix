@@ -488,8 +488,7 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     // Skip times stored when the episode was watched or queued work offline too.
                     skips = { duration -> graph.skips.plan(item.anime, item.episode, duration) },
                     initialPositionMs = library.entry(item.anime)?.episodePositions?.get(item.episode.number) ?: 0,
-                    // No Horizon Link offline: the file exists only on this device.
-                    onPlayerBound = { player -> graph.social.bind(player,item.anime,item.episode.number,item.dubbingKey){item.quality} },
+                    // Nothing online here: no Horizon Link, no presence binding, no quality list for one file.
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
                     onCompleted = {
                         graph.library.saveEpisodePosition(item.anime, item.episode.number, 0)
