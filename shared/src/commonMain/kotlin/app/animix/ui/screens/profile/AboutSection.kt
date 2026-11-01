@@ -73,17 +73,7 @@ internal fun AboutSection() {
             "Подборки на главной включаются в настройках. AniPulse временно приостановлен.")
     }
 
-    Spacer(Modifier.height(32.dp))
-    Txt("Следующая версия · ${AppRelease.nextVersion}", AniMixTheme.type.heading)
-    Spacer(Modifier.height(8.dp))
-    Txt("Следующий приоритет — стабильность и производительность. Аккаунт, синхронизация, друзья и Horizon Link уже подключены.", AniMixTheme.type.caption)
-    Spacer(Modifier.height(20.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        RoadmapStage("01", "Стабильность на каждом устройстве",
-            "Доработка плеера и загрузок при смене сети, проверка слабых устройств и ускорение запуска и длинных списков по результатам замеров.")
-    }
-    Spacer(Modifier.height(24.dp))
-    Txt("Это план развития, а не список уже доступных функций. Состав обновления может уточняться; дата выхода пока не объявлена.", AniMixTheme.type.micro)
+    // The plan of the next version returns here once it is agreed; no promises until then.
 }
 
 @Composable
@@ -99,6 +89,7 @@ private fun ReleaseFeature(icon: ImageVector, title: String, description: String
     }
 }
 
+@Suppress("unused")
 @Composable
 private fun RoadmapStage(number: String, title: String, description: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {

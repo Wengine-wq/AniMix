@@ -121,7 +121,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
             SettingsCategory.Performance -> Panel {
                 ToggleRow("Экономия батареи", settings.batterySaver,
                     { value -> graph.settings.update { it.copy(batterySaver = value) } }, AniMixIcons.Battery,
-                    subtitle = "Отключает анимации, размытие и автолистание. Уменьшает фоновую активность")
+                    subtitle = "Без анимаций, размытия и автолистания; в плеере — без стекла и свечения рамок, полоса прогресса шагами. Внешний вид и навигация те же")
             }
             SettingsCategory.Playback -> Panel {
                 ToggleRow("Автопереход к следующей серии", settings.autoNextEpisode, { v -> graph.settings.update { it.copy(autoNextEpisode = v, autoNextAsked = true) }; if (v) graph.achievements.settingEnabled("autoNextEpisode") }, AniMixIcons.Play)

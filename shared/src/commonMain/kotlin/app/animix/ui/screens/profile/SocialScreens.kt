@@ -300,26 +300,33 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                     Txt("Коллекция и подробная статистика видны взаимным друзьям с открытой коллекцией.", AniMixTheme.type.body)
                 } else {
                     val stats = lib.stats()
+                    // The same plates as one's own profile.
                     Spacer(Modifier.height(24.dp))
-                    Row {
-                        ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
-                        ProfileStat("${stats.episodes}", "серий", Modifier.weight(1f))
-                        ProfileStat("${stats.completed}", "завершено", Modifier.weight(1f))
-                        ProfileStat("${awards.unlocked.size + awards.historical.keys.count { it !in awards.unlocked }}", "достижений", Modifier.weight(1f))
+                    GlassPlate {
+                        Row {
+                            ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
+                            ProfileStat("${stats.episodes}", "серий", Modifier.weight(1f))
+                            ProfileStat("${stats.completed}", "завершено", Modifier.weight(1f))
+                            ProfileStat("${awards.unlocked.size + awards.historical.keys.count { it !in awards.unlocked }}", "достижений", Modifier.weight(1f))
+                        }
                     }
-                    Spacer(Modifier.height(32.dp))
-                    CollectionDistribution(lib, null)
-                    Spacer(Modifier.height(32.dp))
-                    Txt("Активность", AniMixTheme.type.heading)
                     Spacer(Modifier.height(16.dp))
-                    ActivityChart(stats.lastDays)
-                    if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд", AniMixTheme.type.micro,
-                        modifier = Modifier.padding(top = 8.dp))
+                    GlassPlate { CollectionDistribution(lib, null) }
+                    Spacer(Modifier.height(16.dp))
+                    GlassPlate {
+                        Txt("Активность", AniMixTheme.type.heading)
+                        Spacer(Modifier.height(16.dp))
+                        ActivityChart(stats.lastDays)
+                        if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд", AniMixTheme.type.micro,
+                            modifier = Modifier.padding(top = 8.dp))
+                    }
                     if (stats.topGenres.isNotEmpty()) {
-                        Spacer(Modifier.height(32.dp))
-                        Txt("Любимые жанры", AniMixTheme.type.heading)
-                        Spacer(Modifier.height(12.dp))
-                        GenreTaste(stats.topGenres)
+                        Spacer(Modifier.height(16.dp))
+                        GlassPlate {
+                            Txt("Любимые жанры", AniMixTheme.type.heading)
+                            Spacer(Modifier.height(12.dp))
+                            GenreTaste(stats.topGenres)
+                        }
                     }
                     Spacer(Modifier.height(32.dp))
                     Txt("Коллекция", AniMixTheme.type.heading)

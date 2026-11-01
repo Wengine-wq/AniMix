@@ -76,7 +76,16 @@ internal class AndroidNativePlayer : NativePlayer {
     private val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(15_000).setReadTimeoutMs(20_000)
     val engine = ExoPlayer.Builder(AndroidPlatform.context).setMediaSourceFactory(
         DefaultMediaSourceFactory(DefaultDataSource.Factory(AndroidPlatform.context, http)),
-    ).build()
+    )
+        // Starts after 1.5 s of video, resumes after 3 s of rebuffering, keeps up to a minute ahead:
+        // quicker start than the default, fewer stalls on a shaky connection.
+        .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(20_000, 60_000, 1_500, 3_000).setPrioritizeTimeOverSizeThresholds(true).build())
+        // Pauses for calls and other audio, and when headphones are unplugged.
+        .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+        .setHandleAudioBecomingNoisy(true)
+        .build()
     private val mutable = MutableStateFlow(PlayerSnapshot())
     override val state = mutable.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

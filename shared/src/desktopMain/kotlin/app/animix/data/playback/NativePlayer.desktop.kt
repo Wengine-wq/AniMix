@@ -84,13 +84,23 @@ internal class FrameSink {
         fresh = false
     }
 
-    /** libVLC thread: copy the frame out before the native buffer is reused. */
+    /** A frame built on the libVLC thread and not yet shown; the UI swaps it in without copying. */
+    private var pending: Image? = null
+
+    /**
+     * libVLC thread: copy the frame out before the native buffer is reused and turn it into an image
+     * right here, so the UI thread never spends a frame copying pixels. A frame the UI had no time to
+     * show is dropped in favour of the newer one.
+     */
     fun write(buffer: ByteBuffer) {
         synchronized(lock) {
             if (pixels.isEmpty() || buffer.capacity() < pixels.size) return
             buffer.rewind()
             buffer.get(pixels, 0, pixels.size)
             buffer.rewind()
+            val next = Image.makeRaster(ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.OPAQUE), pixels, width * 4)
+            pending?.close()
+            pending = next
             fresh = true
         }
         counter.update { it + 1 }
@@ -98,15 +108,12 @@ internal class FrameSink {
 
     /** UI thread: the latest frame, kept so a paused picture survives a new surface. */
     fun current(): Image? = synchronized(lock) {
-        if (fresh && width > 0 && height > 0) {
+        if (fresh) {
             fresh = false
-            val next = Image.makeRaster(ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.OPAQUE), pixels, width * 4)
-            image?.close()
-            image = next
+            pending?.let { next -> image?.close(); image = next; pending = null }
         }
         image
     }
-
     private var glow: Image? = null
     private var glowPrevious: Image? = null
     private var glowAt = 0L
@@ -141,6 +148,8 @@ internal class FrameSink {
     fun clear() = synchronized(lock) {
         image?.close()
         image = null
+        pending?.close()
+        pending = null
         glow?.close()
         glow = null
         glowPrevious?.close()

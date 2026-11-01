@@ -44,6 +44,8 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     val stats = remember(library) { library.stats() }
     val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
     val badge = achievements.firstOrNull { it.unlocked && it.achievement.id == library.profile.badgeAchievementId }
+    // The page takes its mood from the person's own banner (or avatar), blurred behind the plates.
+    app.animix.Ambient(library.profile.banner?.url ?: library.profile.avatar?.url)
     ScreenColumn(contentPadding) {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt("Профиль", AniMixTheme.type.title, modifier = Modifier.weight(1f))
@@ -69,42 +71,58 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             online = if (account.user != null) self?.online() ?: (social.error == null) else null,
             lastSeenAt = self?.seenAt)
         Spacer(Modifier.height(24.dp))
-        Row(Modifier.fillMaxWidth()) {
-            ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
-            ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
-            ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
-            // Friends live with the other numbers of the profile; a tap opens the list.
-            ProfileStat(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей",
-                Modifier.weight(1f).clickable { navigator.push(Route.Friends) })
-        }
-        Spacer(Modifier.height(32.dp))
-        CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) })
-        Spacer(Modifier.height(32.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Txt("Активность", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-            if (stats.streak > 0) {
-                Icon(AniMixIcons.Flame, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
-                Spacer(Modifier.width(6.dp))
-                Txt("${stats.streak} ${profileDaysWord(stats.streak)} подряд", AniMixTheme.type.caption)
-            } else Txt("14 дней", AniMixTheme.type.caption)
+        // The person stays on the page itself; their numbers sit on frosted plates over the soft
+        // backdrop of their own banner, one plate per subject.
+        GlassPlate {
+            Row(Modifier.fillMaxWidth()) {
+                ProfileStat(profileHours(stats.totalMinutes), "часов в AniMix", Modifier.weight(1f))
+                ProfileStat(stats.episodes.toString(), "серий", Modifier.weight(1f))
+                ProfileStat(stats.completed.toString(), "завершено", Modifier.weight(1f))
+                // Friends live with the other numbers of the profile; a tap opens the list.
+                ProfileStat(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей",
+                    Modifier.weight(1f).clickable { navigator.push(Route.Friends) })
+            }
         }
         Spacer(Modifier.height(16.dp))
-        if (stats.lastDays.all { it == 0 }) {
-            Txt("Здесь появятся ваши просмотры. Минута сегодня начнёт серию дней.", AniMixTheme.type.caption)
-        } else {
-            ActivityChart(stats.lastDays)
-            if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд",
-                AniMixTheme.type.micro, modifier = Modifier.padding(top = 8.dp))
+        GlassPlate { CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) }) }
+        Spacer(Modifier.height(16.dp))
+        GlassPlate {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Txt("Активность", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+                if (stats.streak > 0) {
+                    Icon(AniMixIcons.Flame, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
+                    Spacer(Modifier.width(6.dp))
+                    Txt("${stats.streak} ${profileDaysWord(stats.streak)} подряд", AniMixTheme.type.caption)
+                } else Txt("14 дней", AniMixTheme.type.caption)
+            }
+            Spacer(Modifier.height(16.dp))
+            if (stats.lastDays.all { it == 0 }) {
+                Txt("Здесь появятся ваши просмотры. Минута сегодня начнёт серию дней.", AniMixTheme.type.caption)
+            } else {
+                ActivityChart(stats.lastDays)
+                if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд",
+                    AniMixTheme.type.micro, modifier = Modifier.padding(top = 8.dp))
+            }
         }
         if (stats.topGenres.isNotEmpty()) {
-            Spacer(Modifier.height(32.dp))
-            Txt("Любимые жанры", AniMixTheme.type.heading)
-            Spacer(Modifier.height(12.dp))
-            GenreTaste(stats.topGenres)
+            Spacer(Modifier.height(16.dp))
+            GlassPlate {
+                Txt("Любимые жанры", AniMixTheme.type.heading)
+                Spacer(Modifier.height(12.dp))
+                GenreTaste(stats.topGenres)
+            }
         }
     }
 }
 
+/**
+ * A frosted plate for one subject of a profile (numbers, collection, activity, genres): translucent
+ * surface with the shared rim; a solid surface in battery saving. The same on one's own and a friend's page.
+ */
+@Composable
+internal fun GlassPlate(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().glass(AniMixTheme.shapes.large, tint = 0.55f, backdrop = false).padding(16.dp), content = content)
+}
 @Composable
 internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?, onEdit: (() -> Unit)? = null, onBadge: (() -> Unit)? = null,
     level: ProfileLevel? = null, online: Boolean? = null, lastSeenAt: Long? = null) {
