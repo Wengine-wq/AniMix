@@ -68,12 +68,25 @@ internal fun AboutSection() {
         ReleaseFeature(AniMixIcons.Share, "Перенос данных",
             "Списки из Shikimori и Anixart, перенос списков, часов и достижений из AniMix 2.x — через аккаунт или с этого компьютера.")
         ReleaseFeature(AniMixIcons.Refresh, "Обновления",
-            "Новая версия предлагается на главной и устанавливается прямо из приложения.")
+            "Новая версия предлагается окном при запуске и устанавливается прямо из приложения.")
         ReleaseFeature(AniMixIcons.Flame, "Экспериментальные функции",
             "Подборки на главной включаются в настройках. AniPulse временно приостановлен.")
     }
 
-    // The plan of the next version returns here once it is agreed; no promises until then.
+    // The plan agreed for the next version: what it will bring, without dates or promises of speed.
+    Spacer(Modifier.height(32.dp))
+    Txt("Следующая версия · ${AppRelease.nextVersion}", AniMixTheme.type.heading)
+    Spacer(Modifier.height(20.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        RoadmapStage("01", "Уведомления о новых сериях", "Онгоинги из «Смотрю» сообщат о новой серии на Android и Windows.")
+        RoadmapStage("02", "Плеер+", "Скорость воспроизведения, жесты яркости и громкости, «картинка в картинке» на Android.")
+        RoadmapStage("03", "Награды за уровни", "Рамки аватара, цвета акцента и значки, которые открываются с уровнем.")
+        RoadmapStage("04", "Свои подборки", "Списки сверх статусов, сортировки и действия сразу над несколькими тайтлами.")
+        RoadmapStage("05", "Совместный просмотр", "Смотреть серию вместе с другом через Horizon Link.")
+        RoadmapStage("06", "Новый маскот и AniPulse", "Обновлённый маскот и возвращение AniPulse после исправления сервиса.")
+    }
+    Spacer(Modifier.height(24.dp))
+    Txt("Это план развития, а не список уже доступных функций. Состав может уточняться; дата выхода не объявлена.", AniMixTheme.type.micro)
 }
 
 @Composable
@@ -89,7 +102,6 @@ private fun ReleaseFeature(icon: ImageVector, title: String, description: String
     }
 }
 
-@Suppress("unused")
 @Composable
 private fun RoadmapStage(number: String, title: String, description: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
