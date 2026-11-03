@@ -19,7 +19,8 @@ import kotlinx.coroutines.coroutineScope
  * next air date of the closest ongoing titles, ongoing titles in the viewer's genres and weekly picks.
  * Every part may fail on its own; the digest then shows what it has.
  */
-class PulseDigest(private val shikimori: ShikimoriRepository, private val recommendations: Recommendations, private val library: Library) {
+class PulseDigest(private val shikimori: ShikimoriRepository, private val recommendations: Recommendations, private val library: Library,
+    private val news: suspend () -> List<app.animix.model.NewsItem>) {
     suspend fun build(): WeeklyDigest = coroutineScope {
         val data = library.state.value
         val watching = data.entries.values.filter { it.status == ListStatus.Watching || it.status == ListStatus.OnHold }.map { it.anime }
@@ -32,7 +33,7 @@ class PulseDigest(private val shikimori: ShikimoriRepository, private val recomm
             }.filter { it.key !in data.entries.keys && it.title.isNotBlank() }.take(10)
         }
         val picks = async { safe { recommendations.forLibrary(data, 10) } }
-        val news = async { safe { shikimori.weeklyNews() } }
+        val news = async { safe { news() } }
         val fresh = cards.await()
         // Air dates only for the few closest ongoing titles: one detail request each, cached for half an hour.
         val next = watching.mapNotNull { fresh[it.key] }.filter { it.status == AnimeStatus.Ongoing }.take(5).map { anime ->

@@ -100,13 +100,7 @@ internal fun NewsTopicDto.toNews(): app.animix.model.NewsItem? {
         app.animix.model.Anime.placeholder(link.id).copy(title = link.russian?.takeIf(String::isNotBlank) ?: link.name.orEmpty(),
             originalTitle = link.name.orEmpty(), posterUrl = absolute(link.image?.original))
     }
-    val lower = title.lowercase()
-    val kind = when {
-        "анонс" in lower -> "Анонс"
-        listOf("трейлер", "тизер", "ролик", "pv").any { it in lower } -> "Трейлер"
-        listOf("дата", "премьер", "выход", "сезон", "старт").any { it in lower } -> "Премьера"
-        else -> "Новость"
-    }
+    val kind = app.animix.data.news.kindOf(title)
     return app.animix.model.NewsItem(id, title, text, created_at, kind, anime,
         imageUrl = absolute(html_body?.let { firstImage.find(it)?.groupValues?.get(1) }) ?: anime?.posterUrl,
         url = "${ShikimoriApi.BASE_URL}/forum/news/$id")

@@ -104,6 +104,8 @@ data class NewsItem(
     val anime: Anime? = null,
     val imageUrl: String? = null,
     val url: String,
+    /** «Shikimori», «YummyAnime» or «GoHa.ru». */
+    val source: String = "Shikimori",
 )
 
 @Serializable

@@ -102,7 +102,7 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
         if (loaded.value is Load.Failed) Txt("Каталог не ответил: новые серии и подборки появятся при подключении.", AniMixTheme.type.caption,
             modifier = Modifier.padding(top = 16.dp))
         Spacer(Modifier.height(28.dp))
-        Txt("AniPulse собирается на устройстве по вашим спискам, просмотру, каталогу и новостям Shikimori. Без ИИ и без отправки ваших данных.",
+        Txt("AniPulse собирается на устройстве по вашим спискам, просмотру, каталогу Shikimori и новостям Shikimori, YummyAnime и GoHa.ru. Без ИИ и без отправки ваших данных.",
             AniMixTheme.type.micro)
     }
 }
@@ -124,9 +124,10 @@ private fun NewsBlock(news: List<NewsItem>, mine: Set<String>, navigator: Naviga
         kinds.forEach { k -> Chip(plural(k), kind == k, { kind = k }) }
     }
     Spacer(Modifier.height(14.dp))
-    val lead = shown.firstOrNull() ?: return
+    // The lead story is the newest one with a picture; the card never shows an empty frame.
+    val lead = shown.firstOrNull { it.imageUrl != null } ?: shown.firstOrNull() ?: return
     NewsLead(lead, lead.anime?.key in mine, expanded == lead.id, { expanded = if (expanded == lead.id) null else lead.id }, navigator)
-    val rest = shown.drop(1)
+    val rest = shown - lead
     if (rest.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         Panel {
@@ -148,12 +149,17 @@ private fun NewsLead(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () 
     val colors = AniMixTheme.colors
     Column(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.surface.copy(alpha = 0.72f))
         .rim(AniMixTheme.shapes.large, accent = false).clickable(role = Role.Button, onClick = onToggle)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 8f)) {
+        if (item.imageUrl == null) Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
+            Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
+                AniMixTheme.type.micro, color = colors.accentText)
+            Spacer(Modifier.height(4.dp))
+            Txt(item.title, AniMixTheme.type.subheading, maxLines = 3)
+        } else Box(Modifier.fillMaxWidth().aspectRatio(16f / 8f)) {
             RemoteImage(item.imageUrl, Modifier.fillMaxSize(), shape = androidx.compose.ui.graphics.RectangleShape)
             Box(Modifier.matchParentSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
                 listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color(0xCC0B0B0E)))))
             Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-                Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt)).joinToString(" · "),
+                Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
                     AniMixTheme.type.micro, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
                 Spacer(Modifier.height(4.dp))
                 Txt(item.title, AniMixTheme.type.subheading, color = androidx.compose.ui.graphics.Color.White, maxLines = 3)
@@ -178,7 +184,7 @@ private fun NewsRow(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () -
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt)).joinToString(" · "),
+                Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
                     AniMixTheme.type.micro, color = if (mine) AniMixTheme.colors.accentText else AniMixTheme.colors.textSecondary)
                 Spacer(Modifier.height(2.dp))
                 Txt(item.title, AniMixTheme.type.bodyStrong, maxLines = if (open) Int.MAX_VALUE else 2)
@@ -194,7 +200,7 @@ private fun NewsActions(item: NewsItem, navigator: Navigator) {
     val uri = LocalUriHandler.current
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item.anime?.let { anime -> Chip("Страница аниме", false, { navigator.push(Route.Detail(anime)) }, icon = AniMixIcons.Play) }
-        Chip("Источник", false, { runCatching { uri.openUri(item.url) } }, icon = AniMixIcons.Link)
+        Chip("Читать на ${item.source}", false, { runCatching { uri.openUri(item.url) } }, icon = AniMixIcons.Link)
     }
 }
 

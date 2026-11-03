@@ -91,7 +91,9 @@ class AppGraph {
     val anime = AnimeRepository(shikimori, yummy)
 
     /** AniPulse: the week's digest, counted on the device from the lists and the catalog. */
-    val pulse by lazy { app.animix.data.pulse.PulseDigest(shikimori, recommendations, library) }
+    val pulse by lazy { app.animix.data.pulse.PulseDigest(shikimori, recommendations, library, news = { animeNews.week() }) }
+    /** Anime news of the week from Shikimori, YummyAnime and GoHa.ru. */
+    val animeNews by lazy { app.animix.data.news.AnimeNews(http, shikimori, apiCache) }
 
     /** «Уведомления»: new episodes of ongoing titles in «Смотрю», and in their chosen dubbing. */
     val notifier = app.animix.data.notify.EpisodeNotifier(DiskStore(Platform.dataDir), library, settings,

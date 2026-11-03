@@ -81,6 +81,10 @@ fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), tod
     }.sortedBy { it.left }
     val onHold = library.entries.values.filter { it.status == ListStatus.OnHold }.sortedByDescending { it.updatedAt }.take(8)
     val mine = library.entries.keys
-    val sortedNews = news.sortedWith(compareByDescending<app.animix.model.NewsItem> { it.anime?.key in mine }.thenByDescending { it.createdAt })
+    // A headline that names a title from the lists links to it, whichever source wrote it.
+    val known = library.entries.values.map { it.anime }.filter { it.title.length >= 4 }
+    val linked = news.map { item -> if (item.anime != null) item else known.firstOrNull { item.title.contains(it.title, ignoreCase = true) }
+        ?.let { item.copy(anime = it) } ?: item }
+    val sortedNews = linked.sortedWith(compareByDescending<app.animix.model.NewsItem> { it.anime?.key in mine }.thenByDescending { it.createdAt })
     return WeeklyDigest(weeks.last(), weeks[weeks.lastIndex - 1], weeks, streak, topGenre, fresh, almost, onHold, ongoingForYou, picks, sortedNews)
 }
