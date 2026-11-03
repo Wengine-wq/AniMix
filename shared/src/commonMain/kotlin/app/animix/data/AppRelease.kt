@@ -29,6 +29,5 @@ object AppRelease {
 /** Where «О приложении» leads: the project on GitHub and the app's Telegram channel (support and ideas). */
 object AppLinks {
     const val GITHUB = "https://github.com/Wengine-wq/AniMix"
-    /** Empty until the channel's address is known: its buttons stay hidden rather than lead nowhere. */
-    const val TELEGRAM = ""
+    const val TELEGRAM = "https://t.me/animixoff"
 }
