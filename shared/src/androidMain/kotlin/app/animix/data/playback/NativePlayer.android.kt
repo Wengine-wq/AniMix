@@ -33,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -117,6 +118,7 @@ internal class AndroidNativePlayer : NativePlayer {
             volume = engine.volume,
             videoWidth = engine.videoSize.let { size -> (size.width * size.pixelWidthHeightRatio).toInt() },
             videoHeight = engine.videoSize.height,
+            speed = engine.playbackParameters.speed,
         ) }
     }
     override fun load(url: String, headers: Map<String, String>, startPositionMs: Long, playWhenReady: Boolean) {
@@ -134,6 +136,7 @@ internal class AndroidNativePlayer : NativePlayer {
         engine.seekTo(target)
     }
     override fun setVolume(volume: Float) { engine.volume = volume.coerceIn(0f, 1f); publish() }
+    override fun setSpeed(speed: Float) { if (!released) { engine.setPlaybackSpeed(speed.coerceIn(0.25f, 2f)); publish() } }
     override fun release() { if (!released) { released = true; scope.cancel(); engine.release() } }
 }
 
@@ -148,11 +151,21 @@ internal class AndroidNativePlayer : NativePlayer {
     }
     val glow = rememberFrameBackdrop(player, ambient)
     Box(modifier) {
-        // The copy is already blurred; a new one fades in over the last, so the bars change smoothly.
+        // The copy is already blurred. A new one fades in over the last one kept fully opaque, so the
+        // bars change smoothly and never dim between two copies (a crossfade dips through black).
         if (glow != null) {
-            androidx.compose.animation.Crossfade(glow, animationSpec = androidx.compose.animation.core.tween(600), label = "glow") { picture ->
-                if (picture != null) Image(picture, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds, filterQuality = FilterQuality.Low)
+            var under by remember(player) { mutableStateOf<ImageBitmap?>(null) }
+            var over by remember(player) { mutableStateOf<ImageBitmap?>(null) }
+            val fade = remember(player) { androidx.compose.animation.core.Animatable(1f) }
+            LaunchedEffect(glow) {
+                under = over ?: glow
+                over = glow
+                fade.snapTo(0f)
+                fade.animateTo(1f, androidx.compose.animation.core.tween(600))
+                under = null
             }
+            under?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds, filterQuality = FilterQuality.Low) }
+            over?.let { Image(it, null, Modifier.fillMaxSize().graphicsLayer { alpha = fade.value }, contentScale = ContentScale.FillBounds, filterQuality = FilterQuality.Low) }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
         }
         AndroidView(
@@ -182,14 +195,18 @@ internal class AndroidNativePlayer : NativePlayer {
         val view = surface
         if (!enabled || view == null) { backdrop = null; return@LaunchedEffect }
         val handler = Handler(Looper.getMainLooper())
+        var copiedPaused = false
         while (isActive) {
-            if (view.holder.surface?.isValid == true && view.width > 0) {
+            // A paused picture does not change: one copy is enough, so the glow and the glass stay still.
+            val playing = backend.state.value.playing
+            if (playing) copiedPaused = false
+            if ((playing || !copiedPaused) && view.holder.surface?.isValid == true && view.width > 0) {
                 val bitmap = Bitmap.createBitmap(48, 27, Bitmap.Config.ARGB_8888)
                 val copied = suspendCancellableCoroutine { done ->
                     runCatching { PixelCopy.request(view, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, handler) }
                         .onFailure { if (done.isActive) done.resume(false) }
                 }
-                if (copied) backdrop = softened(bitmap).asImageBitmap()
+                if (copied) { backdrop = softened(bitmap).asImageBitmap(); if (!playing) copiedPaused = true }
             }
             delay(600)
         }

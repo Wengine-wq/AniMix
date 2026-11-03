@@ -24,6 +24,14 @@ actual object Platform {
 
 actual fun createHttpEngine(): HttpClientEngine = OkHttp.create()
 
+actual fun deviceName(): String {
+    val maker = android.os.Build.MANUFACTURER.orEmpty().trim().replaceFirstChar { it.uppercase() }
+    val model = android.os.Build.MODEL.orEmpty().trim()
+    // Many models already start with the maker («Pixel» does not, «SM-S911B» does not, «Redmi Note 12» does).
+    val device = if (model.startsWith(maker, ignoreCase = true) || maker.isEmpty()) model else "$maker $model"
+    return "${device.ifBlank { "Android" }} · Android ${android.os.Build.VERSION.RELEASE}"
+}
+
 actual fun localDayIndex(millis: Long): Long =
     Math.floorDiv(millis + java.util.TimeZone.getDefault().getOffset(millis), 86_400_000L)
 

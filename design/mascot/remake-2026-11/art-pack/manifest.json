@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "created": "2026-11-01",
+  "generator": "built-in image_gen",
+  "approved_identity_reference": "../animix-mascot-cartoon.png",
+  "app_integration": false,
+  "note": "Source illustrations include soft colored halo. Not clean production cutout masks.",
+  "assets": [
+    {
+      "file": "cosplay-demon.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 2325310,
+      "sha256": "2b8d314cd7d5a56e6a6a9d27194435151f4f2f33aad20ea4fc4a2fb9b41da42a",
+      "fully_transparent_pixels": 623405,
+      "soft_halo_included": true
+    },
+    {
+      "file": "cosplay-grand-blue-beach.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1516504,
+      "sha256": "b364a59621b8ce0110f984491a195ca675d8cd484a4efc0568c9829445fcebea",
+      "fully_transparent_pixels": 1112910,
+      "soft_halo_included": true
+    },
+    {
+      "file": "cosplay-grand-blue-diver.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1963532,
+      "sha256": "d667199f7a6f1b123c04d3084cb4ffd43ef56c99c596f5b6cc83904f1eb98f4d",
+      "fully_transparent_pixels": 764506,
+      "soft_halo_included": true
+    },
+    {
+      "file": "cosplay-hunter.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1641716,
+      "sha256": "f18f59d5ff108f6144189007836f424ff890e1a4b59850e98dfb6c8c4d650d7b",
+      "fully_transparent_pixels": 1096107,
+      "soft_halo_included": true
+    },
+    {
+      "file": "cosplay-quintuplets.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1499897,
+      "sha256": "604d205578a29e721c4379b2bd8bc758a16970dd752307abafc005063c7d5f3a",
+      "fully_transparent_pixels": 1097118,
+      "soft_halo_included": true
+    },
+    {
+      "file": "cosplay-titan.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1864466,
+      "sha256": "e612584452fae2df2f5603a2c71b41800fd1ba81d00170ca6c74ac5855161cf7",
+      "fully_transparent_pixels": 998566,
+      "soft_halo_included": true
+    },
+    {
+      "file": "happy.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1746014,
+      "sha256": "f11d27ca566e73b39320c080df5f5907d7b53d5417b87db4d03a03e89f8dc5d8",
+      "fully_transparent_pixels": 914689,
+      "soft_halo_included": true
+    },
+    {
+      "file": "relaxed.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1869524,
+      "sha256": "301c099b361a623078165ce803aa6bd2eaf746d537822e16770de0c57eb567dc",
+      "fully_transparent_pixels": 757914,
+      "soft_halo_included": true
+    },
+    {
+      "file": "thinking.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1909510,
+      "sha256": "6798c5e2a44c904a5c2558058ac83466153443cc16a4ed5c3dc1daf67ccec907",
+      "fully_transparent_pixels": 696235,
+      "soft_halo_included": true
+    },
+    {
+      "file": "welcome.png",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "bytes": 1856933,
+      "sha256": "88da53685d8ba31ed6bd8a0404dad74394d4e01fc8867055c65702a3f486547b",
+      "fully_transparent_pixels": 810904,
+      "soft_halo_included": true
+    }
+  ]
+}

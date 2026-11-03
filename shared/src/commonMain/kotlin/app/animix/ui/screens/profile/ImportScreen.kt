@@ -261,7 +261,7 @@ private fun LinearLoading(modifier: Modifier = Modifier) {
     )
 }
 
-private fun titlesWord(n: Int): String = when {
+internal fun titlesWord(n: Int): String = when {
     n % 100 in 11..14 -> "тайтлов"
     n % 10 == 1 -> "тайтл"
     n % 10 in 2..4 -> "тайтла"

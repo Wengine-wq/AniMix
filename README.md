@@ -2,7 +2,7 @@
 
 **AniMix** — приложение для просмотра аниме на Android и Windows. New Horizons — перерождение первого AniMix: одно приложение на телефоне и ПК, свой плеер, загрузки, онлайн-профиль и синхронизация между устройствами.
 
-Текущая версия — **1.1.1 re** «Improved user experience».
+Текущая версия — **1.2.0 re** «Make it yours».
 
 <p>
   <img src="docs/screenshots/home.png" width="250" alt="Главная">

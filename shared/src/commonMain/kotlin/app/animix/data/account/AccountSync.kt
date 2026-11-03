@@ -25,6 +25,8 @@ data class AccountSyncState(val syncing: Boolean = false, val pending: Boolean =
     val sampledUsage: SyncUsage = SyncUsage(),
     val uploadedMedia: Map<String, String> = emptyMap(),
     val pendingApply: PendingApply? = null,
+    /** The server revision [base] was read at; an unchanged revision is answered without the payload. */
+    val revision: Long = 0,
 )
 @Serializable private data class PendingApply(val before: LibraryData, val after: LibraryData, val preferences: JsonObject, val receipt: String)
 @Serializable private data class CachedAccount(val library: LibraryData, val achievements: app.animix.data.achievements.AchievementState,
@@ -93,7 +95,15 @@ class AccountSync(
             checkAccount(user.id)
             applyPending(user.id)
             achievements.flush()
-            var remote = readEnvelope(account.getJson("/v1/me/sync", user.id))
+            val known = journal.revision.takeIf { journal.base != null && it > 0 }
+            val raw = account.getJson("/v1/me/sync" + (known?.let { "?known=$it" } ?: ""), user.id)
+            val unchanged = known != null && raw["unchanged"]?.jsonPrimitive?.booleanOrNull == true
+            var remote = if (unchanged) SyncEnvelope(known, journal.base) else readEnvelope(raw)
+            // Nothing new on either side: a few bytes from the server and no upload.
+            if (unchanged && !pendingChanges()) {
+                mutable.value = AccountSyncState(pending = false, lastSuccessAt = TrustedClock.now())
+                return@withLock
+            }
             if (remote.payload == null && journal.base == null) bootstrap(user)
             uploadImages(user.id)
             val sampled = library.state.value
@@ -113,10 +123,13 @@ class AccountSync(
                     usageUnion(cloud.usage[key] ?: SyncUsage(), local.usage[key] ?: SyncUsage())
                 }
                 val usage = aggregateUsage(counters.values)
-                val merged = SyncPayload(library = mergeLibrary(base.library, local.library, cloud.library).copy(
+                val mergedLibrary = mergeLibrary(base.library, local.library, cloud.library).copy(
                     watchDays = usage.days, usage = usage.years, watchRemainderMs = 0,
-                ), achievements = mergeAwards(local.achievements, cloud.achievements),
-                    preferences = (mergeJson(base.preferences, preferences, cloud.preferences) as? JsonObject) ?: preferences, usage = counters)
+                )
+                val mergedAwards = mergeAwards(local.achievements, cloud.achievements)
+                val merged = SyncPayload(library = mergedLibrary, achievements = mergedAwards,
+                    preferences = (mergeJson(base.preferences, preferences, cloud.preferences) as? JsonObject) ?: preferences, usage = counters,
+                    summary = publicSummary(mergedLibrary, mergedAwards))
                 val upload = merged.copy(library = merged.library.copy(profile = merged.library.profile.copy(accountId = user.id,
                     avatar = merged.library.profile.avatar?.copy(localFileName = null), banner = merged.library.profile.banner?.copy(localFileName = null))))
                 if (upload == remote.payload) { accepted = upload; return@repeat }
@@ -127,6 +140,7 @@ class AccountSync(
             val saved = accepted ?: throw AccountException("Другое устройство обновляет профиль. Повторим синхронизацию.")
             checkAccount(user.id)
             if (saved == journal.base && !pendingChanges()) {
+                if (journal.revision != remote.revision) { journal = journal.copy(revision = remote.revision); saveJournal(user.id) }
                 mutable.value = AccountSyncState(pending = false, lastSuccessAt = TrustedClock.now())
                 return@withLock
             }
@@ -141,7 +155,7 @@ class AccountSync(
             }
             // Durable intent + library receipt make a crash before/after applying the response
             // distinguishable. Remote time cannot become a new local playback delta on restart.
-            journal = journal.copy(base = saved,
+            journal = journal.copy(base = saved, revision = remote.revision,
                 ownedUsage = usageDelta(SyncUsage(current.watchDays, current.usage), currentUsage, journal.ownedUsage),
                 sampledUsage = SyncUsage(after.watchDays, after.usage),
                 pendingApply = PendingApply(current, after, preferences, "$device-${Random.nextLong().toULong().toString(16)}"))
@@ -160,14 +174,25 @@ class AccountSync(
         require(id.matches(Regex("[A-Za-z0-9_-]{1,80}")))
         if (owner != id) {
             achievements.flush()
+            val current = library.state.value
+            val currentAwards = achievements.syncState.value
+            // What the previous account last saved in the cloud. Anything this device did after it,
+            // as a guest once signed out, belongs to the person signing in now.
+            val left = owner?.let { previous -> store.readChecked("sync-journal-$previous.json")?.let { SyncJson.decodeFromString<SyncJournal>(it) }?.base }
             owner?.let { previous ->
-                store.writeChecked("sync-cache-$previous.json", SyncJson.encodeToString(CachedAccount(library.state.value, achievements.syncState.value,
+                store.writeChecked("sync-cache-$previous.json", SyncJson.encodeToString(CachedAccount(current, currentAwards,
                     JsonObject(SyncJson.encodeToJsonElement(settings.state.value).jsonObject.filterKeys { it in SyncedPreferenceKeys }))))
             }
             val cache = store.readChecked("sync-cache-$id.json")?.let { SyncJson.decodeFromString<CachedAccount>(it) }
             if (owner != null || cache != null) {
-                library.applySynced { cache?.library ?: LibraryData() }
-                achievements.applySynced(cache?.achievements ?: app.animix.data.achievements.AchievementState(), replace = true)
+                val target = cache?.library ?: LibraryData()
+                // Without a saved state of the previous account nothing can be told apart: nothing moves.
+                val guestBase = if (owner == null) LibraryData() else left?.library ?: current
+                val guestAwards = if (owner == null) currentAwards.unlocked
+                    else left?.let { base -> currentAwards.unlocked.filterKeys { it !in base.achievements.unlocked } }.orEmpty()
+                library.applySynced { live -> carryGuestProgress(guestBase, live, target) }
+                achievements.applySynced(mergeAwards(cache?.achievements ?: app.animix.data.achievements.AchievementState(),
+                    app.animix.data.achievements.AchievementState(unlocked = guestAwards)), replace = true)
                 settings.update { current ->
                     val defaults = SyncJson.encodeToJsonElement(Settings()).jsonObject.filterKeys { it in SyncedPreferenceKeys }
                     SyncJson.decodeFromJsonElement(JsonObject(SyncJson.encodeToJsonElement(current).jsonObject + defaults + cache?.preferences.orEmpty()))

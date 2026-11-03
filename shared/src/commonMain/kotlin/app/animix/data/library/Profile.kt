@@ -33,8 +33,11 @@ data class LocalProfile(
     val banner: ProfileMedia? = null,
     val badgeAchievementId: String? = null,
     val updatedAt: Long = 0,
+    /** Level rewards: the page design (from level 10) and the avatar frame in the same style (from level 20). */
+    val design: String? = null,
+    val frame: String? = null,
 ) {
-    fun draft() = ProfileDraft(name, about, avatar, banner, badgeAchievementId)
+    fun draft() = ProfileDraft(name, about, avatar, banner, badgeAchievementId, design, frame)
 
     fun edited(draft: ProfileDraft, unlockedBadges: Set<String>, now: Long): LocalProfile = copy(
         name = draft.name.trim().replace(Regex("\\s+"), " ").takeCharacters(ProfileNameLimit).ifBlank { name.takeCharacters(ProfileNameLimit) },
@@ -42,6 +45,8 @@ data class LocalProfile(
         avatar = draft.avatar,
         banner = draft.banner,
         badgeAchievementId = draft.badgeAchievementId?.takeIf { it in unlockedBadges },
+        design = draft.design,
+        frame = draft.frame,
         updatedAt = now,
     )
 }
@@ -54,6 +59,8 @@ data class ProfileDraft(
     val avatar: ProfileMedia? = null,
     val banner: ProfileMedia? = null,
     val badgeAchievementId: String? = null,
+    val design: String? = null,
+    val frame: String? = null,
 )
 
 const val ProfileNameLimit = 35

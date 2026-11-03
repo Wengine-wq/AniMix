@@ -7,6 +7,7 @@ import { CloudFunctionEvent, CloudFunctionResponse, LibraryEntry, RuntimeConfig,
 import { PgStore, Store } from './pg';
 import { syncLibrary, validSyncPayload } from './sync';
 import { validDeviceId, validPlayback } from './social';
+import { allows, publicCollection, readVisibility, Relation, Visibility } from './privacy';
 
 const SHIKIMORI_TOKEN_URL = 'https://shikimori.io/oauth/token';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -150,11 +151,39 @@ function shikimoriAnimeId(payload: Record<string, unknown>): number {
   return Number(payload.shikimori_id ?? payload.target_id ?? nestedId ?? 0);
 }
 
-async function currentSession(event: CloudFunctionEvent, store: Store): Promise<{ user: UserRow; sessionId: string } | null> {
+/**
+ * Sessions seen in the last half minute, by token hash. Every device asks the server several times a
+ * minute; without this each request cost three lookups before doing any work. Signing out or removing
+ * a device drops its entries at once.
+ */
+const SESSION_CACHE_MS = 30_000;
+const sessionCache = new Map<string, { user: UserRow; sessionId: string; deviceId: string | null; expiresAt: number; checkedAt: number }>();
+
+export function forgetSessions(sessionIds: string[]): void {
+  if (!sessionIds.length) return;
+  for (const [hash, value] of sessionCache) if (sessionIds.includes(value.sessionId)) sessionCache.delete(hash);
+}
+
+/** A profile edit must be visible to the next request at once. */
+function forgetUser(userId: string): void {
+  for (const [hash, value] of sessionCache) if (value.user.id === userId) sessionCache.delete(hash);
+}
+
+async function currentSession(event: CloudFunctionEvent, store: Store): Promise<{ user: UserRow; sessionId: string; deviceId: string | null } | null> {
   const token = bearerToken(event);
   if (!token) return null;
   const now = nowSeconds();
-  const session = await store.sessionByAccessHash(pepperedHash(token, services().config.authTokenPepper), now);
+  const hash = pepperedHash(token, services().config.authTokenPepper);
+  const cached = sessionCache.get(hash);
+  if (cached && cached.expiresAt > now && Date.now() - cached.checkedAt < SESSION_CACHE_MS) {
+    if (now - Number(cached.user.last_seen_at ?? 0) >= LAST_SEEN_UPDATE_SECONDS) {
+      await store.touchSession(cached.user.id, cached.sessionId, now);
+      cached.user.last_seen_at = now;
+    }
+    return { user: { ...cached.user }, sessionId: cached.sessionId, deviceId: cached.deviceId };
+  }
+  sessionCache.delete(hash);
+  const session = await store.sessionByAccessHash(hash, now);
   if (!session) return null;
   const user = await store.userById(session.user_id);
   if (!user) return null;
@@ -162,7 +191,16 @@ async function currentSession(event: CloudFunctionEvent, store: Store): Promise<
     await store.touchSession(user.id, session.id, now);
     user.last_seen_at = now;
   }
-  return { user, sessionId: session.id };
+  const deviceId = (session as { device_id?: string | null }).device_id ?? null;
+  if (sessionCache.size > 5000) sessionCache.clear();
+  sessionCache.set(hash, { user: { ...user }, sessionId: session.id, deviceId, expiresAt: Number(session.access_expires_at), checkedAt: Date.now() });
+  return { user, sessionId: session.id, deviceId };
+}
+
+/** How the viewer relates to a profile's owner, for per-part privacy. */
+async function relation(store: Store, viewerId: string, ownerId: string): Promise<Relation> {
+  if (viewerId === ownerId) return 'self';
+  return await store.friendStatus(viewerId, ownerId) === 'friends' ? 'friend' : 'other';
 }
 
 async function profile(user: UserRow, store: Store, media: ProfileMediaStorage): Promise<Record<string, unknown>> {
@@ -379,6 +417,7 @@ async function updateProfile(event: CloudFunctionEvent, config: RuntimeConfig, s
     if (badge !== null && (typeof badge !== 'string' || !/^[a-z0-9_]{1,40}$/.test(badge))) return json(event, config, { error: 'invalid_badge' }, 400);
     await store.updateProfileExtras(session.user.id, about === null ? null : Array.from(about.trim()).slice(0, 160).join(''), badge, now);
   }
+  forgetUser(session.user.id);
   const updated = await store.userById(session.user.id);
   return json(event, config, { user: updated ? await profile(updated, store, media) : null });
 }
@@ -439,19 +478,26 @@ async function publicProfile(
   const result = await profile(user, store, media);
   delete result.email;
   delete result.email_verified_at;
-  if(!await store.libraryVisible(userId))delete result.stats;
+  if ((await store.visibility(userId)).stats !== 'all') delete result.stats;
   return json(event, config, { user: result });
 }
 
 async function privacy(event: CloudFunctionEvent, config: RuntimeConfig, store: Store): Promise<CloudFunctionResponse> {
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+  let current = await store.visibility(session.user.id);
   if (event.httpMethod === 'PUT') {
-    const visible = jsonBody(event).library_visible;
-    if (typeof visible !== 'boolean') return json(event, config, { error: 'invalid_privacy' }, 400);
-    await store.setLibraryVisible(session.user.id, visible);
+    const input = jsonBody(event);
+    // Clients before 1.2 send one switch for the collection and statistics.
+    const shared = input.library_visible ? 'friends' : 'nobody';
+    const next = typeof input.library_visible === 'boolean' && !input.visibility
+      ? { ...current, collection: shared, stats: shared, achievements: shared } as Visibility
+      : readVisibility(input.visibility, current);
+    if (!next) return json(event, config, { error: 'invalid_privacy' }, 400);
+    await store.setVisibility(session.user.id, next);
+    current = next;
   }
-  return json(event, config, { library_visible: await store.libraryVisible(session.user.id) });
+  return json(event, config, { library_visible: current.collection !== 'nobody', visibility: current });
 }
 
 async function publicLibrary(
@@ -460,11 +506,8 @@ async function publicLibrary(
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   if (!await store.userById(userId)) return json(event, config, { error: 'not_found' }, 404);
-  if (session.user.id !== userId) {
-    const [mine, theirs] = await Promise.all([
-      store.libraryVisible(session.user.id), store.libraryVisible(userId),
-    ]);
-    if (!mine || !theirs) return json(event, config, { error: 'library_private' }, 403);
+  if (!allows((await store.visibility(userId)).collection, await relation(store, session.user.id, userId))) {
+    return json(event, config, { error: 'library_private' }, 403);
   }
   const synced = store instanceof PgStore ? await store.syncState(userId) : null;
   return json(event, config, { entries: syncLibrary(synced?.payload ?? null) ?? await store.libraryEntries(userId) });
@@ -492,25 +535,7 @@ async function friends(
   const session = await currentSession(event, store);
   if (!session) return json(event, config, { error: 'unauthorized' }, 401);
   const userId = session.user.id;
-  if (!peerId) {
-    const edges = await store.friendEdges(userId);
-    const users = await Promise.all(edges.map(async (edge) => {
-      const peer = await store.userById(edge.peer_id);
-      if (!peer) return null;
-      const avatar = (await store.mediaForUser(peer.id)).find((row) => row.kind === 'avatar');
-      // Presence only between friends, the same rule as their profile overview.
-      const devices = edge.status === 'friends' && store instanceof PgStore ? await store.devices(peer.id) : null;
-      return {
-        id: peer.id, display_name: peer.display_name, status: edge.status,
-        avatar_url: avatar ? media.publicUrl(avatar.object_key) : null,
-        ...(devices ? {
-          online: devices.some((row) => row.active && Date.now() - row.seen_at < 90000),
-          last_seen_at: devices.reduce((last, row) => Math.max(last, row.seen_at), 0),
-        } : {}),
-      };
-    }));
-    return json(event, config, { users: users.filter((user) => user !== null) });
-  }
+  if (!peerId) return json(event, config, { users: await friendList(store, media, userId) });
   if (peerId === userId) return json(event, config, { error: 'cannot_friend_self' }, 400);
   if (!await store.userById(peerId)) return json(event, config, { error: 'not_found' }, 404);
   const status = await store.friendStatus(userId, peerId);
@@ -531,6 +556,20 @@ async function friends(
     return json(event, config, { status: 'outgoing' });
   }
   return json(event, config, { error: 'method_not_allowed' }, 405);
+}
+
+/** Friends and requests in one query; presence follows each person's own setting. */
+async function friendList(store: Store, media: ProfileMediaStorage, userId: string): Promise<Array<Record<string, unknown>>> {
+  return (await store.friendsOverview(userId)).map((row) => {
+    const fallback: Visibility = { collection: 'friends', stats: 'friends', achievements: 'friends', presence: 'friends' };
+    const presence = (row.visibility ? readVisibility(row.visibility, fallback) : null)?.presence ?? fallback.presence;
+    const shown = allows(presence, row.status === 'friends' ? 'friend' : 'other');
+    return {
+      id: row.id, display_name: row.display_name, status: row.status,
+      avatar_url: row.avatar_key ? media.publicUrl(row.avatar_key) : null,
+      ...(shown ? { online: row.online, last_seen_at: row.last_seen_at } : {}),
+    };
+  });
 }
 
 async function library(event: CloudFunctionEvent, config: RuntimeConfig, store: Store, media: ProfileMediaStorage, animeId?: number): Promise<CloudFunctionResponse> {
@@ -767,18 +806,35 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
     if (path === '/v1/auth/google/callback' && method === 'GET') return googleCallback(event, config, store);
     if (path === '/v1/auth/google/exchange' && method === 'POST') return googleExchange(event, config, store, media);
     if (path === '/v1/auth/refresh' && method === 'POST') return refresh(event, config, store, media);
-    if (['/v1/me/presence', '/v1/me/devices', '/v1/me/handoff'].includes(path) || /^\/v1\/me\/handoff\/[0-9a-f-]{36}\/claim$/.test(path)) {
+    const deviceMatch = /^\/v1\/me\/devices\/([A-Za-z0-9_-]{1,100})$/.exec(path);
+    if (deviceMatch && method === 'DELETE') {
+      const session = await currentSession(event, store);
+      if (!session) return json(event, config, { error: 'unauthorized' }, 401);
+      if (!(store instanceof PgStore)) return json(event, config, { error: 'unavailable' }, 503);
+      // This device signs out with «Выйти»; the list removes only the others.
+      if (deviceMatch[1] === session.deviceId) return json(event, config, { error: 'current_device' }, 400);
+      forgetSessions(await store.removeDevice(session.user.id, deviceMatch[1]));
+      return json(event, config, { devices: await store.devices(session.user.id), current: session.deviceId });
+    }
+    if (['/v1/me/presence', '/v1/me/devices', '/v1/me/handoff', '/v1/me/pulse'].includes(path) || /^\/v1\/me\/handoff\/[0-9a-f-]{36}\/claim$/.test(path)) {
       const session = await currentSession(event, store);
       if (!session) return json(event, config, { error: 'unauthorized' }, 401);
       if (!(store instanceof PgStore)) return json(event, config, { error: 'unavailable' }, 503);
       const body = method === 'GET' ? {} : jsonBody(event);
-      if (path === '/v1/me/devices' && method === 'GET') return json(event, config, { devices: await store.devices(session.user.id) });
+      if (path === '/v1/me/devices' && method === 'GET') return json(event, config, { devices: await store.devices(session.user.id), current: session.deviceId });
       const device = method === 'GET' ? event.queryStringParameters?.device : body.device;
       if (!validDeviceId(device)) return json(event, config, { error: 'invalid_device' }, 400);
-      if (path === '/v1/me/presence' && method === 'PUT') {
+      if ((path === '/v1/me/presence' && method === 'PUT') || (path === '/v1/me/pulse' && method === 'POST')) {
         if (typeof body.active !== 'boolean' || typeof body.label !== 'string' || typeof body.platform !== 'string' || (body.playback != null && !validPlayback(body.playback))) return json(event, config, { error: 'invalid_presence' }, 400);
         await store.heartbeat(session.user.id, device, body.label.slice(0,64), body.platform.slice(0,24), body.active, body.playback ?? null);
-        return json(event, config, { ok: true });
+        if (session.deviceId !== device) { await store.bindSessionDevice(session.sessionId, device); forgetSessions([session.sessionId]); }
+        if (path === '/v1/me/presence') return json(event, config, { ok: true });
+        // One request instead of four: presence, own devices, handoffs, and friends only when asked.
+        const [devices, handoffs, friendRows] = await Promise.all([
+          store.devices(session.user.id), store.pendingHandoffs(session.user.id, device),
+          body.friends === true ? friendList(store, media, session.user.id) : Promise.resolve(null),
+        ]);
+        return json(event, config, { devices, handoffs, current: device, ...(friendRows ? { users: friendRows } : {}) });
       }
       if (path === '/v1/me/handoff' && method === 'GET') return json(event, config, { handoffs: await store.pendingHandoffs(session.user.id, device) });
       if (path === '/v1/me/handoff' && method === 'POST') {
@@ -797,25 +853,48 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
       if (!session) return json(event, config, { error: 'unauthorized' }, 401);
       const id = overview[1]; const peer = await store.userById(id);
       if (!peer) return json(event, config, { error: 'not_found' }, 404);
-      const mine = id === session.user.id;
-      const visible = mine || (await store.friendStatus(session.user.id,id) === 'friends' && await store.libraryVisible(id) && await store.libraryVisible(session.user.id));
-      const document = store instanceof PgStore && visible ? (await store.syncState(id)).payload : null;
+      const [viewer, settings] = await Promise.all([relation(store, session.user.id, id), store.visibility(id)]);
+      const can = { collection: allows(settings.collection, viewer), stats: allows(settings.stats, viewer),
+        achievements: allows(settings.achievements, viewer), presence: allows(settings.presence, viewer) };
+      // The profile card (banner, avatar, design) is public like the name; the rest only when its owner allows it.
+      const document = store instanceof PgStore ? (await store.syncState(id)).payload : null;
       const library = document?.library as any;
-      // Private sync bookkeeping, handoffs and episode resume positions never go into another profile.
-      const entries = library?.entries ? Object.fromEntries(Object.entries(library.entries).map(([key, value]: [string, any]) => [key,{ ...value,episodePositions:{} }])) : {};
-      const view = library ? { profile: library.profile,entries,watchDays:library.watchDays,usage:library.usage,legacyWatchSeconds:library.legacyWatchSeconds } : null;
+      // Resume positions, playback coverage and sync bookkeeping never leave the account: statistics come
+      // as the owner's own summary.
+      const summary = can.stats ? (document?.summary as Record<string, unknown> | undefined) ?? null : null;
       const user = await profile(peer,store,media); delete user.email; delete user.email_verified_at;
-      if(!visible)delete user.stats;
-      const devices = store instanceof PgStore ? await store.devices(id) : [];
+      if (!can.stats) delete user.stats;
+      const devices = can.presence && store instanceof PgStore ? await store.devices(id) : [];
       const awards = document?.achievements as any;
-      return json(event, config, { user,visible,library:view,achievements:visible && awards ? { unlocked:awards.unlocked,historical:awards.historical } : null,
-        online:devices.some((row) => row.active && Date.now()-row.seen_at < 90000),last_seen_at:devices.reduce((last,row) => Math.max(last,row.seen_at),0) });
+      // Apps before 1.2 (no ?v=2) read the old shape: the whole library when the collection is visible.
+      const legacy = query(event, 'v') !== '2' && can.collection && library ? { library: {
+        profile: library.profile, watchDays: can.stats ? library.watchDays : {}, usage: can.stats ? library.usage : {},
+        legacyWatchSeconds: library.legacyWatchSeconds,
+        entries: Object.fromEntries(Object.entries(library.entries ?? {}).map(([key, value]: [string, any]) => [key, { ...value, episodePositions: {} }])),
+      } } : {};
+      return json(event, config, {
+        ...legacy,
+        user, relation: viewer, can, visible: can.collection,
+        profile: library?.profile ?? null,
+        summary,
+        collection: can.collection ? publicCollection(library?.entries) : null,
+        achievements: can.achievements && awards ? { unlocked: awards.unlocked, historical: awards.historical } : null,
+        ...(can.presence ? { online: devices.some((row) => row.active && Date.now()-row.seen_at < 90000),
+          last_seen_at: devices.reduce((last,row) => Math.max(last,row.seen_at),0) } : {}),
+      });
     }
     if (path === '/v1/me/sync' && ['GET', 'PUT'].includes(method)) {
       const session = await currentSession(event, store);
       if (!session) return json(event, config, { error: 'unauthorized' }, 401);
       if (!(store instanceof PgStore)) return json(event, config, { error: 'sync_unavailable' }, 503);
-      if (method === 'GET') return json(event, config, await store.syncState(session.user.id));
+      if (method === 'GET') {
+        // A device that already has the latest revision gets a few bytes instead of the whole collection.
+        const known = Number(query(event, 'known'));
+        if (Number.isSafeInteger(known) && known > 0 && await store.syncRevision(session.user.id) === known) {
+          return json(event, config, { revision: known, unchanged: true });
+        }
+        return json(event, config, await store.syncState(session.user.id));
+      }
       const body = jsonBody(event);
       if (!Number.isSafeInteger(body.revision) || Number(body.revision) < 0 || !validSyncPayload(body.payload)) {
         return json(event, config, { error: 'invalid_sync_state' }, 400);
@@ -835,6 +914,7 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
       const awards = body.payload.achievements as any;
       if (badge && !awards?.unlocked?.[badge] && !awards?.historical?.[badge]) return json(event, config, { error: 'badge_not_unlocked' }, 400);
       const saved = await store.putSyncState(session.user.id, Number(body.revision), body.payload);
+      if (saved) forgetUser(session.user.id);
       return saved ? json(event, config, saved) : json(event, config, await store.syncState(session.user.id), 409);
     }
     if (path === '/v1/auth/logout' && method === 'POST') {
@@ -842,7 +922,7 @@ export async function handler(event: CloudFunctionEvent): Promise<CloudFunctionR
       if (current) {
         const token = bearerToken(event);
         const session = await store.sessionByAccessHash(pepperedHash(token, config.authTokenPepper), nowSeconds());
-        if (session) await store.deleteSession(session);
+        if (session) { await store.deleteSession(session); forgetSessions([session.id]); }
       }
       return json(event, config, { ok: true });
     }

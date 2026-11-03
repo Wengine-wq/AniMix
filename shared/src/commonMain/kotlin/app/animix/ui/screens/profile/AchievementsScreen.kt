@@ -157,7 +157,7 @@ fun AchievementIcon(achievement: Achievement, unlocked: Boolean, size: androidx.
 }
 
 @Composable
-private fun AchievementRow(progress: AchievementProgress) {
+internal fun AchievementRow(progress: AchievementProgress) {
     val colors = AniMixTheme.colors
     val a = progress.achievement
     val hidden = a.secret && !progress.unlocked

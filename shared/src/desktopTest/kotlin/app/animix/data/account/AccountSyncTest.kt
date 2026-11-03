@@ -181,6 +181,69 @@ class AccountSyncTest {
         } finally { a.close() }
     }
 
+    /** The same installation after a restart, signed in as [user] or a guest (null). */
+    private inner class Restart(val cloud: Cloud, val root: java.io.File, user: String?) {
+        val disk = DiskStore(root.absolutePath)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val http = HttpClient(cloud.engine()) { expectSuccess = true }
+        val library = Library(disk, scope)
+        val settings = AppSettings(disk, scope)
+        val awards = Achievements(disk, scope, library, settings)
+        val account = AniMixAccount(http, disk, scope, "https://api.test")
+        val sync = AccountSync(account, library, awards, settings, disk, scope)
+        init { runBlocking {
+            if (user == null) disk.deleteChecked("animix-account.json")
+            else disk.writeChecked("animix-account.json", """{"accessToken":"$user","refreshToken":"r-$user","user":{"id":"$user","name":"$user"}}""")
+            settings.load(); library.load(); awards.load(); account.load(); sync.start(automatic = false)
+        } }
+        suspend fun stop() { library.flush(); awards.flush(); settings.flush(); scope.coroutineContext[Job]!!.cancelAndJoin(); http.close() }
+    }
+
+    @Test fun guestHistoryJoinsTheAccountOnFirstSignIn() = runBlocking<Unit> {
+        val cloud = Cloud(); val phone = Device(cloud); val pc = Files.createTempDirectory("animix-guest-").toFile()
+        val other = Anime.placeholder(5114).copy(title = "Fullmetal", episodes = 64)
+        try {
+            phone.init(); phone.library.setStatus(other, ListStatus.Watching); phone.library.saveEpisodePosition(other, "3", 30_000); phone.sync.synchronize()
+            val guest = Restart(cloud, pc, null)
+            guest.library.recordPlayback(anime, "1", PlaybackCredit(listOf(ViewedRange(0, 60_000)), 60_000), 60_000, null, null, true)
+            guest.library.saveEpisodePosition(anime, "2", 12_000)
+            guest.stop()
+            val signed = Restart(cloud, pc, "u1")
+            signed.sync.synchronize(); assertNull(signed.sync.state.value.error)
+            val entry = signed.library.state.value.entry(anime)!!
+            assertEquals(1, entry.episodesWatched); assertEquals(12_000, entry.episodePositions["2"])
+            assertNotNull(signed.library.state.value.entry(other))
+            signed.stop()
+            phone.sync.synchronize()
+            assertEquals(1, phone.library.state.value.entry(anime)?.episodesWatched, "The phone receives what the guest watched")
+        } finally { phone.close(); pc.deleteRecursively() }
+    }
+
+    @Test fun guestProgressAfterSignOutMovesToTheNextAccountOnly() = runBlocking<Unit> {
+        val cloud = Cloud(); val pc = Files.createTempDirectory("animix-guest-").toFile()
+        val first = Anime.placeholder(1).copy(title = "First user's", episodes = 12)
+        try {
+            val u1 = Restart(cloud, pc, "u1"); u1.library.setStatus(first, ListStatus.Completed); u1.sync.synchronize(); u1.stop()
+            val guest = Restart(cloud, pc, null)
+            guest.library.recordPlayback(anime, "1", PlaybackCredit(listOf(ViewedRange(0, 60_000)), 60_000), 60_000, null, null, true)
+            guest.stop()
+            // The same account again: what the guest watched stays.
+            val again = Restart(cloud, pc, "u1"); again.sync.synchronize(); assertNull(again.sync.state.value.error)
+            assertEquals(1, again.library.state.value.entry(anime)?.episodesWatched)
+            assertEquals(1, cloud.accounts.getValue("u1").payload!!.library.entry(anime)?.episodesWatched)
+            again.stop()
+            // Signed out again, watched more, then another account: only the guest's new progress moves.
+            val guest2 = Restart(cloud, pc, null)
+            guest2.library.recordPlayback(anime, "2", PlaybackCredit(listOf(ViewedRange(0, 60_000)), 60_000), 60_000, null, null, true)
+            guest2.stop()
+            val u2 = Restart(cloud, pc, "u2"); u2.sync.synchronize(); assertNull(u2.sync.state.value.error)
+            val moved = u2.library.state.value
+            assertNull(moved.entry(first), "The previous account's collection stays with it")
+            assertNotNull(moved.entry(anime)?.viewing?.get("2")?.completedAt, "The guest's new episode joins the new account")
+            u2.stop()
+        } finally { pc.deleteRecursively() }
+    }
+
     @Test fun restartAfterLostServerResponseRestoresPendingChangesWithoutAddingTimeAgain() = runBlocking<Unit> {
         val cloud = Cloud(); val a = Device(cloud); var restarted: Device? = null
         try {

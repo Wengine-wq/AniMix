@@ -14,6 +14,19 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
+/** The filters of «Умный подбор»: genres that must all be present, kind, era, length and only finished titles. */
+@kotlinx.serialization.Serializable
+data class PickFilters(
+    val genres: List<String> = emptyList(),
+    /** "tv", "movie", "short" (OVA, ONA, specials) or null for any. */
+    val kind: String? = null,
+    /** "new" (2020 on), "2010s", "classic" (before 2010) or null. */
+    val era: String? = null,
+    /** "short" (up to 13), "season" (14–26), "long" (more) or null. */
+    val length: String? = null,
+    val finished: Boolean = false,
+)
+
 /** A title found for «Подобрано для вас», with the liked title it resembles, if any. */
 data class PickCandidate(val anime: Anime, val similarTo: Anime? = null)
 
@@ -35,6 +48,44 @@ class Recommendations(private val shikimori: ShikimoriRepository, private val an
         val byGenre = genreIds.map { id -> async { safe { shikimori.catalog(CatalogQuery(genreIds = listOf(id), order = CatalogOrder.Ranked, limit = 30)).map(::PickCandidate) } } }
         val bySimilar = liked.map { title -> async { safe { anime.similar(title).map { PickCandidate(it, title) } } } }
         rankPicks(library, (bySimilar + byGenre).awaitAll().flatten(), limit)
+    }
+
+    /**
+     * «Подборки» → «Умный подбор»: the best titles for the chosen filters. Candidates come from the
+     * catalog ranked by score in each chosen genre (or the viewer's strongest genres), plus titles similar
+     * to liked ones when no genre is chosen; they are filtered exactly and ranked like [rankPicks], by
+     * the catalog score when there is no taste yet.
+     */
+    suspend fun withFilters(library: LibraryData, filters: PickFilters, limit: Int = 30): List<Anime> = coroutineScope {
+        val genres = shikimori.genres()
+        val chosen = filters.genres.ifEmpty { library.tasteGenres().take(3).map { it.first } }
+        val genreIds = genres.filter { it.title in chosen }.map { it.id }
+        val year = app.animix.data.library.dayToDate(app.animix.core.localDayIndex()).year
+        val season = when (filters.era) {
+            "new" -> "2020_$year"
+            "2010s" -> "2010_2019"
+            "classic" -> "1980_2009"
+            else -> null
+        }
+        val kinds = when (filters.kind) { "tv" -> listOf("tv"); "movie" -> listOf("movie"); "short" -> listOf("ova", "ona", "special"); else -> emptyList() }
+        fun query(genre: String?, page: Int) = CatalogQuery(page = page, limit = 50, order = CatalogOrder.Ranked, kinds = kinds,
+            status = if (filters.finished) "released" else null, season = season, genreIds = listOfNotNull(genre))
+        val sources = (if (genreIds.isEmpty()) listOf(null) else genreIds).flatMap { genre -> listOf(1, 2).map { page ->
+            async { safe { shikimori.catalog(query(genre, page)).map(::PickCandidate) } } } }
+        val liked = if (filters.genres.isEmpty()) library.entries.values.filter { it.favorite || (it.score ?: 0) >= 8 }.take(3).map { it.anime } else emptyList()
+        val similar = liked.map { title -> async { safe { anime.similar(title).map { PickCandidate(it, title) } } } }
+        val candidates = (sources + similar).awaitAll().flatten().filter { candidate ->
+            val a = candidate.anime
+            val episodes = a.episodes.takeIf { it > 0 } ?: a.episodesAired
+            (filters.genres.isEmpty() || filters.genres.all { it in a.genres }) &&
+                when (filters.length) { "short" -> episodes in 1..13; "season" -> episodes in 14..26; "long" -> episodes > 26; else -> true } &&
+                (!filters.finished || a.status == AnimeStatus.Released) &&
+                (kinds.isEmpty() || a.kind.name.lowercase() in kinds || (filters.kind == "short" && a.kind in setOf(AnimeKind.Ova, AnimeKind.Ona, AnimeKind.Special)))
+        }
+        rankPicks(library, candidates, limit).ifEmpty {
+            candidates.map { it.anime }.distinctBy { it.key }.filter { it.key !in library.entries.keys && it.status != AnimeStatus.Announced }
+                .sortedByDescending { it.score ?: 0.0 }.take(limit)
+        }
     }
 
     private suspend fun safe(block: suspend () -> List<PickCandidate>): List<PickCandidate> = try {

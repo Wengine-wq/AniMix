@@ -62,9 +62,14 @@ sealed interface Route {
 
     data object Friends : Route { override val key = "friends" }
     data object Menu : Route { override val key = "menu" }
+    /** «Подборки» (experimental): own lists and smart picks. */
+    data object Collections : Route { override val key = "collections" }
+    data class Collection(val id: String) : Route { override val key get() = "collection:$id" }
     data object Level : Route { override val key = "level" }
     data object Notifications : Route { override val key = "notifications" }
     data class FriendProfile(val id:String) : Route { override val key get() = "user:$id" }
+    data class FriendCollection(val id: String) : Route { override val key get() = "user-collection:$id" }
+    data class FriendAchievements(val id: String) : Route { override val key get() = "user-achievements:$id" }
 
     data object Achievements : Route {
         override val key get() = "achievements"
@@ -165,6 +170,7 @@ class Navigator {
             "history" -> { tab = Tab.Profile; push(Route.History) }
             "friends" -> { tab = Tab.Profile; push(Route.Friends) }
             "menu" -> { tab = Tab.Profile; push(Route.Menu) }
+            "collections" -> { tab = Tab.Lists; push(Route.Collections) }
             "level" -> { tab = Tab.Profile; push(Route.Level) }
             "notifications" -> { tab = Tab.Profile; push(Route.Notifications) }
             "user" -> { val id=path.getOrNull(1)?.takeIf{it.matches(Regex("[0-9a-fA-F-]{36}"))}?:return false;push(Route.FriendProfile(id)) }

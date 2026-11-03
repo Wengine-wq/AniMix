@@ -21,8 +21,8 @@ import org.jetbrains.compose.resources.painterResource
 
 enum class MascotPose { Welcome, Thinking, Relaxed, Happy }
 
-/** The mascot is being redrawn: until then no screen shows it, and empty states use a quiet icon. */
-const val MascotShown = false
+/** The redrawn mascot (November 2026) is back: empty states, cosplays on title pages and the AniPulse greeting. */
+const val MascotShown = true
 
 /** Bundled transparent artwork: no network, animation, panel or theme-specific tint. */
 @Composable

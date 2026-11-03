@@ -33,7 +33,7 @@ internal fun SocialState.acceptedFriends(): List<SocialUser> = friends.filter { 
 
 /** Runs a social action with one shared busy flag and a plain-language error. */
 @Composable
-private fun rememberSocialAction(): Triple<Boolean, String?, (suspend () -> Unit) -> Unit> {
+internal fun rememberSocialAction(): Triple<Boolean, String?, (suspend () -> Unit) -> Unit> {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -121,25 +121,61 @@ fun FriendsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues)
     }
 }
 
-/** Settings → «Приватность»: who sees the collection. Only an online profile has anything to share. */
+/**
+ * Settings → «Приватность»: each part of the profile with its own audience — everyone, friends or nobody.
+ * Name, avatar, banner and the profile design stay public: they are how people find each other.
+ */
 @Composable
 internal fun PrivacySection(graph: AppGraph, navigator: Navigator) {
     val account by graph.account.state.collectAsState()
-    var visible by remember { mutableStateOf<Boolean?>(null) }
+    var visibility by remember { mutableStateOf<ProfileVisibility?>(null) }
     val (busy, error, run) = rememberSocialAction()
-    LaunchedEffect(account.user?.id) { if (account.user != null) run { visible = graph.social.privacy() } }
+    LaunchedEffect(account.user?.id) { if (account.user != null) run { visibility = graph.social.visibility() } }
     if (account.user == null) {
         MessageState("Нечего скрывать", message = "Без входа всё хранится только на этом устройстве и никому не видно.", icon = AniMixIcons.Lock,
             actionLabel = "Открыть аккаунт", onAction = { navigator.push(Route.SettingsSection("Account")) }, actionIcon = AniMixIcons.User)
         return
     }
-    Panel {
-        ToggleRow("Коллекция и статистика для друзей", visible == true, { next -> run { graph.social.privacy(next); visible = next } },
-            AniMixIcons.Bookmark, subtitle = "Списки, часы, активность и достижения видят только взаимные друзья", enabled = !busy && visible != null)
+    val current = visibility
+    // A change shows at once and returns to the saved value if the server refuses it.
+    fun change(next: ProfileVisibility) {
+        val before = visibility
+        visibility = next
+        run { try { visibility = graph.social.setVisibility(next) } catch (error: Exception) { visibility = before; throw error } }
     }
-    Txt("Имя, аватар и статус «в сети» видны всем, кто найдёт вас в поиске. Позиции просмотра не показываются никому.",
+    if (current == null) { if (error == null) LoadingIndicator() } else Panel {
+        PrivacyRow(AniMixIcons.Bookmark, "Коллекция", "Списки и избранное", current.collection, !busy) { change(current.copy(collection = it)) }
+        AccountDivider()
+        PrivacyRow(AniMixIcons.Clock, "Статистика", "Часы, серии, уровень, активность и любимые жанры", current.stats, !busy) { change(current.copy(stats = it)) }
+        AccountDivider()
+        PrivacyRow(AniMixIcons.Trophy, "Достижения", "Полученные награды и их число", current.achievements, !busy) { change(current.copy(achievements = it)) }
+        AccountDivider()
+        PrivacyRow(AniMixIcons.Wifi, "В сети", "Зелёная точка и время последнего входа", current.presence, !busy) { change(current.copy(presence = it)) }
+    }
+    Txt("Имя, аватар, баннер, оформление профиля и «О себе» видны всем, кто найдёт вас в поиске. Позиции просмотра не видны никому.",
         AniMixTheme.type.micro, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
     error?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
+}
+
+/** One part of the profile and its audience as three chips: the choice reads in words, not only by colour. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PrivacyRow(icon: ImageVector, title: String, subtitle: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
+    val colors = AniMixTheme.colors
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, null, Modifier.padding(top = 2.dp).size(20.dp), tint = colors.textSecondary)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt(title, AniMixTheme.type.bodyStrong)
+            Txt(subtitle, AniMixTheme.type.caption)
+            Spacer(Modifier.height(10.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("all" to "Все", "friends" to "Друзья", "nobody" to "Никто").forEach { (key, label) ->
+                    Chip(label, value == key, { if (enabled && value != key) onChange(key) })
+                }
+            }
+        }
+    }
 }
 
 /** «был в сети 5 минут назад», «вчера в 21:40», «12 окт.»: when someone was last online. */
@@ -179,36 +215,80 @@ internal fun PresenceLine(online: Boolean?, lastSeenAt: Long?, modifier: Modifie
     }
 }
 
-/** Profile → bell: friend requests to accept or decline. */
+/** Profile → bell: new episodes from «Смотрю» and friend requests, newest first; the dots go when the page is left. */
 @Composable
 fun NotificationsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val account by graph.account.state.collectAsState()
     val social by graph.social.state.collectAsState()
+    val notices by graph.notifier.notices.collectAsState()
     val (busy, error, run) = rememberSocialAction()
     LaunchedEffect(account.user?.id) { if (account.user != null) run { graph.social.refresh() } }
+    DisposableEffect(Unit) { onDispose { graph.scope.launch { graph.notifier.markRead() } } }
     ScreenColumn(padding) {
         PageHeader("Уведомления", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))
-        if (account.user == null) {
-            MessageState("Войдите в AniMix", message = "Заявки в друзья приходят в онлайн-профиль.", icon = AniMixIcons.Bell)
-            return@ScreenColumn
-        }
         error?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.accentText, modifier = Modifier.padding(bottom = 12.dp)) }
-        val requests = social.incomingRequests()
-        if (requests.isEmpty()) {
-            MessageState("Новых уведомлений нет", message = "Здесь появятся заявки в друзья.", icon = AniMixIcons.Bell)
+        val requests = if (account.user != null) social.incomingRequests() else emptyList()
+        if (requests.isEmpty() && notices.isEmpty()) {
+            MessageState("Новых уведомлений нет",
+                message = "Здесь появятся новые серии онгоингов из «Смотрю»" + if (account.user != null) " и заявки в друзья." else ".",
+                icon = AniMixIcons.Bell, actionLabel = "Настроить", onAction = { navigator.push(Route.SettingsSection("Notifications")) },
+                actionIcon = AniMixIcons.Settings)
             return@ScreenColumn
         }
-        Txt("Заявки в друзья · ${requests.size}", AniMixTheme.type.heading)
-        Spacer(Modifier.height(12.dp))
-        requests.forEach { user ->
-            SocialUserRow(user, navigator, actionsBelow = true) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("Принять", true, { if (!busy) run { graph.social.friendAction(user.id) } }, icon = AniMixIcons.Check)
-                    Chip("Отклонить", false, { if (!busy) run { graph.social.friendAction(user.id, remove = true) } }, icon = AniMixIcons.Close)
+        if (requests.isNotEmpty()) {
+            Txt("Заявки в друзья · ${requests.size}", AniMixTheme.type.heading)
+            Spacer(Modifier.height(12.dp))
+            requests.forEach { user ->
+                SocialUserRow(user, navigator, actionsBelow = true) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Принять", true, { if (!busy) run { graph.social.friendAction(user.id) } }, icon = AniMixIcons.Check)
+                        Chip("Отклонить", false, { if (!busy) run { graph.social.friendAction(user.id, remove = true) } }, icon = AniMixIcons.Close)
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+        if (notices.isNotEmpty()) {
+            Txt("Новые серии", AniMixTheme.type.heading)
+            Spacer(Modifier.height(12.dp))
+            Panel {
+                notices.forEachIndexed { index, notice ->
+                    if (index > 0) AccountDivider()
+                    EpisodeNoticeRow(notice) { navigator.push(Route.Watch(notice.anime, notice.episode.toString())) }
                 }
             }
         }
+    }
+}
+
+/** A poster, the title, what came out and when; an accent dot until the page is left once. */
+@Composable
+private fun EpisodeNoticeRow(notice: app.animix.data.notify.EpisodeNotice, onClick: () -> Unit) {
+    val colors = AniMixTheme.colors
+    Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        RemoteImage(notice.anime.posterUrl, Modifier.width(44.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt(notice.anime.title, AniMixTheme.type.bodyStrong, maxLines = 2)
+            Txt(if (notice.dubbing != null) "Серия ${notice.episode} в озвучке ${notice.dubbing}" else "Вышла серия ${notice.episode}",
+                AniMixTheme.type.caption, maxLines = 2)
+            Txt(noticeTime(notice.at), AniMixTheme.type.micro)
+        }
+        if (!notice.read) Box(Modifier.padding(start = 8.dp).size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accent))
+    }
+}
+
+private fun noticeTime(at: Long): String {
+    val today = app.animix.core.localDayIndex()
+    val day = app.animix.core.localDayIndex(at)
+    val clock = app.animix.core.localTimeLabel(at)
+    val date = dayToDate(day)
+    return when (day) {
+        today -> "Сегодня в $clock"
+        today - 1 -> "Вчера в $clock"
+        else -> "${date.day} ${MonthsShort[date.month - 1]} в $clock"
     }
 }
 
@@ -262,100 +342,6 @@ private fun SocialSearchField(value: String, onChange: (String) -> Unit) {
             if (value.isEmpty()) Txt("Найти по имени", AniMixTheme.type.body, color = colors.textMuted, maxLines = 1)
             BasicTextField(value, onChange, singleLine = true, textStyle = AniMixTheme.type.body.copy(color = colors.textPrimary),
                 cursorBrush = SolidColor(colors.accent), modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-/** A friend's profile: the same layout as one's own, from what the friend shares. */
-@Composable
-fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, padding: PaddingValues) {
-    val overview = rememberLoad(id) { graph.social.overview(id) }
-    val social by graph.social.state.collectAsState()
-    val (busy, actionError, run) = rememberSocialAction()
-    var confirmRemoval by remember(id) { mutableStateOf(false) }
-    LaunchedEffect(id) { while (isActive) { delay(15_000); overview.refresh() } }
-    ScreenColumn(padding) {
-        PageHeader("Профиль", { navigator.back() }, Modifier.padding(top = 12.dp))
-        Spacer(Modifier.height(20.dp))
-        when (val state = overview.value) {
-            Load.Loading -> LoadingIndicator()
-            is Load.Failed -> MessageState("Не удалось открыть профиль", message = state.error.userMessage(), icon = AniMixIcons.User,
-                actionLabel = "Повторить", onAction = overview::refresh)
-            is Load.Ready -> {
-                val raw = state.value
-                val user = raw.getValue("user").jsonObject
-                val lib = raw["library"]?.takeIf { it != JsonNull }?.let { AppJson.decodeFromJsonElement<LibraryData>(it) }
-                val awards = raw["achievements"]?.takeIf { it != JsonNull }?.let { AppJson.decodeFromJsonElement<AchievementState>(it) } ?: AchievementState()
-                val profile = lib?.profile ?: LocalProfile(name = user["display_name"]?.jsonPrimitive?.contentOrNull ?: "AniMix",
-                    about = user["about"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    avatar = user["avatar_url"]?.jsonPrimitive?.contentOrNull?.let { ProfileMedia(url = it) },
-                    banner = user["banner_url"]?.jsonPrimitive?.contentOrNull?.let { ProfileMedia(url = it) })
-                val badge = graph.achievements.all.firstOrNull { it.id == profile.badgeAchievementId }
-                    ?.let { app.animix.data.achievements.AchievementProgress(it, 1, awards.unlocked[it.id], awards.historical[it.id]) }
-                ProfileIdentity(profile, badge, level = lib?.level(awards.unlocked.size),
-                    online = raw["online"]?.jsonPrimitive?.booleanOrNull ?: false,
-                    lastSeenAt = raw["last_seen_at"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 })
-                if (lib == null) {
-                    Spacer(Modifier.height(24.dp))
-                    Txt("Коллекция и подробная статистика видны взаимным друзьям с открытой коллекцией.", AniMixTheme.type.body)
-                } else {
-                    val stats = lib.stats()
-                    // The same plates as one's own profile.
-                    Spacer(Modifier.height(24.dp))
-                    GlassPlate {
-                        ProfileStats(listOf(
-                            StatItem(profileHours(stats.totalMinutes), "часов в AniMix"),
-                            StatItem("${stats.episodes}", "серий"),
-                            StatItem("${stats.completed}", "завершено"),
-                            StatItem("${awards.unlocked.size + awards.historical.keys.count { it !in awards.unlocked }}", "достижений"),
-                        ))
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    GlassPlate { CollectionDistribution(lib, null) }
-                    Spacer(Modifier.height(16.dp))
-                    GlassPlate {
-                        Txt("Активность", AniMixTheme.type.heading)
-                        Spacer(Modifier.height(16.dp))
-                        ActivityChart(stats.lastDays)
-                        if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд", AniMixTheme.type.micro,
-                            modifier = Modifier.padding(top = 8.dp))
-                    }
-                    if (stats.topGenres.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
-                        GlassPlate {
-                            Txt("Любимые жанры", AniMixTheme.type.heading)
-                            Spacer(Modifier.height(12.dp))
-                            GenreTaste(stats.topGenres)
-                        }
-                    }
-                    Spacer(Modifier.height(32.dp))
-                    Txt("Коллекция", AniMixTheme.type.heading)
-                    Spacer(Modifier.height(12.dp))
-                    Panel {
-                        lib.entries.values.filter { it.status != null || it.favorite }.sortedBy { it.anime.title }.forEach { entry ->
-                            NavRow(entry.anime.title, AniMixIcons.Play, { navigator.push(Route.Detail(entry.anime)) }, trailing = entry.status?.label ?: "Избранное")
-                        }
-                    }
-                }
-                // Friendship lives here, with the person, not as a button on every row of the list.
-                val status = social.friends.firstOrNull { it.id == id }?.status ?: "none"
-                Spacer(Modifier.height(32.dp))
-                when (status) {
-                    "friends" -> if (!confirmRemoval) SecondaryButton("Удалить из друзей", { confirmRemoval = true }, Modifier.fillMaxWidth(), icon = AniMixIcons.Close)
-                    else {
-                        Txt("Удалить «${profile.name}» из друзей?", AniMixTheme.type.bodyStrong)
-                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SecondaryButton("Отмена", { confirmRemoval = false }, Modifier.weight(1f))
-                            SecondaryButton("Удалить", { confirmRemoval = false; run { graph.social.friendAction(id, remove = true) } },
-                                Modifier.weight(1f), icon = AniMixIcons.Trash, enabled = !busy)
-                        }
-                    }
-                    "incoming" -> PrimaryButton("Принять заявку", { run { graph.social.friendAction(id) } }, Modifier.fillMaxWidth(), icon = AniMixIcons.Check, enabled = !busy)
-                    "outgoing" -> SecondaryButton("Отменить заявку", { run { graph.social.friendAction(id, remove = true) } }, Modifier.fillMaxWidth(), enabled = !busy)
-                    else -> PrimaryButton("Добавить в друзья", { run { graph.social.friendAction(id) } }, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !busy)
-                }
-                actionError?.let { Txt(it, AniMixTheme.type.caption, color = AniMixTheme.colors.danger, modifier = Modifier.padding(top = 8.dp)) }
-            }
         }
     }
 }
@@ -440,19 +426,48 @@ fun HorizonIncoming(graph: AppGraph, navigator: Navigator) {
     }
 }
 
-/** Settings → «Аккаунт» → Horizon Link: this account's devices and whether they are online. */
+/**
+ * Settings → «Аккаунт» → «Устройства»: every device signed in to this account, named after the phone or
+ * the PC's motherboard and system. Any other device can be signed out from here after a confirmation.
+ */
 @Composable
 internal fun HorizonDevices(graph: AppGraph) {
     val social by graph.social.state.collectAsState()
+    var confirm by remember { mutableStateOf<String?>(null) }
+    val (busy, error, run) = rememberSocialAction()
+    DisposableEffect(Unit) { val release = graph.social.watch(); onDispose { release() } }
     LaunchedEffect(Unit) { runCatching { graph.social.refresh() } }
     Panel {
         if (social.devices.isEmpty()) AccountRow(AniMixIcons.Monitor, "Это устройство", Platform.name)
-        social.devices.sortedByDescending { it.seenAt }.forEachIndexed { index, device ->
-            val self = device.id == graph.social.deviceId
-            if (index > 0) AccountDivider()
-            AccountRow(deviceIcon(device), device.label, if (self) "Это устройство" else if (device.online()) "В сети" else "Не в сети")
-        }
+        social.devices.sortedWith(compareByDescending<HorizonDevice> { it.id == graph.social.deviceId }.thenByDescending { it.seenAt })
+            .forEachIndexed { index, device ->
+                val self = device.id == graph.social.deviceId
+                if (index > 0) AccountDivider()
+                Column {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(deviceIcon(device), null, Modifier.size(20.dp), tint = AniMixTheme.colors.textSecondary)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Txt(device.label, AniMixTheme.type.bodyStrong, maxLines = 2)
+                            Txt(when { self -> "Это устройство"; device.online() -> "В сети"; else -> lastSeenLabel(device.seenAt) }, AniMixTheme.type.caption)
+                        }
+                        if (!self && confirm != device.id) {
+                            Spacer(Modifier.width(8.dp))
+                            Chip("Отключить", false, { confirm = device.id }, icon = AniMixIcons.Close)
+                        }
+                    }
+                    if (confirm == device.id) Column(Modifier.padding(start = 50.dp, end = 16.dp, bottom = 14.dp)) {
+                        Txt("Отключить «${device.label}»? На нём придётся войти заново. Списки и загрузки на устройстве останутся.", AniMixTheme.type.caption)
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton("Отмена", { confirm = null }, Modifier.weight(1f))
+                            SecondaryButton("Отключить", { run { graph.social.removeDevice(device.id); confirm = null } },
+                                Modifier.weight(1f), icon = AniMixIcons.Close, enabled = !busy)
+                        }
+                    }
+                }
+            }
     }
-    Txt("Начали серию на одном устройстве — продолжите на другом кнопкой «Horizon Link» в плеере.",
-        AniMixTheme.type.micro, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+    Txt(error ?: "Начали серию на одном устройстве — продолжите на другом кнопкой «Horizon Link» в плеере.",
+        AniMixTheme.type.micro, color = if (error != null) AniMixTheme.colors.danger else AniMixTheme.colors.textSecondary,
+        modifier = Modifier.padding(top = 8.dp, start = 4.dp))
 }

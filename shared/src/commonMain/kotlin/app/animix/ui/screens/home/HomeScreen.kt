@@ -152,6 +152,8 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
         if (!reviewSeen) item(key = "year-review") {
             YearReviewCard(library, review) { year -> navigator.push(Route.YearInReview(year)) }
         }
+        // AniPulse: one quiet entry after the filters (and «Итоги года», which stay right under them).
+        item(key = "anipulse") { app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) } }
         item(key = "continue") {
             ContinueShelf(continueItems, onOpen = { item ->
                 val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&

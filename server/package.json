@@ -1,6 +1,6 @@
 {
   "name": "animix-server",
-  "version": "1.0.5",
+  "version": "1.2.0",
   "private": true,
   "description": "AniMix New Horizons account server: Google sign-in, profiles, friends, sync and Horizon Link on PostgreSQL.",
   "main": "dist/server.js",

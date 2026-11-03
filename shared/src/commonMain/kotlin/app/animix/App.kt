@@ -201,10 +201,11 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             val current = navigator.current
             val playerLandscape = Platform.name == "Android" && maxWidth > maxHeight &&
                 (current is Route.Watch || current is Route.Offline || current is Route.WatchFlow)
-            val showBar = current !is Route.YearInReview && !playerLandscape
+            val pip by app.animix.data.playback.PictureInPicture.active.collectAsState()
+            val showBar = current !is Route.YearInReview && !playerLandscape && !pip
             Box(Modifier.fillMaxSize().then(if (LocalUiPerformance.current.batterySaver) Modifier else Modifier.hazeSource(haze))) {
                 AmbientBackdrop(ambient.imageUrl)
-                Content(graph, navigator, PaddingValues(top = statusBar, bottom = navBar + if (showBar) BottomBarSpace else 0.dp))
+                Content(graph, navigator, if (pip) PaddingValues(0.dp) else PaddingValues(top = statusBar, bottom = navBar + if (showBar) BottomBarSpace else 0.dp))
             }
             // Keeps the status bar readable over scrolled content.
             Box(
@@ -277,6 +278,10 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
                     route == Route.Level -> app.animix.ui.screens.profile.LevelScreen(graph, navigator, padding)
                     route == Route.Notifications -> app.animix.ui.screens.profile.NotificationsScreen(graph, navigator, padding)
                     route is Route.FriendProfile -> app.animix.ui.screens.profile.FriendProfileScreen(graph,navigator,route.id,padding)
+                    route == Route.Collections -> app.animix.ui.screens.collections.CollectionsScreen(graph, navigator, padding)
+                    route is Route.Collection -> app.animix.ui.screens.collections.CollectionScreen(graph, navigator, route.id, padding)
+                    route is Route.FriendCollection -> app.animix.ui.screens.profile.FriendCollectionScreen(graph, navigator, route.id, padding)
+                    route is Route.FriendAchievements -> app.animix.ui.screens.profile.FriendAchievementsScreen(graph, navigator, route.id, padding)
                     route is Route.Reviews -> ReviewsScreen(graph, navigator, route.anime, padding)
                     route is Route.Watch -> WatchScreen(graph, navigator, route.anime, padding, route.episode)
                     route is Route.Offline -> OfflineWatchScreen(graph, navigator, route.downloadId, padding)

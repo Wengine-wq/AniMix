@@ -115,3 +115,38 @@ test('profile description and pinned achievement are stored', async () => {
   assert.equal(saved.badge_achievement_id, 'first_favorite');
   assert.equal(Number(saved.updated_at), 200);
 });
+
+test('1.2: one device signs out, privacy per part, friends in one query, revision check', async () => {
+  const store = await freshStore();
+  await store.createUser(user);
+  await store.createUser({ ...user, id: 'u2', email: 'friend@example.com', display_name: 'Друг' });
+  const phone = await store.createSession('u1', 'a-phone', 'r-phone', 9e9, 9e9, 100);
+  const pc = await store.createSession('u1', 'a-pc', 'r-pc', 9e9, 9e9, 100);
+  await store.bindSessionDevice(phone, 'device-phone');
+  await store.bindSessionDevice(pc, 'device-pc');
+  await store.heartbeat('u1', 'device-phone', 'Pixel 8 · Android 15', 'Android', true, null);
+  await store.heartbeat('u1', 'device-pc', 'B550 · Windows 11', 'Windows', true, null);
+  assert.deepEqual(await store.removeDevice('u1', 'device-phone'), [phone]);
+  assert.equal(await store.sessionByAccessHash('a-phone', 1), null);
+  assert.equal(await store.sessionByRefreshHash('r-phone', 1), null);
+  assert.ok(await store.sessionByAccessHash('a-pc', 1));
+  assert.deepEqual((await store.devices('u1')).map((row) => row.device_id), ['device-pc']);
+
+  assert.deepEqual(await store.visibility('u2'), { collection: 'friends', stats: 'friends', achievements: 'friends', presence: 'friends' });
+  await store.setLibraryVisible('u2', false);
+  assert.equal((await store.visibility('u2')).collection, 'nobody');
+  await store.setVisibility('u2', { collection: 'all', stats: 'friends', achievements: 'nobody', presence: 'all' });
+  assert.equal((await store.visibility('u2')).achievements, 'nobody');
+  assert.equal(await store.libraryVisible('u2'), true);
+
+  await store.setFriendPair('u1', 'u2', 'friends', 'friends');
+  await store.heartbeat('u2', 'friend-pc', 'PC', 'Windows', true, null);
+  const [friend] = await store.friendsOverview('u1');
+  assert.equal(friend.id, 'u2');
+  assert.equal(friend.status, 'friends');
+  assert.equal(friend.online, true);
+
+  assert.equal(await store.syncRevision('u1'), 0);
+  await store.putSyncState('u1', 0, { version: 1, library: { entries: {} }, achievements: {}, usage: {} });
+  assert.equal(await store.syncRevision('u1'), 1);
+});

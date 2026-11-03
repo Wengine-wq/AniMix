@@ -503,6 +503,7 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     },
                     onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                     onAmbientGlowChange = { value -> graph.settings.update { it.copy(ambientGlow = value) } },
+                onSpeedChange = { value -> graph.settings.update { it.copy(playbackSpeed = value) } },
                     onPlayback = { update -> graph.library.recordPlayback(item.anime, item.episode.number, update.credit,
                         update.durationMs, update.opening, update.ending, update.reachedEnd,
                         app.animix.data.library.PlaybackContext(item.studio, offline = true, platform = app.animix.core.Platform.name)) },

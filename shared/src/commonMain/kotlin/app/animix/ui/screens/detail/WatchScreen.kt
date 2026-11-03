@@ -165,12 +165,18 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
         graph.kodik.resolve(selectedEpisode.iframeUrl, forceRefresh = force)
     }
 
+    // In the small window of «картинка в картинке» the page is only the video: the same player, nothing around it.
+    val pip by app.animix.data.playback.PictureInPicture.active.collectAsState()
+    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    androidx.compose.runtime.LaunchedEffect(pip) { if (pip) grid.scrollToItem(0) }
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val columns = if (maxWidth >= 900.dp) 10 else if (maxWidth >= 600.dp) 8 else 5
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
+            state = grid,
+            userScrollEnabled = !pip,
             modifier = Modifier.widthIn(max = 1000.dp).fillMaxSize(),
-            contentPadding = PaddingValues(
+            contentPadding = if (pip) PaddingValues(0.dp) else PaddingValues(
                 start = 20.dp, end = 20.dp,
                 top = contentPadding.calculateTopPadding() + 8.dp,
                 bottom = contentPadding.calculateBottomPadding() + 24.dp,
@@ -180,7 +186,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!pip) Row(verticalAlignment = Alignment.CenterVertically) {
                         IconCircle(AniMixIcons.Back, onClick = { navigator.back() })
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -193,7 +199,7 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                         }
                         IconCircle(AniMixIcons.Clock, { navigator.push(Route.WatchFlow(anime, episodeNumber)) }, contentDescription = "Подготовить Watch flow")
                     }
-                    Spacer(Modifier.height(16.dp))
+                    if (!pip) Spacer(Modifier.height(16.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         PlayerArea(graph, anime, selectedEpisode, selectedDubbing, stream.value, stream::refresh,
                             next = selectedDubbing?.episodes?.let { episodes ->
@@ -204,13 +210,13 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                             suggested = suggested,
                             onPlay = { episode -> episodeNumber = episode.number },
                             onDownload = { dubbing, episode -> requestDownload(dubbing, listOf(episode)) },
-                            modifier = Modifier.widthIn(max = 860.dp),
+                            modifier = if (pip) Modifier else Modifier.widthIn(max = 860.dp),
                         )
                     }
-                    Spacer(Modifier.height(24.dp))
+                    if (!pip) Spacer(Modifier.height(24.dp))
                 }
             }
-            when (val state = source.value) {
+            if (!pip) when (val state = source.value) {
                 Load.Loading -> {
                     item(span = { GridItemSpan(maxLineSpan) }) { SelectionPlaceholder() }
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -304,12 +310,14 @@ private fun PlayerArea(
                 onQualityChange = { quality -> graph.settings.update { it.copy(preferredQuality = quality) } },
                 fullscreen = fullscreen,
                 onFullscreenChange = { fullscreen = it },
+                pictureInPicture = true,
                 onAutoNextChoice = { yes ->
                     graph.settings.update { it.copy(autoNextEpisode = yes, autoNextAsked = true) }
                     if (yes) graph.achievements.settingEnabled("autoNextEpisode")
                 },
                 onFillScreenChange = { value -> graph.settings.update { it.copy(fillScreen = value) } },
                     onAmbientGlowChange = { value -> graph.settings.update { it.copy(ambientGlow = value) } },
+                onSpeedChange = { value -> graph.settings.update { it.copy(playbackSpeed = value) } },
                 onPlayback = { update -> graph.library.recordPlayback(anime, episode.number, update.credit,
                     update.durationMs, update.opening, update.ending, update.reachedEnd,
                     app.animix.data.library.PlaybackContext(dubbing.studio, offline = false, platform = app.animix.core.Platform.name)) },

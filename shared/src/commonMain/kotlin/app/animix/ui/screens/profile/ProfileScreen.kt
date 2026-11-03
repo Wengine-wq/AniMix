@@ -46,19 +46,21 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     val badge = achievements.firstOrNull { it.unlocked && it.achievement.id == library.profile.badgeAchievementId }
     // The page takes its mood from the person's own banner (or avatar), blurred behind the plates.
     app.animix.Ambient(library.profile.banner?.url ?: library.profile.avatar?.url)
+    Box(Modifier.fillMaxSize()) {
+    ProfileDesignLayer(profileDesign(library.profile.design), Modifier.fillMaxWidth().height(380.dp))
     ScreenColumn(contentPadding) {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt("Профиль", AniMixTheme.type.title, modifier = Modifier.weight(1f))
-            if (account.user != null) {
-                val requests = social.incomingRequests().size
-                Box {
-                    IconCircle(AniMixIcons.Bell, { navigator.push(Route.Notifications) },
-                        contentDescription = if (requests > 0) "Уведомления: заявок в друзья — $requests" else "Уведомления")
-                    if (requests > 0) Box(Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(AniMixTheme.colors.accent),
-                        contentAlignment = Alignment.Center) { Txt("$requests", AniMixTheme.type.micro, color = AniMixTheme.colors.onAccent) }
-                }
-                Spacer(Modifier.width(8.dp))
+            // New episodes reach guests too, so the bell is always here; its badge counts what is unread.
+            val notices by graph.notifier.notices.collectAsState()
+            val unread = (if (account.user != null) social.incomingRequests().size else 0) + notices.count { !it.read }
+            Box {
+                IconCircle(AniMixIcons.Bell, { navigator.push(Route.Notifications) },
+                    contentDescription = if (unread > 0) "Уведомления: новых — $unread" else "Уведомления")
+                if (unread > 0) Box(Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(AniMixTheme.colors.accent),
+                    contentAlignment = Alignment.Center) { Txt(if (unread > 9) "9+" else "$unread", AniMixTheme.type.micro, color = AniMixTheme.colors.onAccent) }
             }
+            Spacer(Modifier.width(8.dp))
             IconCircle(AniMixIcons.Edit, { navigator.push(Route.EditProfile()) }, contentDescription = "Редактировать профиль")
             Spacer(Modifier.width(8.dp))
             // Menu, not just settings: achievements, friends, level, history, settings and «О приложении».
@@ -111,6 +113,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
                 GenreTaste(stats.topGenres)
             }
         }
+    }
     }
 }
 
@@ -210,6 +213,8 @@ internal fun ProfileAvatar(profile: LocalProfile, size: Dp, modifier: Modifier =
             }
         }
         if (level != null) LevelRing(level, Modifier.matchParentSize())
+        // The level-20 reward sits just outside the ring, in the style of the page design.
+        ProfileFrameLayer(profileDesign(profile.frame), Modifier.matchParentSize())
     }
 }
 
@@ -281,10 +286,15 @@ internal fun ProfileStats(items: List<StatItem>) {
     }
 }
 @Composable
-internal fun CollectionDistribution(library: LibraryData, onOpen: (() -> Unit)?) {
+internal fun CollectionDistribution(library: LibraryData, onOpen: (() -> Unit)?) =
+    CollectionDistribution(ListStatus.entries.associateWith { status -> library.entries.values.count { it.status == status } }, onOpen)
+
+/** The status ring with its legend; a friend's page passes the counts from their summary. */
+@Composable
+internal fun CollectionDistribution(byStatus: Map<ListStatus, Int>, onOpen: (() -> Unit)?) {
     val colors = AniMixTheme.colors
     val statuses = listOf(ListStatus.Watching, ListStatus.Completed, ListStatus.Planned, ListStatus.OnHold, ListStatus.Dropped)
-    val counts = statuses.map { status -> library.entries.values.count { it.status == status } }
+    val counts = statuses.map { byStatus[it] ?: 0 }
     val total = counts.sum()
     val palette = listOf(colors.accent, colors.accentStrong, colors.textSecondary, colors.star, colors.textMuted)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

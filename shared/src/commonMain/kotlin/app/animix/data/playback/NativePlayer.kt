@@ -18,6 +18,8 @@ data class PlayerSnapshot(
     /** Decoded picture size, 0 until the first frame. */
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    /** Playback rate, 1 = normal; «Плеер+» offers 0.75–2×. */
+    val speed: Float = 1f,
 )
 
 interface NativePlayer {
@@ -27,6 +29,8 @@ interface NativePlayer {
     fun pause()
     fun seekTo(positionMs: Long)
     fun setVolume(volume: Float)
+    /** Playback rate within 0.25–2×; kept for the next file loaded into this player. */
+    fun setSpeed(speed: Float) {}
     fun release()
 }
 

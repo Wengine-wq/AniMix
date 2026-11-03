@@ -25,6 +25,10 @@ import io.ktor.http.encodeURLParameter
 data class SocialState(val friends:List<SocialUser> = emptyList(),val devices:List<HorizonDevice> = emptyList(),
     val incoming:List<HorizonHandoff> = emptyList(),val error:String?=null,val busy:Boolean=false)
 
+/** Who sees one part of the profile: "all", "friends" or "nobody". Name and avatar are always public. */
+@Serializable data class ProfileVisibility(val collection:String="friends",val stats:String="friends",
+    val achievements:String="friends",val presence:String="friends")
+
 /** Presence and handoff use the same authenticated account; no CDN links or credentials are sent. */
 class AccountSocial(private val account:AniMixAccount,private val store:DiskStore,private val scope:CoroutineScope,
     private val playerDispatcher:CoroutineDispatcher=Dispatchers.Main.immediate) {
@@ -33,6 +37,11 @@ class AccountSocial(private val account:AniMixAccount,private val store:DiskStor
     private val activeState=MutableStateFlow(true);val foreground=activeState.asStateFlow()
     private var receiving:HorizonHandoff?=null; private var outgoing:String?=null
     private var sourcePlayer:NativePlayer?=null
+    /** Screens that show friends or devices right now; while any is open (or a player is bound) updates come every 10 s, else every 30 s. */
+    private val attention=MutableStateFlow(0)
+    /** Servers before 1.2 answer the combined request with 404: then the four separate ones are used. */
+    private var combined=true
+    private var label=""
     val deviceId get()=device
     suspend fun start(automatic:Boolean=true) {
         device=checkNotNull(store.readChecked("sync-device.txt"))
@@ -40,11 +49,16 @@ class AccountSocial(private val account:AniMixAccount,private val store:DiskStor
         scope.launch { account.state.map { it.user?.id }.distinctUntilChanged().collectLatest { id ->
             mutable.value=SocialState(); outgoing=null; receiving=null;sourcePlayer=null
             if(id==null) return@collectLatest
+            var tick=0
             while(isActive) {
-                if(active) try { heartbeat(id); refresh(); pollHandoffs(id) }
+                val fast=bound!=null || attention.value>0
+                // In the background of the app: the same presence every 30 s, friends every minute and a half.
+                if(active && (fast || tick%3==0)) try { pulse(id,withFriends=fast || tick%9==0) }
                 catch(cancel:CancellationException){throw cancel}
                 catch(_:Exception){mutable.value=mutable.value.copy(error="Не удалось обновить онлайн-данные. Повторим при подключении.")}
-                delay(10000)
+                tick++
+                // Wakes early when a screen starts watching, so an opened list is fresh at once.
+                withTimeoutOrNull(10000){ attention.first{ it>0 && !fast } }
             }
         } }
     }
@@ -55,6 +69,32 @@ class AccountSocial(private val account:AniMixAccount,private val store:DiskStor
         if(device.isNotEmpty()) scope.launch { try{heartbeat(id)}catch(cancel:CancellationException){throw cancel}catch(_:Exception){} }
     }
     private fun owner()=account.state.value.user?.id ?: throw AccountException("Войдите в аккаунт AniMix.")
+    /** A screen showing friends or devices keeps them fresh while it is open; call the returned function on leave. */
+    fun watch():()->Unit { attention.update{it+1}; var released=false; return { if(!released){released=true;attention.update{it-1}} } }
+    private suspend fun presence():JsonObject {
+        if(label.isEmpty()) label=withContext(Dispatchers.Default){ runCatching{ deviceName() }.getOrDefault(Platform.name) }.take(64)
+        val playback=bound?.let { (player,create)->if(player.state.value.ready && !player.state.value.ended) create() else null }
+        return buildJsonObject {
+            put("device",device);put("label",label);put("platform",Platform.name);put("active",active)
+            if(playback!=null)put("playback",AppJson.encodeToJsonElement(playback))
+        }
+    }
+    /** Presence, own devices, handoffs and (when asked) friends in one request. */
+    private suspend fun pulse(id:String,withFriends:Boolean) {
+        if(combined) {
+            val (status,body)=account.postJson("/v1/me/pulse",JsonObject(presence()+("friends" to JsonPrimitive(withFriends))),id)
+            if(status==404 || status==405) combined=false
+            else {
+                if(account.state.value.user?.id!=id) return
+                val devices=body["devices"]?.let{ AppJson.decodeFromJsonElement<List<HorizonDevice>>(it) } ?: mutable.value.devices
+                val friends=body["users"]?.let{ AppJson.decodeFromJsonElement<List<SocialUser>>(it) } ?: mutable.value.friends
+                applyHandoffs(AppJson.decodeFromJsonElement(body["handoffs"] ?: JsonArray(emptyList())))
+                mutable.value=mutable.value.copy(devices=devices,friends=friends,error=null)
+                return
+            }
+        }
+        heartbeat(id); refresh(); pollHandoffs(id)
+    }
     suspend fun refresh() {
         val id=owner()
         val friends=account.getJson("/v1/friends",id)["users"] ?: JsonArray(emptyList())
@@ -66,16 +106,31 @@ class AccountSocial(private val account:AniMixAccount,private val store:DiskStor
         return AppJson.decodeFromJsonElement(account.getJson("/v1/users/search?q=${query.trim().encodeURLParameter()}",owner())["users"] ?: JsonArray(emptyList()))
     }
     suspend fun friendAction(id:String,remove:Boolean=false) { account.command("/v1/friends/$id",owner(),delete=remove); refresh() }
-    suspend fun overview(id:String)=account.getJson("/v1/users/$id/overview",owner())
-    suspend fun privacy(visible:Boolean) { account.putJson("/v1/me/privacy",buildJsonObject{put("library_visible",visible)}.toString(),owner()) }
-    suspend fun privacy():Boolean=account.getJson("/v1/me/privacy",owner())["library_visible"]?.jsonPrimitive?.booleanOrNull ?: true
-    private suspend fun heartbeat(id:String) {
-        val playback=bound?.let { (player,create)->if(player.state.value.ready && !player.state.value.ended) create() else null }
-        account.putJson("/v1/me/presence",buildJsonObject {
-            put("device",device);put("label","${Platform.name} · ${device.takeLast(4)}");put("platform",Platform.name);put("active",active)
-            if(playback!=null)put("playback",AppJson.encodeToJsonElement(playback))
-        }.toString(),id)
+    private val overviews=mutableMapOf<String,Pair<Long,JsonObject>>()
+    /** A friend's page and its collection and awards pages share one answer for half a minute. */
+    suspend fun overview(id:String,fresh:Boolean=false):JsonObject {
+        val now=TrustedClock.now()
+        if(!fresh) overviews[id]?.takeIf{ now-it.first in 0..30_000 }?.let{ return it.second }
+        return account.getJson("/v1/users/$id/overview?v=2",owner()).also{ overviews[id]=now to it }
     }
+    /** Per-part visibility; a server before 1.2 knows only one switch for the collection and statistics. */
+    suspend fun visibility():ProfileVisibility {
+        val raw=account.getJson("/v1/me/privacy",owner())
+        raw["visibility"]?.let { return AppJson.decodeFromJsonElement(it) }
+        val shared=if(raw["library_visible"]?.jsonPrimitive?.booleanOrNull==false) "nobody" else "friends"
+        return ProfileVisibility(shared,shared,shared,"friends")
+    }
+    suspend fun setVisibility(value:ProfileVisibility):ProfileVisibility {
+        val (_,raw)=account.putJson("/v1/me/privacy",buildJsonObject{put("visibility",AppJson.encodeToJsonElement(value));put("library_visible",value.collection!="nobody")}.toString(),owner())
+        return raw["visibility"]?.let { AppJson.decodeFromJsonElement<ProfileVisibility>(it) } ?: value
+    }
+    /** Signs another device out of the account: its session ends on the server, its presence disappears. */
+    suspend fun removeDevice(id:String) {
+        require(id!=device){"This device signs out from «Аккаунт»"}
+        val raw=account.command("/v1/me/devices/${id.encodeURLParameter()}",owner(),delete=true)
+        raw["devices"]?.let { mutable.value=mutable.value.copy(devices=AppJson.decodeFromJsonElement(it)) }
+    }
+    private suspend fun heartbeat(id:String) { account.putJson("/v1/me/presence",presence().toString(),id) }
     fun bind(player:NativePlayer,anime:Anime,episode:String,dubbing:String,quality:()->String):()->Unit {
         bound=player to { HorizonPlayback(anime,episode,dubbing,quality(),player.state.value.positionMs,player.state.value.playing) }
         val pending=receiving?.takeIf { it.playback.anime.key==anime.key && it.playback.episode==episode && it.playback.dubbingKey==dubbing }
@@ -108,7 +163,9 @@ class AccountSocial(private val account:AniMixAccount,private val store:DiskStor
     fun receive(item:HorizonHandoff) {receiving=item;mutable.value=mutable.value.copy(incoming=mutable.value.incoming.filterNot{it.id==item.id})}
     internal suspend fun refreshHandoffs()=pollHandoffs(owner())
     private suspend fun pollHandoffs(id:String) {
-        val rows=AppJson.decodeFromJsonElement<List<HorizonHandoff>>(account.getJson("/v1/me/handoff?device=$device",id)["handoffs"] ?: JsonArray(emptyList()))
+        applyHandoffs(AppJson.decodeFromJsonElement(account.getJson("/v1/me/handoff?device=$device",id)["handoffs"] ?: JsonArray(emptyList())))
+    }
+    private suspend fun applyHandoffs(rows:List<HorizonHandoff>) {
         withContext(playerDispatcher) {
             if(rows.any{it.id==outgoing && it.claimedAt!=null}) {sourcePlayer?.pause();sourcePlayer=null;outgoing=null}
         }

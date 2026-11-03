@@ -6,20 +6,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import app.animix.data.AppLinks
 import app.animix.data.AppRelease
 import app.animix.ui.components.Txt
 import androidx.compose.foundation.Image
 import app.animix.resources.Res
 import app.animix.resources.animix_logo
+import app.animix.ui.components.SecondaryButton
 import app.animix.ui.components.accentGlow
 import org.jetbrains.compose.resources.painterResource
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 
-/** Release notes and future plans stay visibly separate; this page never advertises a live account. */
+/** Release notes and future plans stay visibly separate; the project's own links come right after who we are. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AboutSection() {
+    val uri = LocalUriHandler.current
     // The app's own mark, as on the home screen of the device; the mascot stays with empty states.
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(Res.drawable.animix_logo), "Логотип AniMix",
@@ -33,6 +38,15 @@ internal fun AboutSection() {
     }
     Spacer(Modifier.height(16.dp))
     Txt("Перерождение первого AniMix. Просмотр, свободное время и своя коллекция — в одном приложении на телефоне и ПК.", AniMixTheme.type.body)
+    Spacer(Modifier.height(20.dp))
+    // The project: the code on GitHub; support and ideas go to the app's Telegram channel.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SecondaryButton("Проект на GitHub", { runCatching { uri.openUri(AppLinks.GITHUB) } }, icon = AniMixIcons.Link)
+        if (AppLinks.TELEGRAM.isNotEmpty()) {
+            SecondaryButton("Поддержать проект", { runCatching { uri.openUri(AppLinks.TELEGRAM) } }, icon = AniMixIcons.Heart)
+            SecondaryButton("Предложить идею", { runCatching { uri.openUri(AppLinks.TELEGRAM) } }, icon = AniMixIcons.Bulb)
+        }
+    }
 
     Spacer(Modifier.height(32.dp))
     Txt("Что нового в ${AppRelease.version}", AniMixTheme.type.heading)
@@ -55,35 +69,34 @@ internal fun AboutSection() {
             "Общий визуальный язык на Android и Windows: светлая и тёмная темы, согласованные формы и плавная навигация. Экономия батареи и отключение анимаций.")
         ReleaseFeature(AniMixIcons.Search, "Каталог и поиск",
             "Shikimori и YummyAnime в одной выдаче, фильтры по типу, жанрам и году, которые сохраняются при переходах.")
-        ReleaseFeature(AniMixIcons.Play, "Встроенный плеер AniMix",
-            "Общие элементы управления на телефоне и ПК: качество видео, полноэкранный режим, автопереход и пропуск размеченных опенингов и эндингов.")
+        ReleaseFeature(AniMixIcons.Play, "Плеер на выбор",
+            "«Плеер+» — стекло, свечение рамок, скорость, жесты и «картинка в картинке»; «Упрощённый» — плотные кнопки без эффектов. Качество, пропуск опенингов и эндингов, автопереход в обоих.")
+        ReleaseFeature(AniMixIcons.Bell, "Уведомления о новых сериях",
+            "Онгоинги из «Смотрю» сообщают о новой серии и о её выходе в выбранной озвучке — системным уведомлением и под колокольчиком в профиле.")
         ReleaseFeature(AniMixIcons.Download, "Загрузки и просмотр без сети",
             "Очередь серий с выбором озвучки и качества, паузой и продолжением. Скачанные серии доступны в приложении без интернета.")
         ReleaseFeature(AniMixIcons.Clock, "Watch flow",
             "Очередь под свободное время: подбор серий, прогноз окончания и остановка по лимиту. Можно объединять разные тайтлы в одну сессию.")
-        ReleaseFeature(AniMixIcons.User, "Профиль и уровень",
-            "Свой аватар, баннер и значок достижения рядом с именем. Уровень — кольцо вокруг аватара; статистика, активность, любимые жанры и «Итоги года».")
+        ReleaseFeature(AniMixIcons.Pulse, "AniPulse",
+            "Ваша аниме-неделя: время и серии за неделю, новые серии, почти досмотренное, онгоинги в ваших жанрах и подборка недели. Считается на устройстве, без ИИ.")
+        ReleaseFeature(AniMixIcons.User, "Профиль, уровень и награды",
+            "Свой аватар, баннер и значок. Уровень — кольцо вокруг аватара; на 10-м уровне открывается оформление профиля, на 20-м — рамка аватара.")
+        ReleaseFeature(AniMixIcons.Share, "Аккаунт, друзья и Horizon Link",
+            "Синхронизация телефона и ПК, друзья с коллекциями и достижениями, приватность для каждого раздела, продолжение серии на другом устройстве.")
         ReleaseFeature(AniMixIcons.Trophy, "Достижения",
             "Награды за подтверждённый просмотр, коллекцию и привычки, включая секретные. Импорт из Shikimori и Anixart открывает награды из истории без XP.")
-        ReleaseFeature(AniMixIcons.Share, "Перенос данных",
-            "Списки из Shikimori и Anixart, перенос списков, часов и достижений из AniMix 2.x — через аккаунт или с этого компьютера.")
-        ReleaseFeature(AniMixIcons.Refresh, "Обновления",
-            "Новая версия предлагается окном при запуске и устанавливается прямо из приложения.")
         ReleaseFeature(AniMixIcons.Flame, "Экспериментальные функции",
-            "Подборки на главной включаются в настройках. AniPulse временно приостановлен.")
+            "Свои подборки с умным подбором и полка «Подобрано для вас» включаются в настройках.")
     }
 
-    // The plan agreed for the next version: what it will bring, without dates or promises of speed.
+    // What comes next, kept apart from what already works: no dates, no promises of speed.
     Spacer(Modifier.height(32.dp))
-    Txt("Следующая версия · ${AppRelease.nextVersion}", AniMixTheme.type.heading)
+    Txt("Дальше · ${AppRelease.nextVersion}", AniMixTheme.type.heading)
     Spacer(Modifier.height(20.dp))
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        RoadmapStage("01", "Уведомления о новых сериях", "Онгоинги из «Смотрю» сообщат о новой серии на Android и Windows.")
-        RoadmapStage("02", "Плеер+", "Скорость воспроизведения, жесты яркости и громкости, «картинка в картинке» на Android.")
-        RoadmapStage("03", "Награды за уровни", "Рамки аватара, цвета акцента и значки, которые открываются с уровнем.")
-        RoadmapStage("04", "Свои подборки", "Списки сверх статусов, сортировки и действия сразу над несколькими тайтлами.")
-        RoadmapStage("05", "Совместный просмотр", "Смотреть серию вместе с другом через Horizon Link.")
-        RoadmapStage("06", "Новый маскот и AniPulse", "Обновлённый маскот и возвращение AniPulse после исправления сервиса.")
+        RoadmapStage("01", "Подборки для всех", "Свои подборки и умный подбор выйдут из экспериментальных функций с учётом ваших отзывов.")
+        RoadmapStage("02", "Стабильность и скорость", "Замеры производительности плеера и списков на слабых устройствах.")
+        RoadmapStage("03", "Совместный просмотр", "Отложен: вернёмся к нему, когда AniMix будет пользоваться больше людей.")
     }
     Spacer(Modifier.height(24.dp))
     Txt("Это план развития, а не список уже доступных функций. Состав может уточняться; дата выхода не объявлена.", AniMixTheme.type.micro)

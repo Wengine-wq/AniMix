@@ -12,5 +12,6 @@ class AniMixApplication : Application() {
         super.onCreate()
         AndroidPlatform.init(this)
         graph = AppGraph()
+        EpisodeWorker.schedule(this)
     }
 }

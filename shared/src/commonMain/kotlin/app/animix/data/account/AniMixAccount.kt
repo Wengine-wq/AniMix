@@ -193,13 +193,13 @@ class AniMixAccount(
     }
 
     /** One request with the current token; an expired token is refreshed once. */
-    internal suspend fun authorized(userId: String? = null, request: suspend (String) -> HttpResponse): HttpResponse {
+    internal suspend fun authorized(userId: String? = null, tolerated: Set<Int> = emptySet(), request: suspend (String) -> HttpResponse): HttpResponse {
         val current = session ?: throw AccountException("Войдите в аккаунт AniMix.")
         if (userId != null && current.user.id != userId) throw AccountException("Аккаунт изменился.")
         suspend fun send(token: String): HttpResponse {
             val response = request(token)
             if (response.status == HttpStatusCode.Unauthorized) throw ClientRequestException(response, "Unauthorized")
-            if (response.status.value !in 200..299 && response.status != HttpStatusCode.Conflict) throw AccountException("Сервер не принял изменения (${response.status.value}).")
+            if (response.status.value !in 200..299 && response.status != HttpStatusCode.Conflict && response.status.value !in tolerated) throw AccountException("Сервер не принял изменения (${response.status.value}).")
             return response
         }
         val response = try { send(current.accessToken) } catch (error: ClientRequestException) {
@@ -266,6 +266,14 @@ class AniMixAccount(
             bearerAuth(token); expectSuccess = false; contentType(ContentType.Application.Json); setBody(body)
         } }
         return response.status.value to json(response.bodyAsText())
+    }
+
+    /** A POST whose status the caller interprets (404 from a server without the route). */
+    internal suspend fun postJson(path: String, body: JsonObject, userId: String): Pair<Int, JsonObject> {
+        val response = authorized(userId, tolerated = setOf(404, 405)) { token -> http.post("$baseUrl$path") {
+            bearerAuth(token); expectSuccess = false; contentType(ContentType.Application.Json); setBody(body.toString())
+        } }
+        return response.status.value to (if (response.status.value in 200..299) json(response.bodyAsText()) else JsonObject(emptyMap()))
     }
 
     internal suspend fun command(path: String, userId: String, body: JsonObject = JsonObject(emptyMap()), delete: Boolean = false): JsonObject {

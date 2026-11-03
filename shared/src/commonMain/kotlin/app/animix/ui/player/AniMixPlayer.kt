@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -141,6 +142,10 @@ fun AniMixPlayer(
     onApproachingEnd: () -> Unit = {},
     fullscreen: Boolean = false,
     onFullscreenChange: (Boolean) -> Unit = {},
+    /** «Плеер+» on the watch screen may continue in a small window over other apps (Android). */
+    pictureInPicture: Boolean = false,
+    /** The viewer picked a speed in «Плеер+»; kept for the next episode. */
+    onSpeedChange: (Float) -> Unit = {},
     playerFactory: () -> NativePlayer = ::createNativePlayer,
     modifier: Modifier = Modifier,
 ) {
@@ -189,6 +194,23 @@ fun AniMixPlayer(
     var seekFeedback by remember { mutableStateOf<Int?>(null) }
     var lastVolume by remember { mutableFloatStateOf(1f) }
     var fill by remember { mutableStateOf(settings.fillScreen) }
+    // «Плеер+» adds glass, glow, speed, gestures and the small window; the simplified player is plain and light.
+    val plus = settings.playerMode == app.animix.core.PlayerMode.Plus
+    var speed by remember { mutableFloatStateOf(if (plus) settings.playbackSpeed.coerceIn(0.5f, 2f) else 1f) }
+    LaunchedEffect(player, speed, state.ready) { if (state.ready) player.setSpeed(speed) }
+    val pip by PictureInPicture.active.collectAsState()
+    val pipAllowed = pictureInPicture && plus && PictureInPicture.supported
+    DisposableEffect(pipAllowed, state.playing) {
+        PictureInPicture.eligible = pipAllowed && state.playing
+        onDispose { PictureInPicture.eligible = false }
+    }
+    val fullscreenNow by rememberUpdatedState(fullscreen)
+    val fullscreenChange by rememberUpdatedState(onFullscreenChange)
+    // The small window shows the inline player; the fullscreen dialog would stay behind it.
+    LaunchedEffect(pip) { if (pip && fullscreenNow) fullscreenChange(false) }
+    val hardware = rememberPlayerHardware()
+    var gesture by remember { mutableStateOf<Pair<Boolean, Float>?>(null) }
+    LaunchedEffect(gesture) { if (gesture != null) { delay(900); gesture = null } }
 
     val watchedFrom = watchedFromMs(state.durationMs, plan.ending)
     val savedPosition: (Long) -> Long = { position -> if (watchedFrom != null && position >= watchedFrom) 0 else position }
@@ -404,13 +426,26 @@ fun AniMixPlayer(
                     )
                 },
         ) {
-            val overlayVisible = controlsVisible || !state.playing || state.error != null
+            val overlayVisible = (controlsVisible || !state.playing || state.error != null) && !pip
             // The skip pill sits above the time pill, and above the bottom row when it is shown.
             val skipLift = when { !overlayVisible -> 20.dp; playerHasBottomRow(fullscreen, maxHeight.value) -> 132.dp; else -> 84.dp }
             // Glass needs the frame only while the controls are on screen.
-            val backdrop = rememberUpdatedState(rememberFrameBackdrop(player, enabled = overlayVisible && !LocalUiPerformance.current.batterySaver))
+            val backdrop = rememberUpdatedState(rememberFrameBackdrop(player, enabled = plus && overlayVisible && !LocalUiPerformance.current.batterySaver))
             val picture = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
-            VideoArea(player, state, zoomed = fill, glow = settings.ambientGlow, onPicture = { picture.value = it })
+            VideoArea(player, state, zoomed = fill, glow = plus && settings.ambientGlow, onPicture = { picture.value = it })
+            // «Плеер+» in fullscreen on a phone: swipe up or down on the left for brightness, on the right for volume.
+            if (plus && fullscreen && hardware != null && !pip) Box(Modifier.fillMaxSize().pointerInput(hardware) {
+                var left = true
+                detectVerticalDragGestures(
+                    onDragStart = { offset -> left = offset.x < size.width / 2f },
+                    onVerticalDrag = { change, amount ->
+                        change.consume()
+                        val step = -amount / (size.height * 0.8f)
+                        if (left) { hardware.brightness = (hardware.brightness + step).coerceIn(0f, 1f); gesture = true to hardware.brightness }
+                        else { hardware.volume = (hardware.volume + step).coerceIn(0f, 1f); gesture = false to hardware.volume }
+                    },
+                )
+            })
             CompositionLocalProvider(LocalPlayerGlass provides remember(backdrop, picture) { PlayerGlass(backdrop, picture) }) {
             PlayerOverlay(
                 horizon = horizon,
@@ -440,13 +475,17 @@ fun AniMixPlayer(
                 onMute = ::toggleMute,
                 onVolume = { player.setVolume(it); show() },
                 onNext = { nextCallback?.invoke() },
+                speed = if (plus) speed else null,
+                onSpeed = { value -> speed = value; onSpeedChange(value); show() },
+                onPictureInPicture = if (pipAllowed) { { if (fullscreen) onFullscreenChange(false); PictureInPicture.enter() } } else null,
             )
             }
+            gesture?.let { (brightness, value) -> GestureLevel(brightness, value, Modifier.align(Alignment.TopCenter).padding(top = 24.dp)) }
             seekFeedback?.let { seconds ->
                 SeekBubble(seconds, Modifier.align(if (seconds < 0) BiasAlignment(-0.6f, 0f) else BiasAlignment(0.6f, 0f)))
             }
             AnimatedVisibility(
-                visible = activeSkip != null && !atEnd && state.error == null,
+                visible = activeSkip != null && !atEnd && state.error == null && !pip,
                 enter = fadeIn(tween(160)),
                 exit = fadeOut(tween(160)),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = skipLift),
@@ -455,7 +494,7 @@ fun AniMixPlayer(
                 activeSkip?.first?.let { label = it }
                 AccentPill(label, AniMixIcons.SkipAhead) { activeSkip?.let { (_, target) -> jump(target) }; show() }
             }
-            if (atEnd && state.error == null) {
+            if (atEnd && state.error == null && !pip) {
                 EndCard(
                     nextLabel = nextLabel,
                     hasNext = onNext != null,
@@ -480,7 +519,10 @@ fun AniMixPlayer(
         }
     }
 
-    if (fullscreen) {
+    if (pip) {
+        // The small window is the whole picture: no rounded card, no controls.
+        frame(modifier.fillMaxSize())
+    } else if (fullscreen) {
         PlayerFullscreen(onDismiss = { onFullscreenChange(false) }) { frame(Modifier.fillMaxSize()) }
         Box(
             modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(AniMixTheme.shapes.large).background(Color.Black).clickable { onFullscreenChange(false) },
@@ -569,6 +611,10 @@ private fun PlayerOverlay(
     onMute: () -> Unit,
     onVolume: (Float) -> Unit,
     onNext: () -> Unit,
+    /** The current rate in «Плеер+»; null in the simplified player, which has no speed menu. */
+    speed: Float? = null,
+    onSpeed: (Float) -> Unit = {},
+    onPictureInPicture: (() -> Unit)? = null,
 ) {
     val playingNow = state.playRequested || state.playing
     AnimatedVisibility(visible, enter = fadeIn(tween(180)), exit = fadeOut(tween(260)), modifier = Modifier.fillMaxSize()) {
@@ -594,7 +640,9 @@ private fun PlayerOverlay(
                 TopAction(if (fill) AniMixIcons.Fit else AniMixIcons.Fill, "Без рамок", onFill, active = fill, showLabel = !compact)
                 // A small player has no bottom row: «Скачать» joins the top actions there.
                 if (onDownload != null && !bottomRow) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
-                SettingsMenu(quality, qualities, onQuality, glow = ambientGlow, onGlow = onAmbientGlow)
+                if (onPictureInPicture != null) OverlayIcon(AniMixIcons.PictureInPicture, onPictureInPicture, description = "Картинка в картинке")
+                SettingsMenu(quality, qualities, onQuality, glow = if (speed != null) ambientGlow else null, onGlow = onAmbientGlow,
+                    speed = speed, onSpeed = onSpeed)
             }
 
             // Middle: back 10 s, play or pause, forward 10 s — glass circles, the middle one larger.
@@ -888,12 +936,13 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
  * pictures. «Без рамок» has its own named action in the top bar.
  */
 @Composable
-private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, glow: Boolean, onGlow: (Boolean) -> Unit) {
+private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, glow: Boolean?, onGlow: (Boolean) -> Unit,
+    speed: Float? = null, onSpeed: (Float) -> Unit = {}) {
     var open by remember { mutableStateOf(false) }
     val colors = AniMixTheme.colors
     Box {
         Box(Modifier.size(44.dp)) {
-            OverlayIcon(AniMixIcons.Settings, { open = !open }, description = "Настройки плеера · качество $quality")
+            OverlayIcon(AniMixIcons.Settings, { open = !open }, description = "Настройки плеера · качество $quality" + (speed?.takeIf { it != 1f }?.let { " · скорость ${speedLabel(it)}" } ?: ""))
             // Only a short HD mark, as on YouTube; the exact quality is one tap away in the menu.
             if ((lines(quality) ?: 0) >= 720) Txt("HD", AniMixTheme.type.micro, color = colors.onAccent, maxLines = 1,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 4.dp).clip(AniMixTheme.shapes.small)
@@ -901,7 +950,23 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
         }
         if (open) Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
             onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
-            Column(Modifier.width(220.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
+            Column(Modifier.width(248.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
+                // «Плеер+»: speed first, as the most frequent change during an episode.
+                if (speed != null) {
+                    Txt("Скорость", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        PlayerSpeeds.forEach { value ->
+                            val selected = value == speed
+                            Box(Modifier.weight(1f).heightIn(min = 40.dp).clip(AniMixTheme.shapes.pill)
+                                .background(if (selected) colors.accent else Color.Transparent)
+                                .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onSpeed(value) },
+                                contentAlignment = Alignment.Center) {
+                                Txt(speedLabel(value), AniMixTheme.type.label, color = if (selected) colors.onAccent else Color.White, maxLines = 1)
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                }
                 // A downloaded file has one quality: nothing to choose, so no list.
                 if (qualities.size > 1) Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                 if (qualities.size > 1) qualities.forEach { label ->
@@ -913,14 +978,44 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                     }
                 }
                 // The glow around letterboxed pictures, for those who prefer plain black bars.
-                if (qualities.size > 1) Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
-                Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onGlow(!glow) }.padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Txt("Свечение рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
-                    Txt(if (glow) "Вкл." else "Выкл.", AniMixTheme.type.label, color = if (glow) colors.accent else Color.White.copy(alpha = 0.6f))
+                // The simplified player has no glow, so nothing to switch there.
+                if (glow != null) {
+                    if (qualities.size > 1) Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onGlow(!glow) }.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Txt("Свечение рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
+                        Txt(if (glow) "Вкл." else "Выкл.", AniMixTheme.type.label, color = if (glow) colors.accent else Color.White.copy(alpha = 0.6f))
+                    }
                 }
             }
         }
+    }
+}
+
+/** The rates of «Плеер+». */
+private val PlayerSpeeds = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** «1×», «1,25×»: a Russian decimal comma, no trailing zeros. */
+internal fun speedLabel(speed: Float): String {
+    val hundredths = kotlin.math.round(speed * 100).toInt()
+    val whole = hundredths / 100
+    val rest = (hundredths % 100).toString().padStart(2, '0').trimEnd('0')
+    return if (rest.isEmpty()) "$whole×" else "$whole,$rest×"
+}
+
+/** Brightness or volume while swiping, at the top of the picture: an icon, a line and the percent. */
+@Composable
+private fun GestureLevel(brightness: Boolean, value: Float, modifier: Modifier) {
+    Row(modifier.clip(AniMixTheme.shapes.pill).background(Color(0xE6141418)).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (brightness) AniMixIcons.Sun else if (value > 0f) AniMixIcons.Volume else AniMixIcons.Muted,
+            if (brightness) "Яркость" else "Громкость", Modifier.size(18.dp), tint = Color.White)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.width(120.dp).height(4.dp).clip(AniMixTheme.shapes.pill).background(Color.White.copy(alpha = 0.3f))) {
+            Box(Modifier.fillMaxWidth(value.coerceIn(0f, 1f)).fillMaxHeight().clip(AniMixTheme.shapes.pill).background(Color.White))
+        }
+        Spacer(Modifier.width(10.dp))
+        Txt("${(value * 100).toInt()}%", AniMixTheme.type.label, color = Color.White, maxLines = 1, modifier = Modifier.widthIn(min = 36.dp))
     }
 }
 

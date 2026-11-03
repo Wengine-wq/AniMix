@@ -7,6 +7,7 @@ import { Pool, PoolClient } from 'pg';
 import { AuthTicket, ExternalAccount, LibraryEntry, MediaRow, OAuthTransaction, SessionRow, UserRow } from './types';
 import { SyncRow } from './sync';
 import { DeviceRow } from './social';
+import { defaultVisibility, readVisibility, Visibility } from './privacy';
 
 /** The pg-compatible surface we use, so tests can pass an in-memory pool. */
 export type Queryable = Pick<Pool, 'query'> & {
@@ -58,6 +59,71 @@ export class PgStore {
       id text PRIMARY KEY, user_id text NOT NULL, source_id text NOT NULL, target_id text NOT NULL,
       playback jsonb NOT NULL, created_at bigint NOT NULL, claimed_at bigint
     )`);
+    // 1.2: a session knows its device (to sign one device out), privacy is set per part of the profile,
+    // and the hot lookups are indexed.
+    await this.db.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_id text;
+      ALTER TABLE user_privacy ADD COLUMN IF NOT EXISTS visibility jsonb;
+      CREATE INDEX IF NOT EXISTS sessions_user_device ON sessions (user_id, device_id);
+      CREATE INDEX IF NOT EXISTS access_tokens_session ON access_tokens (session_id);
+      CREATE INDEX IF NOT EXISTS refresh_tokens_session ON refresh_tokens (session_id);
+      CREATE INDEX IF NOT EXISTS user_handoffs_user_created ON user_handoffs (user_id, created_at)`);
+  }
+
+  /** Remembers which device a session belongs to; written only when it changes. */
+  async bindSessionDevice(sessionId: string, deviceId: string): Promise<void> {
+    await this.db.query('UPDATE sessions SET device_id = $2 WHERE id = $1 AND (device_id IS NULL OR device_id <> $2)', [sessionId, deviceId]);
+  }
+
+  /** Signs one device out: its sessions and tokens, its presence and its pending handoffs. Returns the ended sessions. */
+  async removeDevice(userId: string, deviceId: string): Promise<string[]> {
+    const sessions = (await this.db.query('DELETE FROM sessions WHERE user_id = $1 AND device_id = $2 RETURNING id', [userId, deviceId]))
+      .rows.map((row: any) => String(row.id));
+    if (sessions.length) {
+      await this.db.query('DELETE FROM access_tokens WHERE session_id = ANY($1::text[])', [sessions]);
+      await this.db.query('DELETE FROM refresh_tokens WHERE session_id = ANY($1::text[])', [sessions]);
+    }
+    await this.db.query('DELETE FROM user_devices WHERE user_id = $1 AND device_id = $2', [userId, deviceId]);
+    await this.db.query('DELETE FROM user_handoffs WHERE user_id = $1 AND (source_id = $2 OR target_id = $2)', [userId, deviceId]);
+    return sessions;
+  }
+
+  async visibility(userId: string): Promise<Visibility> {
+    const row = await this.one<{ library_visible: boolean; visibility: unknown }>(
+      'SELECT library_visible, visibility FROM user_privacy WHERE user_id = $1', [userId]);
+    const fallback = defaultVisibility(row?.library_visible ?? true);
+    return (row?.visibility ? readVisibility(row.visibility, fallback) : null) ?? fallback;
+  }
+
+  async setVisibility(userId: string, value: Visibility): Promise<void> {
+    await this.execute(
+      `INSERT INTO user_privacy (user_id, library_visible, updated_at, visibility) VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT (user_id) DO UPDATE SET library_visible = EXCLUDED.library_visible,
+         updated_at = EXCLUDED.updated_at, visibility = EXCLUDED.visibility`,
+      [userId, value.collection !== 'nobody', Date.now(), JSON.stringify(value)],
+    );
+  }
+
+  /**
+   * Friends and requests with name, avatar and presence in one query, instead of three queries per person.
+   * Presence is filtered by each person's own setting in the handler.
+   */
+  async friendsOverview(userId: string): Promise<Array<{ id: string; display_name: string; status: string; avatar_key: string | null;
+    online: boolean; last_seen_at: number; visibility: unknown; library_visible: boolean | null }>> {
+    const rows = await this.db.query(`SELECT u.id, u.display_name, e.status, m.object_key AS avatar_key,
+        COALESCE(bool_or(d.active AND d.seen_at > $2), false) AS online, COALESCE(max(d.seen_at), 0) AS last_seen_at,
+        p.visibility, p.library_visible
+      FROM user_friend_edges e JOIN users u ON u.id = e.peer_id
+      LEFT JOIN profile_media m ON m.user_id = u.id AND m.kind = 'avatar'
+      LEFT JOIN user_devices d ON d.user_id = u.id
+      LEFT JOIN user_privacy p ON p.user_id = u.id
+      WHERE e.user_id = $1
+      GROUP BY u.id, u.display_name, e.status, m.object_key, p.visibility, p.library_visible`, [userId, Date.now() - 90000]);
+    return rows.rows.map((row: any) => ({ ...row, last_seen_at: Number(row.last_seen_at), online: row.online === true }));
+  }
+
+  async syncRevision(userId: string): Promise<number> {
+    const row = await this.one<{ revision: number }>('SELECT revision FROM user_sync_state WHERE user_id = $1', [userId]);
+    return Number(row?.revision ?? 0);
   }
 
   async heartbeat(userId: string, deviceId: string, label: string, platform: string, active: boolean, playback: unknown): Promise<void> {

@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val graph = (application as AniMixApplication).graph
+        app.animix.data.playback.PictureInPicture.attach(this)
         pendingLink = intent?.dataString?.let { link -> link.takeUnless { graph.account.handlesCallback(it) } }
         setContent {
             val settings by graph.settings.state.collectAsState()
@@ -57,6 +58,17 @@ class MainActivity : ComponentActivity() {
         val graph = (application as AniMixApplication).graph
         // The AniMix sign-in returns here from the browser; the account screen shows the progress.
         pendingLink = intent.dataString?.let { link -> link.takeUnless { graph.account.handlesCallback(it) } }
+    }
+
+    // «Плеер+»: Home during a playing episode continues it in a small window.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (app.animix.data.playback.PictureInPicture.eligible) app.animix.data.playback.PictureInPicture.enter()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        app.animix.data.playback.PictureInPicture.changed(isInPictureInPictureMode)
     }
 
     override fun onStop() {

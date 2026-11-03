@@ -25,7 +25,8 @@ class PlaybackTracker {
         if (before == null || wall !in 1..3_000 || !before.playing || before.buffering || before.seeking ||
             !before.ready || current.buffering || current.seeking || current.error != null) return
         val media = current.positionMs - before.positionMs
-        if (media <= 0 || media > wall + 500) return
+        // A faster rate covers more of the episode per second; activity time stays the real time spent.
+        if (media <= 0 || media > wall * current.speed.coerceIn(0.25f, 2f) + 500) return
         ranges = mergeViewedRanges(ranges + ViewedRange(before.positionMs, current.positionMs), current.durationMs)
         elapsed += minOf(wall, media)
     }

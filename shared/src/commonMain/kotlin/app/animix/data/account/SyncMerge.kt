@@ -15,6 +15,8 @@ internal val SyncJson = Json(AppJson) { encodeDefaults = true; explicitNulls = f
     val preferences: JsonObject = JsonObject(emptyMap()),
     /** Grow-only counters per installation, so retried transfers never count playback twice. */
     val usage: Map<String, SyncUsage> = emptyMap(),
+    /** Statistics for friends' pages, recomputed on every upload; never merged. */
+    val summary: PublicSummary? = null,
 )
 @Serializable internal data class SyncUsage(val days: Map<Long, Int> = emptyMap(), val years: Map<Int, YearUsage> = emptyMap())
 @Serializable internal data class SyncEnvelope(val revision: Long = 0, val payload: SyncPayload? = null)
@@ -65,6 +67,20 @@ internal fun mergeLibrary(base: LibraryData, local: LibraryData, remote: Library
     return merged.copy(entries = entries, legacyWatchSeconds = maxOf(local.legacyWatchSeconds, remote.legacyWatchSeconds),
         reviewedYears = local.reviewedYears + remote.reviewedYears,
         profile = merged.profile.copy(createdAt = listOf(local.profile.createdAt, remote.profile.createdAt).filter { it > 0 }.minOrNull() ?: 0))
+}
+
+/**
+ * Moves what this device did on top of [base] (a guest after signing out, or before the first
+ * sign-in) into [target], the library of the account signing in. Titles, positions, playback and
+ * watch time added since [base] come along; the rest of [local] stays with the account it was saved for.
+ */
+internal fun carryGuestProgress(base: LibraryData, local: LibraryData, target: LibraryData): LibraryData {
+    val merged = mergeLibrary(base, local, target)
+    val added = usageDelta(SyncUsage(local.watchDays, local.usage), SyncUsage(base.watchDays, base.usage), SyncUsage())
+    val usage = aggregateUsage(listOf(SyncUsage(target.watchDays, target.usage), added))
+    return merged.copy(watchDays = usage.days, usage = usage.years, watchRemainderMs = local.watchRemainderMs,
+        legacyWatchSeconds = target.legacyWatchSeconds, legacyMigration = target.legacyMigration,
+        reviewedYears = target.reviewedYears, syncReceipt = null)
 }
 
 /** Counter deltas are attributed only to this installation before the next transfer. */

@@ -17,6 +17,13 @@ enum class ThemeMode(val label: String) {
     Dawn("Horizon Dawn"),
 }
 
+/** «Производительность → Вид плеера»: everything of «Плеер+», or a plain, lighter player. */
+@Serializable
+enum class PlayerMode(val label: String) {
+    Plus("Плеер+"),
+    Simple("Упрощённый"),
+}
+
 @Serializable
 data class Settings(
     val themeMode: ThemeMode = ThemeMode.System,
@@ -51,6 +58,16 @@ data class Settings(
     val experimentalPicks: Boolean = false,
     /** The update version the viewer put off with «Позже»; a newer one is offered again. */
     val dismissedUpdate: String? = null,
+    /** «Плеер+» (glass, glow, speed, gestures, picture-in-picture) or the simplified player. */
+    val playerMode: PlayerMode = PlayerMode.Plus,
+    /** Playback speed of «Плеер+», kept for the next episode; the simplified player always plays at 1×. */
+    val playbackSpeed: Float = 1f,
+    /** «Уведомления»: a new episode of an ongoing title in «Смотрю». */
+    val notifyNewEpisodes: Boolean = true,
+    /** «Уведомления»: the new episode is out in the dubbing chosen for that title. */
+    val notifyDubbing: Boolean = true,
+    /** «Экспериментальные функции»: the «Подборки» tab with own lists and smart picks. */
+    val experimentalCollections: Boolean = false,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 ) {

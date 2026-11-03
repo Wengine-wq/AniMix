@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import { runtimeConfig } from './config';
 import { handler } from './index';
@@ -74,8 +75,15 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   try {
     if (await serveMedia(request, response)) return;
     const result = await handler(await toEvent(request));
-    const body = result.isBase64Encoded ? Buffer.from(result.body, 'base64') : result.body;
-    response.writeHead(result.statusCode, result.headers);
+    let body: Buffer | string = result.isBase64Encoded ? Buffer.from(result.body, 'base64') : result.body;
+    const headers: Record<string, string> = { ...result.headers };
+    // Collections and profiles are JSON that shrinks several times; apps on OkHttp ask for gzip on their own.
+    if (!result.isBase64Encoded && body.length >= 1024 && /gzip/.test(String(request.headers['accept-encoding'] ?? ''))) {
+      body = gzipSync(body, { level: 6 });
+      headers['Content-Encoding'] = 'gzip';
+      headers.Vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
+    }
+    response.writeHead(result.statusCode, headers);
     response.end(body);
   } catch (error) {
     const status = (error as { status?: number }).status ?? 500;

@@ -113,6 +113,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             queued = downloads.count { it.anime.key == anime.key },
             onFavorite = { graph.library.toggleFavorite(anime) },
             onRate = { sheet = DetailSheet.Rate },
+            onCollection = if (settings.experimentalCollections) { { sheet = DetailSheet.Collection } } else null,
             notice = notice,
         )
     }
@@ -125,6 +126,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             onDismiss = { sheet = null },
         )
         DetailSheet.Rate -> RateSheet(entry?.score, onScore = { graph.library.setScore(anime, it); sheet = null }, onDismiss = { sheet = null })
+        DetailSheet.Collection -> app.animix.ui.screens.collections.CollectionSheet(graph, anime) { sheet = null }
         null -> Unit
     }
 
@@ -207,7 +209,7 @@ private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator, 
     }
 }
 
-private enum class DetailSheet { Lists, Rate }
+private enum class DetailSheet { Lists, Rate, Collection }
 
 /**
  * The phone hero: a wide still (or the poster) under a soft scrim, with the poster
@@ -339,6 +341,7 @@ private fun WatchActions(
     onFlow: () -> Unit,
     onFavorite: () -> Unit,
     onRate: () -> Unit,
+    onCollection: (() -> Unit)?,
     downloaded: Int,
     queued: Int,
     notice: String?,
@@ -366,6 +369,7 @@ private fun WatchActions(
             { more = false; if (queued > 0) onSaved() else onDownload() },
             trailing = if (queued > 0) "Готово $downloaded из $queued" else "Скачать серии")
         app.animix.ui.components.NavRow("Watch flow", AniMixIcons.Clock, { more = false; onFlow() }, trailing = "Просмотр по времени")
+        if (onCollection != null) app.animix.ui.components.NavRow("В подборку", AniMixIcons.Layers, { more = false; onCollection() }, trailing = "Свои подборки")
     }
     if (notice != null) Txt(notice, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp))
 }

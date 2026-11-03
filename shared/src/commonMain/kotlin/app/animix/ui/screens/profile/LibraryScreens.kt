@@ -80,6 +80,10 @@ fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVa
                         icon = if (item == null) AniMixIcons.Heart else null,
                     )
                 }
+                // «Подборки» (experimental) live next to the statuses as one more tab of the lists.
+                if (settings.experimentalCollections) item {
+                    Chip("Подборки · ${library.collections.size}", false, { navigator.push(Route.Collections) }, icon = AniMixIcons.Layers)
+                }
             }
         },
         empty = {

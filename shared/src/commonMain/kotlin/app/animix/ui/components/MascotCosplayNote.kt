@@ -13,6 +13,8 @@ import app.animix.resources.animix_cosplay_demon
 import app.animix.resources.animix_cosplay_quintuplets
 import app.animix.resources.animix_cosplay_titan
 import app.animix.resources.animix_cosplay_hunter
+import app.animix.resources.animix_cosplay_grand_blue_beach
+import app.animix.resources.animix_cosplay_grand_blue_diver
 import app.animix.ui.theme.AniMixTheme
 import org.jetbrains.compose.resources.painterResource
 
@@ -25,6 +27,8 @@ fun MascotCosplayNote(cosplay: MascotCosplay, modifier: Modifier = Modifier) {
         MascotCosplay.Miku -> Res.drawable.animix_cosplay_quintuplets
         MascotCosplay.Scout -> Res.drawable.animix_cosplay_titan
         MascotCosplay.Gon -> Res.drawable.animix_cosplay_hunter
+        MascotCosplay.Diver -> Res.drawable.animix_cosplay_grand_blue_diver
+        MascotCosplay.Beach -> Res.drawable.animix_cosplay_grand_blue_beach
     }
     Row(modifier.widthIn(max = 440.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(artwork), null, Modifier.size(width = 112.dp, height = 184.dp), contentScale = ContentScale.Fit)

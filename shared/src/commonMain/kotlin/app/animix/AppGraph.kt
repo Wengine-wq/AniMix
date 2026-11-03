@@ -19,6 +19,7 @@ import app.animix.data.yummy.YummyRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Everything the app needs, built once at start. */
 class AppGraph {
@@ -35,7 +36,23 @@ class AppGraph {
         account.load()
         accountSync.start()
         social.start()
+        notifier.start()
         initialized = true
+        // New episodes of «Смотрю»: soon after start, then every half hour while AniMix runs.
+        scope.launch {
+            kotlinx.coroutines.delay(20_000)
+            while (true) {
+                runCatching { notifier.check() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                kotlinx.coroutines.delay(30 * 60_000L)
+            }
+        }
+    }
+
+    /** What the Android background check needs: settings, the library and the notifier, nothing that polls. */
+    suspend fun prepareForBackground() {
+        settings.load()
+        library.load()
+        notifier.start()
     }
 
     /** A failed startup must not flush uninitialized default state over files on disk. */
@@ -73,11 +90,13 @@ class AppGraph {
     /** The combined catalog screens use: Shikimori plus YummyAnime-only titles. */
     val anime = AnimeRepository(shikimori, yummy)
 
-    val pulse = app.animix.data.pulse.PulseRepository(DiskStore(Platform.dataDir), scope,
-        detail = { title -> if (title.source == app.animix.model.AnimeSource.Shikimori) shikimori.liveDetail(title.id)
-            else anime.detail(title, forceRefresh = true) },
-        editor = app.animix.data.pulse.PolzaPulseClient(),
-        topics = { title -> shikimori.topics(title.id) }, available = { false })
+    /** AniPulse: the week's digest, counted on the device from the lists and the catalog. */
+    val pulse by lazy { app.animix.data.pulse.PulseDigest(shikimori, recommendations, library) }
+
+    /** «Уведомления»: new episodes of ongoing titles in «Смотрю», and in their chosen dubbing. */
+    val notifier = app.animix.data.notify.EpisodeNotifier(DiskStore(Platform.dataDir), library, settings,
+        cards = { ids -> shikimori.byIds(ids) }, source = { title -> yummy.watchSource(title, forceRefresh = true) },
+        post = app.animix.data.notify.SystemNotifications::show)
 
     /** «Подобрано для вас» from the local library. */
     val recommendations = app.animix.data.Recommendations(shikimori, anime)

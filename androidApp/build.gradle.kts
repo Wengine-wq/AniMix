@@ -17,8 +17,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // versionCode only grows: 3000 + minor * 100 + patch of the "1.minor.patch re" line.
-        versionCode = 3101
-        versionName = "1.1.1"
+        versionCode = 3200
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -63,6 +63,7 @@ android {
 dependencies {
     implementation(projects.shared)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.work.runtime)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)

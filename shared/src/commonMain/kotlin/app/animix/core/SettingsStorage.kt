@@ -16,8 +16,10 @@ internal object SettingsPreferences {
     private val theme = stringPreferencesKey("themeMode")
     private val dubbings = stringPreferencesKey("dubbingByAnime")
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
-        "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "ambientGlow", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled")
-    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate")
+        "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "ambientGlow", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled",
+        "notifyNewEpisodes", "notifyDubbing", "experimentalCollections")
+    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate", "playerMode")
+    private val floats = listOf("playbackSpeed")
 
     fun decode(preferences: Preferences): Settings {
         // Explicit preference types; the nested dubbing map remains a JSON string.
@@ -27,6 +29,9 @@ internal object SettingsPreferences {
                 put(name, kotlinx.serialization.json.JsonPrimitive(it))
             }
             for (name in strings) preferences[stringPreferencesKey(name)]?.let {
+                put(name, kotlinx.serialization.json.JsonPrimitive(it))
+            }
+            for (name in floats) preferences[floatPreferencesKey(name)]?.let {
                 put(name, kotlinx.serialization.json.JsonPrimitive(it))
             }
             preferences[dubbings]?.let { put("dubbingByAnime", AppJson.parseToJsonElement(it)) }
@@ -48,6 +53,7 @@ internal object SettingsPreferences {
                 if (value == null || value is kotlinx.serialization.json.JsonNull) remove(stringPreferencesKey(name))
                 else this[stringPreferencesKey(name)] = (value as kotlinx.serialization.json.JsonPrimitive).content
             }
+            for (name in floats) this[floatPreferencesKey(name)] = (json.getValue(name) as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
             this[dubbings] = AppJson.encodeToString<Map<String, String>>(settings.dubbingByAnime)
         }
     }

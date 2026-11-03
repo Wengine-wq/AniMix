@@ -10,6 +10,9 @@ enum class MascotCosplay(val character: String, val animeIds: Set<Int>) {
     Scout("Разведкорпус", setOf(16498, 25777, 35760, 38524, 40028, 48583, 51535, 59571,
         18397, 25781, 36106, 23775, 23777, 36702, 42091)),
     Gon("Гон", setOf(11061, 13271, 19951)),
+    /** «Необъятный океан»: Shikimori 37105 — diving gear; seasons 2 and 3 (59986, 62542) — the beach. */
+    Diver("Дайвинг-клуб", setOf(37105)),
+    Beach("Пляж Идзу", setOf(59986, 62542)),
 }
 
 fun mascotCosplayFor(anime: Anime): MascotCosplay? = if (anime.source == AnimeSource.Shikimori)

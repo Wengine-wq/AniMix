@@ -110,24 +110,28 @@ internal class FrameSink {
     fun current(): Image? = synchronized(lock) {
         if (fresh) {
             fresh = false
-            pending?.let { next -> image?.close(); image = next; pending = null }
+            pending?.let { next -> image?.close(); image = next; pending = null; imageSerial++ }
         }
         image
     }
+    private var imageSerial = 0L
     private var glow: Image? = null
     private var glowPrevious: Image? = null
     private var glowAt = 0L
+    private var glowSerial = -1L
 
     /**
      * UI thread: a tiny, already blurred copy of the latest frame for the ambient glow and the
      * player's glass, refreshed about twice a second. The blur runs on 48×27 pixels, never on the
-     * full frame, and drawing it stretched costs nothing per frame.
+     * full frame, and drawing it stretched costs nothing per frame. A paused picture keeps its glow:
+     * nothing is rebuilt or faded until a new frame is shown.
      */
     fun glow(): Image? {
         val source = image ?: return glow
         val now = System.nanoTime()
-        if (glow != null && now - glowAt < GLOW_REFRESH_NANOS) return glow
+        if (glow != null && (now - glowAt < GLOW_REFRESH_NANOS || glowSerial == imageSerial)) return glow
         glowAt = now
+        glowSerial = imageSerial
         val small = org.jetbrains.skia.Surface.makeRasterN32Premul(GLOW_WIDTH, GLOW_HEIGHT)
         small.canvas.drawImageRect(source, Rect.makeWH(source.width.toFloat(), source.height.toFloat()),
             Rect.makeWH(GLOW_WIDTH.toFloat(), GLOW_HEIGHT.toFloat()), videoSampling, null, true)
@@ -154,6 +158,7 @@ internal class FrameSink {
         glow = null
         glowPrevious?.close()
         glowPrevious = null
+        glowSerial = -1L
         fresh = false
     }
 }
@@ -175,6 +180,7 @@ internal class DesktopNativePlayer : NativePlayer {
     @Volatile private var seekTarget: Long? = null
     @Volatile private var seekStarted = 0L
     @Volatile private var requestedPlay = false
+    @Volatile private var rate = 1f
 
     init {
         engine.videoSurface().set(factory.videoSurfaces().newVideoSurface(
@@ -201,6 +207,8 @@ internal class DesktopNativePlayer : NativePlayer {
                 mutable.update { it.copy(playing = true, playRequested = requestedPlay, ready = true, buffering = false) }
                 // LibVLC callbacks must not synchronously re-enter the player controls.
                 mediaPlayer.submit {
+                    // A new file starts at 1×: the chosen rate is applied again.
+                    if (rate != 1f) mediaPlayer.controls().setRate(rate)
                     if (initialPosition > 0) { mediaPlayer.controls().setTime(initialPosition); initialPosition = 0 }
                     if (startPaused) { startPaused = false; mediaPlayer.controls().setPause(true) }
                 }
@@ -223,7 +231,7 @@ internal class DesktopNativePlayer : NativePlayer {
         initialPosition = startPositionMs.coerceAtLeast(0)
         startPaused = !playWhenReady
         requestedPlay = playWhenReady
-        mutable.value = PlayerSnapshot(buffering = true, playRequested = playWhenReady, positionMs = initialPosition, volume = state.value.volume)
+        mutable.value = PlayerSnapshot(buffering = true, playRequested = playWhenReady, positionMs = initialPosition, volume = state.value.volume, speed = rate)
         val options = buildList {
             headers.entries.firstOrNull { it.key.equals("Referer", true) }?.let { add(":http-referrer=${it.value}") }
             headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.let { add(":http-user-agent=${it.value}") }
@@ -265,6 +273,12 @@ internal class DesktopNativePlayer : NativePlayer {
         val value = volume.coerceIn(0f, 1f)
         mutable.update { it.copy(volume = value) }
         commands.launch { if (!released) engine.audio().setVolume((value * 100).toInt()) }
+    }
+    override fun setSpeed(speed: Float) {
+        if (released) return
+        rate = speed.coerceIn(0.25f, 2f)
+        mutable.update { it.copy(speed = rate) }
+        commands.launch { if (!released) engine.controls().setRate(rate) }
     }
     override fun release() {
         if (released) return
@@ -334,10 +348,12 @@ private val glowScrim by lazy { org.jetbrains.skia.Paint().apply { color = 0x590
     var backdrop by androidx.compose.runtime.remember(player) { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     androidx.compose.runtime.LaunchedEffect(player, enabled) {
         if (!enabled) { backdrop = null; return@LaunchedEffect }
+        var shown: org.jetbrains.skia.Image? = null
         while (isActive) {
             // current() refreshes the full frame on the UI thread; glow() then scales it down.
+            // The same glow (a paused picture) is not copied again, so the glass never flickers.
             sink.current()
-            sink.glow()?.let { backdrop = org.jetbrains.skia.Bitmap.makeFromImage(it).asComposeImageBitmap() }
+            sink.glow()?.takeIf { it !== shown }?.let { shown = it; backdrop = org.jetbrains.skia.Bitmap.makeFromImage(it).asComposeImageBitmap() }
             delay(600)
         }
     }

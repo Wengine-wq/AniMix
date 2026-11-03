@@ -48,6 +48,16 @@ data class LibraryEntry(
     val isEmpty: Boolean get() = status == null && !favorite && episodesWatched == 0 && score == null && episodePositions.isEmpty() && viewing.isEmpty() && importedViewing == null
 }
 
+/** «Свои подборки»: a named list beyond the statuses, newest addition first. Synced with the library. */
+@Serializable
+data class UserCollection(
+    val id: String,
+    val name: String,
+    val titles: List<Anime> = emptyList(),
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+)
+
 @Serializable
 data class LibraryData(
     val profile: LocalProfile = LocalProfile(),
@@ -63,6 +73,8 @@ data class LibraryData(
     /** Local commit receipt for crash recovery of cloud application; never part of cloud state. */
     val syncReceipt: String? = null,
     val reviewedYears: Set<Int> = emptySet(),
+    /** «Свои подборки» by id. */
+    val collections: Map<String, UserCollection> = emptyMap(),
     /** When this copy was written to disk; on start the newer of the main file and the backup wins. */
     val savedAt: Long = 0,
 ) {
@@ -257,6 +269,41 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
 
     fun updateProfile(draft: ProfileDraft, unlockedBadges: Set<String>) {
         _state.update { it.copy(profile = it.profile.edited(draft, unlockedBadges, nowMillis())) }
+        save()
+    }
+
+    /** A new empty «подборка»; returns its id. */
+    fun createCollection(name: String): String {
+        val now = nowMillis()
+        val id = "c$now${kotlin.random.Random.nextInt(1000, 9999)}"
+        _state.update { it.copy(collections = it.collections + (id to UserCollection(id, name.trim().takeCharacters(40).ifBlank { "Подборка" }, createdAt = now, updatedAt = now))) }
+        save()
+        return id
+    }
+
+    fun renameCollection(id: String, name: String) = editCollection(id) { it.copy(name = name.trim().takeCharacters(40).ifBlank { it.name }) }
+
+    fun deleteCollection(id: String) {
+        _state.update { it.copy(collections = it.collections - id) }
+        save()
+    }
+
+    /** Adds [anime] to the top of the collection, or takes it out when it is already there. */
+    fun toggleInCollection(id: String, anime: Anime) = editCollection(id) { collection ->
+        if (collection.titles.any { it.key == anime.key }) collection.copy(titles = collection.titles.filterNot { it.key == anime.key })
+        else collection.copy(titles = listOf(anime) + collection.titles)
+    }
+
+    fun removeFromCollection(id: String, keys: Set<String>) = editCollection(id) { it.copy(titles = it.titles.filterNot { title -> title.key in keys }) }
+
+    /** One status for several titles at once (bulk action of a collection), each recorded like a single change. */
+    fun setStatusMany(titles: List<Anime>, status: ListStatus?) = titles.forEach { setStatus(it, status) }
+
+    private fun editCollection(id: String, transform: (UserCollection) -> UserCollection) {
+        _state.update { data ->
+            val current = data.collections[id] ?: return@update data
+            data.copy(collections = data.collections + (id to transform(current).copy(updatedAt = nowMillis())))
+        }
         save()
     }
 

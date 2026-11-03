@@ -15,3 +15,10 @@ expect object Platform {
 }
 
 expect fun createHttpEngine(): HttpClientEngine
+
+/**
+ * What this device is called in the account's device list: the phone's maker and model, or the PC's
+ * motherboard, with the system version — «Samsung Galaxy S23 · Android 14», «ASUS PRIME B550M-A · Windows 11».
+ * Blocking on desktop the first time; call off the main thread.
+ */
+expect fun deviceName(): String

@@ -106,7 +106,17 @@ object AniMixIcons {
     )
     val StarOutline = outline("StarOutline", "M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z")
     val Edit = outline("Edit", "M16 4a2.8 2.8 0 0 1 4 4L8 20l-6 2 2-6zM14 6l4 4M4 16l4 4")
-    val Image = outline("Image", "M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 16l6-6 4 4 3-3 5 5M16 7h.01")
+    /** A small window in the corner of a large one: «картинка в картинке». */
+    val PictureInPicture = outline("PictureInPicture", "M20 11V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h6M14 14h7v6h-7z")
+    val Speed = outline("Speed", "M12 13l4-4M4.5 18a9 9 0 1 1 15 0M12 13h.01")
+    val Sparkle = outline("Sparkle", "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z")
+    val Gift = outline("Gift", "M4 11h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3 7h18v4H3zM12 7v14M12 7S10.5 3 8 3a2 2 0 0 0 0 4M12 7s1.5-4 4-4a2 2 0 0 1 0 4")
+    val Compass = outline("Compass", "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM15.5 8.5l-2 5-5 2 2-5z")
+    val Link = outline("Link", "M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1")
+    val Bulb = outline("Bulb", "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z")
+    val Layers = outline("Layers", "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5")
+    val Calendar = outline("Calendar", "M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM4 10h16M8 3v4M16 3v4")
+    val Image = outline("Image","M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 16l6-6 4 4 3-3 5 5M16 7h.01")
 
     private fun outline(name: String, path: String, stroke: Float = 1.7f) =
         ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
