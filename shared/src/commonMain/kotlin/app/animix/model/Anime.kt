@@ -92,6 +92,20 @@ data class AnimeDetail(
     val relatedLabels: Map<String, String> = emptyMap(),
 )
 
+/** One item of the week's news in AniPulse: an announcement, trailer, premiere date or other news. */
+@Serializable
+data class NewsItem(
+    val id: Long,
+    val title: String,
+    val text: String,
+    val createdAt: String,
+    /** «Анонс», «Трейлер», «Премьера» or «Новость». */
+    val kind: String,
+    val anime: Anime? = null,
+    val imageUrl: String? = null,
+    val url: String,
+)
+
 @Serializable
 data class Genre(val id: String, val title: String, val isDemographic: Boolean)
 

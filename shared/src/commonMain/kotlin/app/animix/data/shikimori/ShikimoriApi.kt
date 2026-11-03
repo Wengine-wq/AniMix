@@ -97,6 +97,17 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
             http.get("$baseUrl/api/animes/$id/topics") { parameter("limit", limit) }.bodyAsText(),
         )
 
+    /** The site's news feed: announcements, trailers, premiere dates and other news, newest first. */
+    suspend fun newsFeed(page: Int, limit: Int): List<NewsTopicDto> =
+        AppJson.decodeFromString(
+            ListSerializer(NewsTopicDto.serializer()),
+            http.get("$baseUrl/api/topics") {
+                parameter("forum", "news")
+                parameter("page", page)
+                parameter("limit", limit)
+            }.bodyAsText(),
+        )
+
     /** Site news linked to one anime, newest first. */
     suspend fun newsTopics(id: Int, limit: Int): List<NewsTopicDto> =
         AppJson.decodeFromString(

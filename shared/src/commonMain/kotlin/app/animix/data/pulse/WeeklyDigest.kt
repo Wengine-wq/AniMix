@@ -37,6 +37,8 @@ data class WeeklyDigest(
     val onHold: List<LibraryEntry>,
     val ongoingForYou: List<Anime>,
     val picks: List<Anime>,
+    /** The week's news and announcements, about the viewer's titles first. */
+    val news: List<app.animix.model.NewsItem> = emptyList(),
 ) {
     /** Change of watching time against the previous week, in percent; null when there is nothing to compare. */
     val change: Int? get() = if (previous.minutes < 10) null else ((week.minutes - previous.minutes) * 100 / previous.minutes)
@@ -47,7 +49,8 @@ fun weekStart(day: Long): Long = day - weekdayOf(day)
 
 /** The counting part of the digest: weeks, streak and the titles to look at, from the library alone. */
 fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), today: Long = localDayIndex(),
-    nextEpisodes: Map<String, String> = emptyMap(), ongoingForYou: List<Anime> = emptyList(), picks: List<Anime> = emptyList()): WeeklyDigest {
+    nextEpisodes: Map<String, String> = emptyMap(), ongoingForYou: List<Anime> = emptyList(), picks: List<Anime> = emptyList(),
+    news: List<app.animix.model.NewsItem> = emptyList()): WeeklyDigest {
     val days = library.plausibleWatchDays(today)
     val completions = library.entries.values.flatMap { entry -> entry.viewing.values.mapNotNull { it.completedAt } }.map { localDayIndex(it) }
     fun week(start: Long) = WeekStats(start,
@@ -77,5 +80,7 @@ fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), tod
         if (total > 0 && left in 1..3) AlmostDone(entry, left) else null
     }.sortedBy { it.left }
     val onHold = library.entries.values.filter { it.status == ListStatus.OnHold }.sortedByDescending { it.updatedAt }.take(8)
-    return WeeklyDigest(weeks.last(), weeks[weeks.lastIndex - 1], weeks, streak, topGenre, fresh, almost, onHold, ongoingForYou, picks)
+    val mine = library.entries.keys
+    val sortedNews = news.sortedWith(compareByDescending<app.animix.model.NewsItem> { it.anime?.key in mine }.thenByDescending { it.createdAt })
+    return WeeklyDigest(weeks.last(), weeks[weeks.lastIndex - 1], weeks, streak, topGenre, fresh, almost, onHold, ongoingForYou, picks, sortedNews)
 }

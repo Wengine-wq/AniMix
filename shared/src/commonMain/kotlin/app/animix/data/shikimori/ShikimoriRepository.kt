@@ -45,6 +45,18 @@ class ShikimoriRepository internal constructor(
             .filter { it.id > 0 }.distinctBy { it.id }.map { it.toTopic() }.sortedByDescending { it.createdAt }
     }
 
+    /**
+     * News of the week for AniPulse: announcements, trailers, premiere dates and other news from the
+     * Shikimori feed, the last eight days, cached for half an hour.
+     */
+    suspend fun weeklyNews(): List<app.animix.model.NewsItem> =
+        cache.get("news:week", ttl = 30.minutes, ListSerializer(app.animix.model.NewsItem.serializer())) {
+            val cutoff = kotlin.time.Clock.System.now().toEpochMilliseconds() - 8L * 86_400_000
+            (1..2).flatMap { page -> runCatching { api.newsFeed(page, 30) }.getOrDefault(emptyList()) }
+                .distinctBy { it.id }.mapNotNull { it.toNews() }
+                .filter { item -> runCatching { kotlin.time.Instant.parse(item.createdAt).toEpochMilliseconds() >= cutoff }.getOrDefault(true) }
+        }
+
     suspend fun similar(id: Int): List<Anime> =
         cache.get("similar:$id", ttl = 6.hours, ListSerializer(Anime.serializer())) {
             api.similar(id).map { it.toAnime() }.filter { it.id > 0 }

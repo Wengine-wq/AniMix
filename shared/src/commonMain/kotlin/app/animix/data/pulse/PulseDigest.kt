@@ -32,12 +32,13 @@ class PulseDigest(private val shikimori: ShikimoriRepository, private val recomm
             }.filter { it.key !in data.entries.keys && it.title.isNotBlank() }.take(10)
         }
         val picks = async { safe { recommendations.forLibrary(data, 10) } }
+        val news = async { safe { shikimori.weeklyNews() } }
         val fresh = cards.await()
         // Air dates only for the few closest ongoing titles: one detail request each, cached for half an hour.
         val next = watching.mapNotNull { fresh[it.key] }.filter { it.status == AnimeStatus.Ongoing }.take(5).map { anime ->
             async { anime.key to runCatching { shikimori.detail(anime.id).nextEpisodeAt }.getOrNull() }
         }.mapNotNull { it.await().let { (key, at) -> at?.let { key to it } } }.toMap()
-        digestFrom(data, fresh, nextEpisodes = next, ongoingForYou = ongoing.await(), picks = picks.await())
+        digestFrom(data, fresh, nextEpisodes = next, ongoingForYou = ongoing.await(), picks = picks.await(), news = news.await())
     }
 
     private suspend fun <T> safe(block: suspend () -> List<T>): List<T> = try { block() }

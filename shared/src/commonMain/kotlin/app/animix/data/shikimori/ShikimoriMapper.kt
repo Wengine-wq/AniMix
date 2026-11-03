@@ -87,6 +87,31 @@ internal fun NewsTopicDto.toTopic(): AnimeTopic = AnimeTopic(
     episode = episode,
 )
 
+private val firstImage = Regex("""<img[^>]+src="([^"]+)"""", RegexOption.IGNORE_CASE)
+
+/** A feed topic as AniPulse shows it; topics about something other than anime are left out. */
+internal fun NewsTopicDto.toNews(): app.animix.model.NewsItem? {
+    val title = topic_title.orEmpty().trim().takeIf { it.isNotEmpty() } ?: return null
+    if (linked_type != null && linked_type != "Anime") return null
+    val text = (html_body?.let(RichTextParser::parseHtml)?.takeUnless { it.isBlank } ?: RichTextParser.parseBbCode(body.orEmpty())).plain
+    fun absolute(url: String?) = url?.takeIf { it.isNotBlank() && !it.contains("missing_") }
+        ?.let { if (it.startsWith("http")) it else ShikimoriApi.BASE_URL + it }
+    val anime = linked?.takeIf { it.id > 0 }?.let { link ->
+        app.animix.model.Anime.placeholder(link.id).copy(title = link.russian?.takeIf(String::isNotBlank) ?: link.name.orEmpty(),
+            originalTitle = link.name.orEmpty(), posterUrl = absolute(link.image?.original))
+    }
+    val lower = title.lowercase()
+    val kind = when {
+        "анонс" in lower -> "Анонс"
+        listOf("трейлер", "тизер", "ролик", "pv").any { it in lower } -> "Трейлер"
+        listOf("дата", "премьер", "выход", "сезон", "старт").any { it in lower } -> "Премьера"
+        else -> "Новость"
+    }
+    return app.animix.model.NewsItem(id, title, text, created_at, kind, anime,
+        imageUrl = absolute(html_body?.let { firstImage.find(it)?.groupValues?.get(1) }) ?: anime?.posterUrl,
+        url = "${ShikimoriApi.BASE_URL}/forum/news/$id")
+}
+
 internal fun GenreDto.toGenre(): Genre? {
     val label = russian?.takeIf(String::isNotBlank) ?: return null
     return Genre(id = id, title = label, isDemographic = kind == "demographic")

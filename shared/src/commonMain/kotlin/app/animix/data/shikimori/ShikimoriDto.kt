@@ -53,7 +53,13 @@ internal class NewsTopicDto(
     val created_at: String = "",
     val event: String? = null,
     val episode: Int? = null,
+    val linked_type: String? = null,
+    val linked: NewsLinkedDto? = null,
 )
+
+/** What a site news topic is about: here only anime are used. */
+@Serializable
+internal class NewsLinkedDto(val id: Int = 0, val name: String? = null, val russian: String? = null, val image: RestImageDto? = null)
 
 /** The REST shape of an anime (used by /similar). */
 @Serializable
