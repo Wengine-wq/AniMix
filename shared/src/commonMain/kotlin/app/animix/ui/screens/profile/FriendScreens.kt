@@ -113,7 +113,7 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                 }
                 val titles = view.collection
                 if (summary != null || titles != null) {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     GlassPlate {
                         val counts = summary?.let { s -> ListStatus.entries.associateWith { s.statuses[it.name] ?: 0 } }
                             ?: ListStatus.entries.associateWith { status -> titles.orEmpty().count { it.status == status } }
@@ -190,7 +190,7 @@ private fun FriendAwards(graph: AppGraph, view: FriendView, awards: Map<String, 
         val at = awards[a.id] ?: view.historical[a.id] ?: return@mapNotNull null
         a to at
     }.sortedByDescending { it.second }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(12.dp))
     GlassPlate {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Txt("Достижения", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
@@ -212,7 +212,7 @@ private fun FriendAwards(graph: AppGraph, view: FriendView, awards: Map<String, 
 private fun FriendActivity(summary: PublicSummary) {
     val days = summary.lastDays()
     if (days.any { it > 0 }) {
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         GlassPlate {
             Txt("Активность", AniMixTheme.type.heading)
             Spacer(Modifier.height(16.dp))
@@ -222,7 +222,7 @@ private fun FriendActivity(summary: PublicSummary) {
         }
     }
     if (summary.genres.isNotEmpty()) {
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         GlassPlate {
             Txt("Любимые жанры", AniMixTheme.type.heading)
             Spacer(Modifier.height(12.dp))

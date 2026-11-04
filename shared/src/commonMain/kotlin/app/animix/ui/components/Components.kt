@@ -382,6 +382,17 @@ fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
     return border(1.dp, brush, shape)
 }
 
+/**
+ * Depth for surfaces on a light theme: a wide, faint shadow of the text colour under the shape, so
+ * white plates do not melt into a white page. Dark themes keep their rims; battery saving drops it.
+ */
+@Composable
+fun Modifier.softShadow(shape: Shape): Modifier {
+    val colors = AniMixTheme.colors
+    if (colors.isDark || LocalUiPerformance.current.batterySaver) return this
+    return dropShadow(shape, Shadow(radius = 20.dp, color = colors.textPrimary.copy(alpha = 0.08f), offset = DpOffset(0.dp, 6.dp)))
+}
+
 /** Soft pink light around an accented control. */
 @Composable
 fun Modifier.accentGlow(shape: Shape, strength: Float = 0.22f): Modifier {
@@ -513,8 +524,9 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
+            .softShadow(AniMixTheme.shapes.large)
             .clip(AniMixTheme.shapes.large)
-            .background(colors.surface.copy(alpha = 0.72f))
+            .background(colors.surface.copy(alpha = if (colors.isDark) 0.72f else 0.82f))
             .rim(AniMixTheme.shapes.large, accent = false),
     ) { content() }
 }

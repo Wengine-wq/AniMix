@@ -94,7 +94,7 @@ private fun MenuCard(tile: MenuTile, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val shape = AniMixTheme.shapes.large
     Column(
-        modifier.heightIn(min = 124.dp).pressScale(interaction).clip(shape).background(colors.surface.copy(alpha = 0.72f))
+        modifier.heightIn(min = 124.dp).pressScale(interaction).softShadow(shape).clip(shape).background(colors.surface.copy(alpha = 0.72f))
             .rim(shape, accent = false).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = tile.onClick)
             .focusOutline(interaction, shape).padding(16.dp),
     ) {
@@ -120,7 +120,7 @@ private fun LevelCard(profile: app.animix.data.library.LocalProfile, level: app.
     val shape = AniMixTheme.shapes.large
     // The ring around the avatar already shows the way to the next level; the card names what comes with it.
     val next = LevelRewards.firstOrNull { it.level > level.level }
-    Box(Modifier.fillMaxWidth().pressScale(interaction).clip(shape).background(colors.surface.copy(alpha = 0.72f))
+    Box(Modifier.fillMaxWidth().pressScale(interaction).softShadow(shape).clip(shape).background(colors.surface.copy(alpha = 0.72f))
         .rim(shape, accent = true).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
         .focusOutline(interaction, shape)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

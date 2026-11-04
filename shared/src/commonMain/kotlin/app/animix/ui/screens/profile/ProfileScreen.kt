@@ -72,7 +72,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             onBadge = { navigator.push(Route.Achievements) }, level = level,
             online = if (account.user != null) self?.online() ?: (social.error == null) else null,
             lastSeenAt = self?.seenAt)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
         // The person stays on the page itself; their numbers sit on frosted plates over the soft
         // backdrop of their own banner, one plate per subject.
         GlassPlate {
@@ -84,9 +84,9 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
                 StatItem(if (account.user != null) social.acceptedFriends().size.toString() else "—", "друзей") { navigator.push(Route.Friends) },
             ))
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         GlassPlate { CollectionDistribution(library, onOpen = { navigator.select(Tab.Lists) }) }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         GlassPlate {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Txt("Активность", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
@@ -96,7 +96,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
                     Txt("${stats.streak} ${profileDaysWord(stats.streak)} подряд", AniMixTheme.type.caption)
                 } else Txt("14 дней", AniMixTheme.type.caption)
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             if (stats.lastDays.all { it == 0 }) {
                 Txt("Здесь появятся ваши просмотры. Минута сегодня начнёт серию дней.", AniMixTheme.type.caption)
             } else {
@@ -106,7 +106,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             }
         }
         if (stats.topGenres.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             GlassPlate {
                 Txt("Любимые жанры", AniMixTheme.type.heading)
                 Spacer(Modifier.height(12.dp))
@@ -146,7 +146,8 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                             .clickable(avatarInteraction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onEdit)
                             .focusOutline(avatarInteraction, CircleShape) else Modifier))
                     Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f).padding(top = avatarSize / 2 + 8.dp)) {
+                    // The name sits right under the banner edge, centred on the lower half of the avatar: no dead band.
+                    Column(Modifier.weight(1f).heightIn(min = avatarSize / 2).padding(top = avatarSize / 2 + 4.dp), verticalArrangement = Arrangement.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Txt(profile.name, if (wide) AniMixTheme.type.title else AniMixTheme.type.heading, modifier = Modifier.weight(1f, fill = false))
                             if (badge != null) {
@@ -165,13 +166,10 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                     }
                 }
             }
+            // «О себе» follows the name closely and reads as part of the person, not as a separate block.
             if (profile.about.isNotBlank()) {
-                Spacer(Modifier.height(16.dp))
-                Txt(profile.about, AniMixTheme.type.body, color = colors.textSecondary)
-            }
-            if (profile.createdAt > 0) {
-                Spacer(Modifier.height(8.dp))
-                Txt(profileJoinedLabel(profile.createdAt), AniMixTheme.type.micro)
+                Spacer(Modifier.height(12.dp))
+                Txt(profile.about, AniMixTheme.type.body, color = colors.textSecondary, modifier = Modifier.padding(horizontal = 4.dp))
             }
         }
     }
@@ -386,9 +384,4 @@ internal fun profileDaysWord(n: Int): String = when {
     else -> "дней"
 }
 
-private fun profileJoinedLabel(millis: Long): String {
-    val date = Instant.fromEpochMilliseconds(millis).toString()
-    val months = listOf("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
-    val month = date.substring(5, 7).toIntOrNull()?.minus(1)?.let(months::getOrNull) ?: return ""
-    return "В AniMix с $month ${date.take(4)}"
-}
+

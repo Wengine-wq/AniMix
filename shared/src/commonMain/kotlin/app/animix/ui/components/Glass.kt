@@ -47,7 +47,7 @@ fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdr
     if (LocalUiPerformance.current.batterySaver) return clip(shape).background(colors.surface).rim(shape, accent = false)
     // Controls inside the scrolling content can't blur the layer they belong to; they use a translucent fill.
     val haze = LocalHaze.current.takeIf { backdrop }
-    val base = clip(shape)
+    val base = softShadow(shape).clip(shape)
     val surface = if (haze != null) {
         base.hazeBlur(
             input = HazeInput.Sources(haze),
@@ -103,7 +103,7 @@ fun AmbientBackdrop(imageUrl: String?, modifier: Modifier = Modifier, height: Dp
             if (url != null) {
                 RemoteImage(
                     url,
-                    Modifier.fillMaxSize().blur(90.dp).alpha(if (colors.isDark) 0.32f * intensity else 0.28f * intensity),
+                    Modifier.fillMaxSize().blur(90.dp).alpha(if (colors.isDark) 0.32f * intensity else 0.4f * intensity),
                     shape = RectangleShape,
                     placeholder = false,
                 )
@@ -112,7 +112,7 @@ fun AmbientBackdrop(imageUrl: String?, modifier: Modifier = Modifier, height: Dp
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to colors.background.copy(alpha = if (colors.isDark) 0.35f else 0.3f),
+                    0f to colors.background.copy(alpha = if (colors.isDark) 0.35f else 0.2f),
                     0.6f to colors.background.copy(alpha = 0.82f),
                     1f to colors.background,
                 ),
