@@ -149,6 +149,8 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                     // The name sits right under the banner edge, centred on the lower half of the avatar: no dead band.
                     Column(Modifier.weight(1f).heightIn(min = avatarSize / 2).padding(top = avatarSize / 2 + 4.dp), verticalArrangement = Arrangement.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                          // The name with its badge on the left, the presence opposite it: one line, no extra band.
+                          Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             Txt(profile.name, if (wide) AniMixTheme.type.title else AniMixTheme.type.heading, modifier = Modifier.weight(1f, fill = false))
                             if (badge != null) {
                                 Box(Modifier.size(40.dp).semantics { contentDescription = "Значок профиля: ${badge.achievement.name}" }
@@ -158,11 +160,18 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                                     AchievementIcon(badge.achievement, true, 28.dp)
                                 }
                             }
+                          }
+                          // «В сети» is short and sits opposite the name; a long «Был в сети …» would squeeze it, so it goes below.
+                          if (online == true) {
+                              Spacer(Modifier.width(8.dp))
+                              PresenceLine(online, lastSeenAt, Modifier.widthIn(max = if (wide) 260.dp else 150.dp).clip(AniMixTheme.shapes.pill)
+                                  .background(colors.chip).padding(horizontal = 10.dp, vertical = 5.dp))
+                          }
                         }
                         profile.handle?.takeIf { it.isNotBlank() }?.let {
                             Txt("@$it", AniMixTheme.type.caption, color = colors.textSecondary)
                         }
-                        PresenceLine(online, lastSeenAt, Modifier.padding(top = 4.dp))
+                        if (online != true && lastSeenAt != null) PresenceLine(online, lastSeenAt, Modifier.padding(top = 4.dp))
                     }
                 }
             }
