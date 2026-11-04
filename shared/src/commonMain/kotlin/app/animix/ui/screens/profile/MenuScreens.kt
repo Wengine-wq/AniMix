@@ -175,7 +175,7 @@ fun LevelScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
         }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton("Темы и значок", { navigator.push(Route.SettingsSection("Appearance")) }, Modifier.weight(1f), icon = AniMixIcons.Sun)
+            SecondaryButton("Темы", { navigator.push(Route.SettingsSection("Appearance")) }, Modifier.weight(1f), icon = AniMixIcons.Sun)
             SecondaryButton("Оформление", { navigator.push(Route.EditProfile()) }, Modifier.weight(1f), icon = AniMixIcons.Palette)
         }
     }
@@ -185,10 +185,10 @@ fun LevelScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
 internal class LevelRewardInfo(val level: Int, val title: String, val description: String, val preview: @Composable () -> Unit)
 
 internal val LevelRewards = listOf(
-    LevelRewardInfo(app.animix.core.ThemeMode.Ice.unlockLevel, "Тема Horizon Noon", "Лёд и бирюза — светлая тема и значок приложения") {
+    LevelRewardInfo(app.animix.core.ThemeMode.Ice.unlockLevel, "Тема Horizon Noon", "Светлая тема с бирюзовым акцентом и её значок") {
         ThemePreview(app.animix.ui.theme.HorizonIce)
     },
-    LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Midnight", "Уголь и бирюза — тёмная тема и значок приложения") {
+    LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Midnight", "Тёмная тема с бирюзовым акцентом и её значок") {
         ThemePreview(app.animix.ui.theme.HorizonCoal)
     },
     LevelRewardInfo(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон за шапкой профиля") {
