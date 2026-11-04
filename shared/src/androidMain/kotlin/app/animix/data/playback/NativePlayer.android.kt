@@ -180,7 +180,8 @@ internal class AndroidNativePlayer : NativePlayer {
                 backend.surface.value = videoSurfaceView as? SurfaceView
             } },
             update = { it.player = backend.engine },
-            onRelease = { it.player = null; backend.surface.value = null },
+            // The small window replaces this view with a new one first: never take its surface away.
+            onRelease = { if (it.player === backend.engine) it.player = null; if (backend.surface.value === it.videoSurfaceView) backend.surface.value = null },
             modifier = Modifier.fillMaxSize(),
         )
     }

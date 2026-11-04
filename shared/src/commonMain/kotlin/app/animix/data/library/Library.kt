@@ -139,7 +139,9 @@ class Library(private val store: DiskStore, private val scope: CoroutineScope) {
         val data = (decoded?.getOrNull() ?: restored)?.copy(savedAt = 0)
         persistedText = if (restored != null) backup else text
         persistedBody = null
-        _state.value = data?.copy(profile = data.profile.copy(name = data.profile.name.takeCharacters(ProfileNameLimit)))
+        val confirmedAt = app.animix.core.TrustedClock.now()
+        _state.value = data?.copy(profile = data.profile.copy(name = data.profile.name.takeCharacters(ProfileNameLimit)),
+            entries = data.entries.mapValues { (_, entry) -> entry.confirmQualifiedViewing(confirmedAt) })
             ?: LibraryData(profile = LocalProfile(createdAt = nowMillis()))
         this.loaded = true
         if (restored != null) AppLog.info("Library", "backup_restored")

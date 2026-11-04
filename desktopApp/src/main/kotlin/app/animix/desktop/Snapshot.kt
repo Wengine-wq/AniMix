@@ -48,7 +48,8 @@ object Snapshot {
         val leave = args.firstOrNull { it.startsWith("--leave=") }?.substringAfter('=')?.toLong()
         val clicks = args.filter { it.startsWith("--click=") }.map {
             val action = it.substringAfter('=').split(':', limit = 2)
-            action[0].toLong() to action[1]
+            // Labels may be written as К… escapes: Windows launchers can lose Cyrillic arguments.
+            action[0].toLong() to Regex("""\\u([0-9a-fA-F]{4})""").replace(action[1]) { it.groupValues[1].toInt(16).toChar().toString() }
         }.sortedBy { it.first }
 
         val drag = args.firstOrNull { it.startsWith("--drag=") }?.substringAfter('=')?.split(':', limit = 4)

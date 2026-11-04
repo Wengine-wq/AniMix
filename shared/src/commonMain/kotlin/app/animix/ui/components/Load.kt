@@ -67,6 +67,13 @@ fun Throwable.userMessage(): String {
         name.contains("UnknownHost") || name.contains("Connect") || name.contains("UnresolvedAddress") ->
             "Нет соединения с интернетом"
         name.contains("Timeout") -> "Сервер долго не отвечает"
-        else -> message?.takeIf { it.isNotBlank() && it.length < 120 } ?: "Что-то пошло не так"
+        // A raw «Client request(POST https://…) invalid: 429» says nothing to a person.
+        this is io.ktor.client.plugins.ResponseException -> when (response.status.value) {
+            429 -> "Каталог просит немного подождать. Повторите через минуту"
+            in 500..599 -> "Сервер каталога сейчас недоступен"
+            404 -> "Не найдено"
+            else -> "Сервер ответил ошибкой ${response.status.value}"
+        }
+        else -> message?.takeIf { it.isNotBlank() && it.length < 120 && "http" !in it } ?: "Что-то пошло не так"
     }
 }

@@ -1,6 +1,8 @@
 package app.animix.ui.screens.profile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -95,21 +97,44 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                         else -> PrimaryButton("Добавить в друзья", { run { graph.social.friendAction(id) } }, Modifier.fillMaxWidth(), icon = AniMixIcons.User, enabled = !busy)
                     }
                 }
+                // The same page as one's own: numbers with the level, the collection ring with a short shelf of
+                // recent titles, the newest awards, activity and genres. Whole lists open on their own pages.
                 val summary = view.summary
-                if (summary != null) FriendStats(summary, view.unlocked != null)
-                // The collection and awards are places of their own, not a wall of titles under the stats.
-                val titles = view.collection
-                val awards = view.unlocked
-                if (titles != null || awards != null) {
+                if (summary != null) FriendNumbers(summary)
+                // Numbers and the level are counted on the friend's own device; an older AniMix there sends none yet.
+                else if (view.canStats) {
                     Spacer(Modifier.height(24.dp))
-                    Panel {
-                        if (titles != null) NavRow("Коллекция", AniMixIcons.Bookmark, { navigator.push(Route.FriendCollection(id)) },
-                            trailing = "${titles.size} ${titlesWord(titles.size)}")
-                        if (titles != null && awards != null) AccountDivider()
-                        if (awards != null) NavRow("Достижения", AniMixIcons.Trophy, { navigator.push(Route.FriendAchievements(id)) },
-                            trailing = "${awards.size + view.historical.keys.count { it !in awards }} из ${graph.achievements.all.size}")
+                    GlassPlate {
+                        Txt("Уровень и статистика", AniMixTheme.type.heading)
+                        Spacer(Modifier.height(6.dp))
+                        Txt("Появятся, когда ${profile.name} откроет AniMix 1.2 или новее: часы, серии и уровень считаются на устройстве друга.",
+                            AniMixTheme.type.caption)
                     }
                 }
+                val titles = view.collection
+                if (summary != null || titles != null) {
+                    Spacer(Modifier.height(16.dp))
+                    GlassPlate {
+                        val counts = summary?.let { s -> ListStatus.entries.associateWith { s.statuses[it.name] ?: 0 } }
+                            ?: ListStatus.entries.associateWith { status -> titles.orEmpty().count { it.status == status } }
+                        CollectionDistribution(counts, onOpen = if (titles != null) { { navigator.push(Route.FriendCollection(id)) } } else null)
+                        val recent = titles.orEmpty().sortedByDescending { it.updatedAt }.take(10)
+                        if (recent.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            Txt("Недавно в коллекции", AniMixTheme.type.subheading)
+                            Spacer(Modifier.height(10.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                items(recent, key = { it.anime.key }) { title ->
+                                    AnimeCard(title.anime, { navigator.push(Route.Detail(title.anime)) }, Modifier.width(96.dp),
+                                        caption = title.status?.label ?: if (title.favorite) "Избранное" else null)
+                                }
+                            }
+                        }
+                    }
+                }
+                val awards = view.unlocked
+                if (awards != null) FriendAwards(graph, view, awards) { navigator.push(Route.FriendAchievements(id)) }
+                if (summary != null) FriendActivity(summary)
                 val hidden = buildList {
                     if (!view.canCollection) add("коллекцию")
                     if (!view.canStats) add("статистику")
@@ -144,20 +169,47 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
     }
 }
 
-/** The friend's numbers on the same plates as one's own profile. */
+/** The friend's numbers on the plate of one's own profile; the level is a number of its own here, not only the ring's bubble. */
 @Composable
-private fun FriendStats(summary: PublicSummary, awardsShown: Boolean) {
+private fun FriendNumbers(summary: PublicSummary) {
     Spacer(Modifier.height(24.dp))
     GlassPlate {
-        ProfileStats(listOfNotNull(
+        ProfileStats(listOf(
+            StatItem("${summary.level}", "уровень"),
             StatItem(profileHours(summary.minutes), "часов в AniMix"),
             StatItem("${summary.episodes}", "серий"),
             StatItem("${summary.completed}", "завершено"),
-            if (awardsShown) StatItem("${summary.achievements}", "достижений") else StatItem("${summary.favorites}", "в избранном"),
         ))
     }
+}
+
+/** The newest awards as icons, with the count and the way to all of them. */
+@Composable
+private fun FriendAwards(graph: AppGraph, view: FriendView, awards: Map<String, Long>, onOpen: () -> Unit) {
+    val earned = graph.achievements.all.mapNotNull { a ->
+        val at = awards[a.id] ?: view.historical[a.id] ?: return@mapNotNull null
+        a to at
+    }.sortedByDescending { it.second }
     Spacer(Modifier.height(16.dp))
-    GlassPlate { CollectionDistribution(ListStatus.entries.associateWith { summary.statuses[it.name] ?: 0 }, null) }
+    GlassPlate {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Txt("Достижения", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+            Txt("Открыть", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
+                modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 8.dp))
+        }
+        Txt("${earned.size} из ${graph.achievements.all.size}", AniMixTheme.type.caption)
+        if (earned.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            // A row of the newest ones; their names are on the achievements page.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                earned.take(6).forEach { (achievement, _) -> AchievementIcon(achievement, true, 40.dp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendActivity(summary: PublicSummary) {
     val days = summary.lastDays()
     if (days.any { it > 0 }) {
         Spacer(Modifier.height(16.dp))

@@ -61,8 +61,9 @@ internal fun mergeLibrary(base: LibraryData, local: LibraryData, remote: Library
                 listOfNotNull(a?.completedAt, b?.completedAt).minOrNull())
         }
         val imported = listOfNotNull(left?.importedViewing, right?.importedViewing)
+        // Half an episode on the phone and the rest on the PC is a watched episode once united.
         entry.copy(viewing = viewing, importedViewing = if (imported.isEmpty()) null else ImportedViewing(
-            imported.any { it.completed }, imported.maxOf { it.episodesWatched }))
+            imported.any { it.completed }, imported.maxOf { it.episodesWatched })).confirmQualifiedViewing(app.animix.core.TrustedClock.now())
     }
     return merged.copy(entries = entries, legacyWatchSeconds = maxOf(local.legacyWatchSeconds, remote.legacyWatchSeconds),
         reviewedYears = local.reviewedYears + remote.reviewedYears,

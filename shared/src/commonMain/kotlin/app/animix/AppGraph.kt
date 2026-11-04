@@ -20,6 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.stateIn
+import app.animix.data.library.level
 
 /** Everything the app needs, built once at start. */
 class AppGraph {
@@ -78,6 +80,11 @@ class AppGraph {
 
     /** Achievements, earned from the local library, settings and in-app events. */
     val achievements = Achievements(DiskStore(Platform.dataDir), scope, library, settings)
+
+    /** The profile level, one value for every screen: confirmed playback plus earned awards. */
+    val level: kotlinx.coroutines.flow.StateFlow<app.animix.data.library.ProfileLevel> =
+        kotlinx.coroutines.flow.combine(library.state, achievements.progress) { lib, awards -> lib.level(awards.count { it.earned }) }
+            .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, app.animix.data.library.LibraryData().level(0))
 
     val watchFlow = app.animix.data.watchflow.WatchFlow(DiskStore(Platform.dataDir), scope)
 

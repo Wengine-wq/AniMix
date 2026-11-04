@@ -40,6 +40,7 @@ internal fun AnimeDto.toDetail(): AnimeDetail {
     durationMinutes = duration?.takeIf { it > 0 },
     rating = rating?.takeIf { it != "none" }?.let(::ratingLabel),
     studios = studios.orEmpty().map { it.name },
+    studioLinks = studios.orEmpty().mapNotNull { studio -> studio.id?.toIntOrNull()?.let { app.animix.model.Studio(it, studio.name, studio.imageUrl) } },
     screenshots = screenshots.orEmpty().mapNotNull { it.originalUrl ?: it.x332Url },
     nextEpisodeAt = nextEpisodeAt,
     related = ordered.map { it.anime },
@@ -93,14 +94,14 @@ private val firstImage = Regex("""<img[^>]+src="([^"]+)"""", RegexOption.IGNORE_
 internal fun NewsTopicDto.toNews(): app.animix.model.NewsItem? {
     val title = topic_title.orEmpty().trim().takeIf { it.isNotEmpty() } ?: return null
     if (linked_type != null && linked_type != "Anime") return null
-    val text = (html_body?.let(RichTextParser::parseHtml)?.takeUnless { it.isBlank } ?: RichTextParser.parseBbCode(body.orEmpty())).plain
+    val text = html_body?.let { app.animix.data.news.cleanLead(it) }?.takeIf { it.isNotBlank() } ?: RichTextParser.parseBbCode(body.orEmpty()).plain
     fun absolute(url: String?) = url?.takeIf { it.isNotBlank() && !it.contains("missing_") }
         ?.let { if (it.startsWith("http")) it else ShikimoriApi.BASE_URL + it }
     val anime = linked?.takeIf { it.id > 0 }?.let { link ->
         app.animix.model.Anime.placeholder(link.id).copy(title = link.russian?.takeIf(String::isNotBlank) ?: link.name.orEmpty(),
             originalTitle = link.name.orEmpty(), posterUrl = absolute(link.image?.original))
     }
-    val kind = app.animix.data.news.kindOf(title)
+    val kind = app.animix.data.news.kindOf(title, text)
     return app.animix.model.NewsItem(id, title, text, created_at, kind, anime,
         imageUrl = absolute(html_body?.let { firstImage.find(it)?.groupValues?.get(1) }) ?: anime?.posterUrl,
         url = "${ShikimoriApi.BASE_URL}/forum/news/$id")

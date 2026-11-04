@@ -23,8 +23,10 @@ data class CatalogQuery(
     val season: String? = null,
     val genreIds: List<String> = emptyList(),
     val search: String? = null,
+    /** Shikimori studio id: every title of one studio. */
+    val studioId: Int? = null,
 ) {
     val cacheKey: String
         get() = "animes:$page:$limit:${order.apiValue}:${kinds.joinToString(",")}:$status:$season:" +
-            "${genreIds.joinToString(",")}:${search?.trim()?.lowercase()}"
+            "${genreIds.joinToString(",")}:${search?.trim()?.lowercase()}" + (studioId?.let { ":studio$it" } ?: "")
 }

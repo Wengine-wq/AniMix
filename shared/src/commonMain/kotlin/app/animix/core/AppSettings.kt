@@ -10,11 +10,26 @@ import kotlinx.serialization.Serializable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * The app theme. Ice and Coal are level rewards: chosen once they are open, and shown as the
+ * system theme while the level is not reached (an older build reading them falls back to System).
+ */
 @Serializable
-enum class ThemeMode(val label: String) {
+enum class ThemeMode(val label: String, val unlockLevel: Int = 0) {
     System("Как в системе"),
     Dusk("Horizon Dusk"),
     Dawn("Horizon Dawn"),
+    Ice("Horizon Ice", 5),
+    Coal("Horizon Coal", 10),
+}
+
+/** The launcher and window icon, one for each theme; turquoise ones open with their themes. */
+@Serializable
+enum class AppIcon(val label: String, val unlockLevel: Int = 0) {
+    Classic("Классика"),
+    Dawn("Светлая"),
+    Ice("Лёд", 5),
+    Coal("Уголь", 10),
 }
 
 /** «Производительность → Вид плеера»: everything of «Плеер+», or a plain, lighter player. */
@@ -68,6 +83,8 @@ data class Settings(
     val notifyDubbing: Boolean = true,
     /** «Экспериментальные функции»: the «Подборки» tab with own lists and smart picks. */
     val experimentalCollections: Boolean = false,
+    /** The icon of AniMix on the home screen of the phone and in the Windows taskbar. */
+    val appIcon: AppIcon = AppIcon.Classic,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
 ) {

@@ -25,7 +25,7 @@ import kotlin.time.Instant
  */
 class AnimeNews(private val http: HttpClient, private val shikimori: ShikimoriRepository, private val cache: ResponseCache) {
 
-    suspend fun week(): List<NewsItem> = cache.get("news:week:all", ttl = 30.minutes, ListSerializer(NewsItem.serializer())) {
+    suspend fun week(): List<NewsItem> = cache.get("news:week:v2", ttl = 30.minutes, ListSerializer(NewsItem.serializer())) {
         coroutineScope {
             val sources = listOf(
                 async { safe { shikimori.weeklyNews() } },
@@ -33,7 +33,8 @@ class AnimeNews(private val http: HttpClient, private val shikimori: ShikimoriRe
                 async { safe { goha() } },
             ).awaitAll()
             val cutoff = kotlin.time.Clock.System.now().toEpochMilliseconds() - 8L * 86_400_000
-            merge(sources.flatten().filter { millis(it.createdAt)?.let { at -> at >= cutoff } ?: true })
+            merge(sources.flatten().filter { millis(it.createdAt)?.let { at -> at >= cutoff } ?: true }
+                .filter { it.anime != null || isAnimeNews(it.title, it.text) })
         }
     }
 
@@ -47,8 +48,8 @@ class AnimeNews(private val http: HttpClient, private val shikimori: ShikimoriRe
             val id = post["id"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
             val title = post["title"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             val at = post["created_at"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
-            NewsItem(YUMMY_IDS + id, title, post["content_preview"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(),
-                Instant.fromEpochSeconds(at).toString(), kindOf(title),
+            val lead = cleanLead(post["content_preview"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            NewsItem(YUMMY_IDS + id, unescape(title), lead, Instant.fromEpochSeconds(at).toString(), kindOf(title, lead),
                 url = "https://ru.yummyani.me/posts/$id", source = "YummyAnime")
         }
     }
@@ -64,9 +65,9 @@ class AnimeNews(private val http: HttpClient, private val shikimori: ShikimoriRe
             val link = tag("link") ?: return@mapNotNull null
             val description = tag("description").orEmpty()
             val image = Regex("""<img[^>]+src="([^"]+)"""").find(description)?.groupValues?.get(1)
-            val lead = RichTextParser.parseHtml(description.replace(Regex("""<a [^>]*>Читать дальше[^<]*</a>"""), "")).plain
+            val lead = cleanLead(unescape(description).replace(Regex("""<a [^>]*>Читать дальше[^<]*</a>"""), ""))
             val at = tag("pubDate")?.let(::rfc822) ?: return@mapNotNull null
-            NewsItem(GOHA_IDS + (link.hashCode().toLong() and 0x7fffffff), title, lead, at, kindOf(title), imageUrl = image, url = link, source = "GoHa.ru")
+            NewsItem(GOHA_IDS + (link.hashCode().toLong() and 0x7fffffff), title, lead, at, kindOf(title, lead), imageUrl = image, url = link, source = "GoHa.ru")
         }.toList()
     }
 
@@ -80,16 +81,36 @@ class AnimeNews(private val http: HttpClient, private val shikimori: ShikimoriRe
     }
 }
 
-/** «Анонс», «Трейлер», «Премьера» or «Новость» by the words of the headline. */
-fun kindOf(title: String): String {
-    val lower = title.lowercase()
+/**
+ * «Анонс», «Трейлер», «Премьера» or «Новость». The headline decides; a video named only in the lead
+ * still makes it a trailer. A plain «второго сезона» is no premiere: only a date, a start or a return is.
+ */
+fun kindOf(title: String, text: String = ""): String {
+    val lower = title.lowercase().replace('ё', 'е')
+    val lead = text.lowercase().take(240)
+    val trailer = listOf("трейлер", "тизер", "ролик", "промо-видео", "промовидео", " pv")
     return when {
-        listOf("анонс", "адаптац", "экранизац", "получит аниме", "новый сезон").any { it in lower } -> "Анонс"
-        listOf("трейлер", "тизер", "ролик", "pv").any { it in lower } -> "Трейлер"
-        listOf("дата", "премьер", "выход", "сезон", "старт", "вернется", "вернётся").any { it in lower } -> "Премьера"
+        trailer.any { it in lower } -> "Трейлер"
+        listOf("дата выхода", "дату выхода", "премьер", "выйдет", "стартует", "старт ", "вернется", "выход ").any { it in lower } -> "Премьера"
+        listOf("анонс", "адаптац", "экранизац", "получит аниме", "получит продолжение", "продлил", "новый сезон", "продолжение").any { it in lower } -> "Анонс"
+        trailer.any { it in lead } -> "Трейлер"
         else -> "Новость"
     }
 }
+
+/**
+ * News of a manga, a novel or a game that does not say a word about an anime is not for an anime week.
+ */
+fun isAnimeNews(title: String, text: String): Boolean {
+    val all = (title + " " + text.take(400)).lowercase().replace('ё', 'е')
+    val print = listOf("манг", "ранобэ", "ранобе", "новелл", "вебтун", "комикс", "игр").any { it in title.lowercase() }
+    val screen = listOf("аниме", "экраниз", "адаптац", "сериал", "фильм", "сезон", "серия", "серии", "трейлер", "студи").any { it in all }
+    return !print || screen
+}
+
+/** Previews arrive with tags and entities; the digest shows clean sentences. */
+fun cleanLead(raw: String): String =
+    RichTextParser.parseHtml(raw.replace(Regex("<(br|/p|/div|/li|/h\\d|/blockquote)[^>]*>", RegexOption.IGNORE_CASE), " ")).plain.replace(' ', ' ').replace(Regex("\\s+"), " ").trim()
 
 /**
  * One story per subject: two headlines that name the same «title» in quotes within two days are the same
@@ -102,7 +123,7 @@ internal fun merge(items: List<NewsItem>): List<NewsItem> {
         val key = subject(item)
         val day = millis(item.createdAt)
         val twin = key != null && kept.any { other ->
-            subject(other) == key && kindOf(other.title) == item.kind && day != null && millis(other.createdAt)?.let { kotlin.math.abs(it - day) < 2 * 86_400_000L } == true
+            subject(other) == key && other.kind == item.kind && day != null && millis(other.createdAt)?.let { kotlin.math.abs(it - day) < 2 * 86_400_000L } == true
         }
         if (!twin) kept += item
     }

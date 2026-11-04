@@ -100,7 +100,7 @@ private fun HistoryRow(entry: LibraryEntry, onClick: () -> Unit) {
         lastEpisode != null -> "Серия $lastEpisode · остановились на ${clock(entry.episodePositions.getValue(lastEpisode))}"
         else -> "Просмотрено серий: ${entry.episodesWatched}"
     }
-    Panel(Modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)) {
+    Panel(Modifier.pressScale(interaction).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick)) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             RemoteImage(entry.anime.posterUrl, Modifier.width(56.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
             Spacer(Modifier.width(14.dp))

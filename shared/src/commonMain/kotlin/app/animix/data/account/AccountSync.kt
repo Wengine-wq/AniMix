@@ -282,8 +282,14 @@ class AccountSync(
         val data = library.state.value
         val clean = data.copy(watchRemainderMs = 0, syncReceipt = null, profile = data.profile.copy(avatar = data.profile.avatar?.copy(localFileName = null), banner = data.profile.banner?.copy(localFileName = null)))
         val preferences = JsonObject(SyncJson.encodeToJsonElement(settings.state.value).jsonObject.filterKeys { it in SyncedPreferenceKeys })
-        return clean != base.library || achievements.syncState.value != base.achievements || preferences != base.preferences
+        return clean != base.library || achievements.syncState.value != base.achievements || preferences != base.preferences ||
+            summaryStale(base)
     }
+    /**
+     * Friends read the numbers, level and activity from the saved summary. A profile saved by an older
+     * build has none, and the fortnight of activity moves on by itself, so a stale one is sent again.
+     */
+    private fun summaryStale(base: SyncPayload): Boolean = base.summary != publicSummary(base.library, base.achievements)
     private fun readEnvelope(value: JsonObject): SyncEnvelope = SyncJson.decodeFromJsonElement<SyncEnvelope>(value).also {
         require(it.revision >= 0 && (it.payload == null || it.payload.version == 1)) { "Unsupported sync version" }
     }

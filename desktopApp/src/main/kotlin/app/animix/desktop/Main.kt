@@ -17,9 +17,9 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.animix.App
 import app.animix.AppGraph
-import app.animix.core.ThemeMode
-import app.animix.ui.theme.HorizonDawn
-import app.animix.ui.theme.HorizonDusk
+import app.animix.ui.components.at
+import app.animix.ui.theme.at
+import app.animix.ui.theme.themeColors
 import java.awt.Dimension
 import javax.imageio.ImageIO
 import kotlinx.coroutines.runBlocking
@@ -38,17 +38,16 @@ fun main(args: Array<String>) {
             runBlocking { graph.downloads.shutdown(); graph.flushUserData() }
             exitApplication()
         }
-        Window(onCloseRequest = exit, state = state, title = "AniMix", icon = icon) {
+        val settings by graph.settings.state.collectAsState()
+        val level by graph.level.collectAsState()
+        // «Значок приложения»: the window and taskbar take the chosen icon; the classic one until data loads.
+        val chosenIcon = settings.appIcon.at(level.level)
+        val windowIcon = if (chosenIcon == app.animix.core.AppIcon.Classic) icon else app.animix.ui.components.appIconPainter(chosenIcon)
+        Window(onCloseRequest = exit, state = state, title = "AniMix", icon = windowIcon) {
             LaunchedEffect(state.isMinimized) { graph.social.setActive(!state.isMinimized) }
-            val settings by graph.settings.state.collectAsState()
-            val dark = when (settings.themeMode) {
-                ThemeMode.System -> isSystemInDarkTheme()
-                ThemeMode.Dusk -> true
-                ThemeMode.Dawn -> false
-            }
-            LaunchedEffect(dark) {
-                val colors = if (dark) HorizonDusk else HorizonDawn
-                WindowsTitleBar.apply(window, dark, colors.background.toArgb(), colors.textPrimary.toArgb())
+            val colors = themeColors(settings.themeMode.at(level.level), isSystemInDarkTheme())
+            LaunchedEffect(colors) {
+                WindowsTitleBar.apply(window, colors.isDark, colors.background.toArgb(), colors.textPrimary.toArgb())
             }
             LaunchedEffect(Unit) { window.minimumSize = Dimension(400, 640) }
             App(graph, startLink = args.firstOrNull { it.startsWith("animix://") }, onExit = exit)

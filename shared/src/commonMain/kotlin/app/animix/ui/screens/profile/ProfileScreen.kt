@@ -42,7 +42,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     val account by graph.account.state.collectAsState()
     val social by graph.social.state.collectAsState()
     val stats = remember(library) { library.stats() }
-    val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
+    val level by graph.level.collectAsState()
     val badge = achievements.firstOrNull { it.unlocked && it.achievement.id == library.profile.badgeAchievementId }
     // The page takes its mood from the person's own banner (or avatar), blurred behind the plates.
     app.animix.Ambient(library.profile.banner?.url ?: library.profile.avatar?.url)
@@ -143,7 +143,7 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                     ProfileAvatar(profile, avatarSize, level = level,
                         clickModifier = Modifier
                         .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
-                            .clickable(avatarInteraction, indication = null, role = Role.Button, onClick = onEdit)
+                            .clickable(avatarInteraction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onEdit)
                             .focusOutline(avatarInteraction, CircleShape) else Modifier))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f).padding(top = avatarSize / 2 + 8.dp)) {
@@ -152,7 +152,7 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                             if (badge != null) {
                                 Box(Modifier.size(40.dp).semantics { contentDescription = "Значок профиля: ${badge.achievement.name}" }
                                     .then(if (onBadge != null) Modifier.clip(CircleShape)
-                                        .clickable(badgeInteraction, indication = null, role = Role.Button, onClick = onBadge)
+                                        .clickable(badgeInteraction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onBadge)
                                         .focusOutline(badgeInteraction, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
                                     AchievementIcon(badge.achievement, true, 28.dp)
                                 }

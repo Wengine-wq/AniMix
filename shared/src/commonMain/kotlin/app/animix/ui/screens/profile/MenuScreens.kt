@@ -36,7 +36,7 @@ fun MenuScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val social by graph.social.state.collectAsState()
     val settings by graph.settings.state.collectAsState()
     val notices by graph.notifier.notices.collectAsState()
-    val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
+    val level by graph.level.collectAsState()
     val last = remember(library) { library.entries.values.filter { it.episodePositions.isNotEmpty() || it.episodesWatched > 0 }.maxByOrNull { it.updatedAt } }
     ScreenColumn(padding) {
         PageHeader("Меню", { navigator.back() }, Modifier.padding(top = 12.dp))
@@ -57,7 +57,6 @@ fun MenuScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
             MenuTile(AniMixIcons.History, "История", last?.anime?.title ?: "Пока пусто") { navigator.push(Route.History) },
             MenuTile(AniMixIcons.Bell, "Уведомления", if (unread > 0) "Новых: $unread" else "Новых нет", accent = unread > 0) { navigator.push(Route.Notifications) },
             MenuTile(AniMixIcons.Pulse, "AniPulse", "Ваша аниме-неделя") { navigator.push(Route.Pulse) },
-            if (settings.experimentalCollections) MenuTile(AniMixIcons.Layers, "Подборки", "Свои и умные") { navigator.push(Route.Collections) } else null,
         ))
         Spacer(Modifier.height(28.dp))
         Txt("Приложение", AniMixTheme.type.heading)
@@ -96,7 +95,7 @@ private fun MenuCard(tile: MenuTile, modifier: Modifier) {
     val shape = AniMixTheme.shapes.large
     Column(
         modifier.heightIn(min = 124.dp).pressScale(interaction).clip(shape).background(colors.surface.copy(alpha = 0.72f))
-            .rim(shape, accent = false).clickable(interaction, indication = null, role = Role.Button, onClick = tile.onClick)
+            .rim(shape, accent = false).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = tile.onClick)
             .focusOutline(interaction, shape).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,21 +118,21 @@ private fun LevelCard(profile: app.animix.data.library.LocalProfile, level: app.
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val shape = AniMixTheme.shapes.large
-    val next = listOf(DesignLevel to "оформление профиля", FrameLevel to "рамка аватара").firstOrNull { it.first > level.level }
+    // The ring around the avatar already shows the way to the next level; the card names what comes with it.
+    val next = LevelRewards.firstOrNull { it.level > level.level }
     Box(Modifier.fillMaxWidth().pressScale(interaction).clip(shape).background(colors.surface.copy(alpha = 0.72f))
-        .rim(shape, accent = true).clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+        .rim(shape, accent = true).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
         .focusOutline(interaction, shape)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             ProfileAvatar(profile, 72.dp, level = level)
             Spacer(Modifier.width(18.dp))
             Column(Modifier.weight(1f)) {
                 Txt("Уровень ${level.level}", AniMixTheme.type.heading)
-                Spacer(Modifier.height(8.dp))
-                ProgressLine(level.fraction)
-                Spacer(Modifier.height(8.dp))
-                Txt(if (next != null) "До уровня ${level.level + 1} — ${(level.fraction * 100).toInt()}% · на ${next.first}-м: ${next.second}"
-                    else "До уровня ${level.level + 1} — ${(level.fraction * 100).toInt()}% · все награды открыты", AniMixTheme.type.caption, maxLines = 2)
+                Spacer(Modifier.height(4.dp))
+                Txt(if (next != null) "Следующая награда — ${next.title.replaceFirstChar { it.lowercase() }}" else "Все награды за уровни открыты", AniMixTheme.type.caption, maxLines = 2)
+                if (next != null) Txt("на ${next.level}-м уровне", AniMixTheme.type.micro, color = colors.accentText)
             }
+            Icon(AniMixIcons.ChevronRight, null, Modifier.size(20.dp), tint = colors.textMuted)
         }
     }
 }
@@ -143,7 +142,7 @@ private fun LevelCard(profile: app.animix.data.library.LocalProfile, level: app.
 fun LevelScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val library by graph.library.state.collectAsState()
     val achievements by graph.achievements.progress.collectAsState()
-    val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
+    val level by graph.level.collectAsState()
     ScreenColumn(padding) {
         PageHeader("Уровень", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(28.dp))
@@ -170,18 +169,44 @@ fun LevelScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
         Txt("Награды за уровни", AniMixTheme.type.heading)
         Spacer(Modifier.height(16.dp))
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            LevelReward(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон за шапкой профиля", level.level) {
-                ProfileDesignLayer(ProfileDesign.Sakura, Modifier.fillMaxSize())
-            }
-            LevelReward(FrameLevel, "Рамка аватара", "В стиле выбранного оформления, вокруг кольца уровня", level.level) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(26.dp).clip(CircleShape).background(AniMixTheme.colors.accentGradient))
-                    ProfileFrameLayer(ProfileDesign.Stars, Modifier.size(26.dp))
-                }
+            LevelRewards.forEach { reward ->
+                LevelReward(reward.level, reward.title, reward.description, level.level) { reward.preview() }
             }
         }
         Spacer(Modifier.height(16.dp))
-        SecondaryButton("Выбрать оформление", { navigator.push(Route.EditProfile()) }, Modifier.fillMaxWidth(), icon = AniMixIcons.Palette)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SecondaryButton("Темы и значок", { navigator.push(Route.SettingsSection("Appearance")) }, Modifier.weight(1f), icon = AniMixIcons.Sun)
+            SecondaryButton("Оформление", { navigator.push(Route.EditProfile()) }, Modifier.weight(1f), icon = AniMixIcons.Palette)
+        }
+    }
+}
+
+/** What a level opens, in order; the menu card names the next one, «Уровень» lists them all. */
+internal class LevelRewardInfo(val level: Int, val title: String, val description: String, val preview: @Composable () -> Unit)
+
+internal val LevelRewards = listOf(
+    LevelRewardInfo(app.animix.core.ThemeMode.Ice.unlockLevel, "Тема Horizon Ice", "Лёд и бирюза — светлая тема и значок приложения") {
+        ThemePreview(app.animix.ui.theme.HorizonIce)
+    },
+    LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Coal", "Уголь и бирюза — тёмная тема и значок приложения") {
+        ThemePreview(app.animix.ui.theme.HorizonCoal)
+    },
+    LevelRewardInfo(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон за шапкой профиля") {
+        ProfileDesignLayer(ProfileDesign.Sakura, Modifier.fillMaxSize())
+    },
+    LevelRewardInfo(FrameLevel, "Рамка аватара", "В стиле выбранного оформления, вокруг кольца уровня") {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(26.dp).clip(CircleShape).background(AniMixTheme.colors.accentGradient))
+            ProfileFrameLayer(ProfileDesign.Stars, Modifier.size(26.dp))
+        }
+    },
+).sortedBy { it.level }
+
+@Composable
+private fun ThemePreview(palette: app.animix.ui.theme.AniMixColors) {
+    Box(Modifier.fillMaxSize().background(palette.background).padding(8.dp)) {
+        Box(Modifier.width(30.dp).height(6.dp).clip(AniMixTheme.shapes.pill).background(palette.textPrimary.copy(alpha = 0.8f)))
+        Box(Modifier.align(Alignment.BottomStart).width(36.dp).height(12.dp).clip(AniMixTheme.shapes.pill).background(palette.accentGradient))
     }
 }
 

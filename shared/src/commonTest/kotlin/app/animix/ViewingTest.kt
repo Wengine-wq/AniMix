@@ -52,7 +52,20 @@ class ViewingTest {
         val viewing = EpisodeViewing(100_000, ranges, reachedEnd = true)
         assertEquals(85_000, viewing.uniqueMs)
         assertTrue(viewing.qualifies())
-        assertFalse(viewing.copy(reachedEnd = false).qualifies(), "coverage alone must not prematurely finish an episode")
+        assertFalse(EpisodeViewing(100_000, listOf(ViewedRange(0, 85_000))).qualifies(), "coverage alone must not prematurely finish an episode")
+    }
+
+    @Test fun anInaccurateEndingTimingDoesNotLoseAFullyWatchedEpisode() {
+        // «Пять невест 2», серия 11: the release's ending timing was ~45 s late; the viewer stopped
+        // in the real credits after skipping the opening, so the player never reported the end.
+        val viewing = EpisodeViewing(1_445_116, listOf(ViewedRange(0, 243_519), ViewedRange(333_000, 1_353_000), ViewedRange(1_363_103, 1_365_256)),
+            opening = SkipRange(242, 91), ending = SkipRange(1401, 34))
+        assertTrue(viewing.qualifies())
+        assertFalse(viewing.copy(ranges = viewing.ranges.dropLast(2) + ViewedRange(333_000, 1_200_000)).qualifies(), "stopping minutes before the end is not watching it")
+        val entry = LibraryEntry(anime, viewing = (1..12).associate { it.toString() to viewing }).confirmQualifiedViewing(1_000)
+        assertEquals(12, entry.verifiedEpisodes)
+        assertEquals(12, entry.episodesWatched)
+        assertTrue(entry.hasVerifiedCompletion)
     }
 
     @Test fun skippingKnownOpeningAndEndingIsAllowedButBadMetadataCannotShrinkTheEpisode() {

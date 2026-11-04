@@ -63,16 +63,12 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
         Txt(weekLabel(digest.week.start), AniMixTheme.type.caption, modifier = Modifier.padding(top = 4.dp, start = 56.dp))
         Spacer(Modifier.height(20.dp))
         WeekHero(digest)
-        // The magazine part first: what happened in anime this week, about the viewer's titles first.
-        if (digest.news.isNotEmpty() || loading) {
-            Section("Главное за неделю", AniMixIcons.Sparkle)
-            if (digest.news.isEmpty()) LoadingIndicator(Modifier.size(22.dp)) else NewsBlock(digest.news, library.entries.keys, navigator)
+        // A digest of your week, in this order: what you watched, what is waiting for you, a short
+        // brief of the week's news, and only then picks and the long view. The news is a part, not the page.
+        if (digest.watched.isNotEmpty()) {
+            Section("Вы смотрели", AniMixIcons.Play)
+            Shelf(digest.watched.map { it.anime to if (it.finished) "Досмотрено" else "+${it.episodes} ${episodesWord(it.episodes)}" }, navigator)
         }
-        Spacer(Modifier.height(32.dp))
-        Txt("Неделя за неделей", AniMixTheme.type.heading)
-        Spacer(Modifier.height(14.dp))
-        WeeksChart(digest.weeks)
-
         if (digest.fresh.isNotEmpty() || loading) {
             Section("Новые серии", AniMixIcons.Bell)
             if (digest.fresh.isEmpty()) LoadingIndicator(Modifier.size(22.dp))
@@ -85,7 +81,11 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
         }
         if (digest.almostDone.isNotEmpty()) {
             Section("Почти досмотрели", AniMixIcons.Check)
-            Shelf(digest.almostDone.map { it.entry.anime to "Осталось ${it.left} ${episodesWord(it.left)}" }, navigator)
+            Shelf(digest.almostDone.map { it.entry.anime to if (it.entry.anime.kind == app.animix.model.AnimeKind.Movie) "Фильм не досмотрен" else "Осталось ${it.left} ${episodesWord(it.left)}" }, navigator)
+        }
+        if (digest.news.isNotEmpty() || loading) {
+            Section("Коротко о главном", AniMixIcons.Sparkle)
+            if (digest.news.isEmpty()) LoadingIndicator(Modifier.size(22.dp)) else NewsBlock(digest.news, library.entries.keys, navigator)
         }
         if (digest.onHold.isNotEmpty()) {
             Section("Ждут на паузе", AniMixIcons.Pause)
@@ -99,6 +99,8 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
             Section("Подборка недели", AniMixIcons.Sparkle)
             Shelf(digest.picks.map { it to it.year?.toString() }, navigator)
         }
+        Section("Неделя за неделей", AniMixIcons.Calendar)
+        WeeksChart(digest.weeks)
         if (loaded.value is Load.Failed) Txt("Каталог не ответил: новые серии и подборки появятся при подключении.", AniMixTheme.type.caption,
             modifier = Modifier.padding(top = 16.dp))
         Spacer(Modifier.height(28.dp))
@@ -117,60 +119,33 @@ private fun NewsBlock(news: List<NewsItem>, mine: Set<String>, navigator: Naviga
     var kind by remember { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf<Long?>(null) }
     var all by remember { mutableStateOf(false) }
-    val kinds = listOf("Анонс", "Трейлер", "Премьера", "Новость").filter { k -> news.any { it.kind == k } }
-    val shown = news.filter { kind == null || it.kind == kind }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Chip("Всё · ${news.size}", kind == null, { kind = null })
-        kinds.forEach { k -> Chip(plural(k), kind == k, { kind = k }) }
-    }
-    Spacer(Modifier.height(14.dp))
-    // The lead story is the newest one with a picture; the card never shows an empty frame.
-    val lead = shown.firstOrNull { it.imageUrl != null } ?: shown.firstOrNull() ?: return
-    NewsLead(lead, lead.anime?.key in mine, expanded == lead.id, { expanded = if (expanded == lead.id) null else lead.id }, navigator)
-    val rest = shown - lead
-    if (rest.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Panel {
-            (if (all) rest else rest.take(6)).forEachIndexed { index, item ->
-                if (index > 0) Box(Modifier.fillMaxWidth().padding(start = 88.dp).height(1.dp).background(AniMixTheme.colors.outline))
-                NewsRow(item, item.anime?.key in mine, expanded == item.id, { expanded = if (expanded == item.id) null else item.id }, navigator)
-            }
+    // The brief: one line of what the week brought, the stories about your titles, then a few of the
+    // rest. The whole feed with its kinds is one tap away, not the page itself.
+    val counts = listOf("Анонс", "Трейлер", "Премьера").mapNotNull { k -> news.count { it.kind == k }.takeIf { it > 0 }?.let { k to it } }
+    if (counts.isNotEmpty()) Txt("За неделю: " + counts.joinToString(", ") { (k, n) -> "${plural(k).lowercase()} — $n" },
+        AniMixTheme.type.caption, modifier = Modifier.padding(bottom = 12.dp))
+    val yours = news.filter { it.anime?.key in mine }
+    val brief = (yours + news.filter { it !in yours && it.imageUrl != null } + news).distinct().take(4)
+    if (all) {
+        val kinds = listOf("Анонс", "Трейлер", "Премьера", "Новость").filter { k -> news.any { it.kind == k } }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Всё · ${news.size}", kind == null, { kind = null })
+            kinds.forEach { k -> Chip(plural(k), kind == k, { kind = k }) }
         }
-        if (rest.size > 6) Txt(if (all) "Свернуть" else "Ещё ${rest.size - 6}", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
-            modifier = Modifier.padding(top = 8.dp).clip(AniMixTheme.shapes.pill).clickable(role = Role.Button) { all = !all }.padding(horizontal = 8.dp, vertical = 8.dp))
+        Spacer(Modifier.height(12.dp))
     }
+    val shown = if (all) news.filter { kind == null || it.kind == kind } else brief
+    Panel {
+        shown.forEachIndexed { index, item ->
+            if (index > 0) Box(Modifier.fillMaxWidth().padding(start = 88.dp).height(1.dp).background(AniMixTheme.colors.outline))
+            NewsRow(item, item.anime?.key in mine, expanded == item.id, { expanded = if (expanded == item.id) null else item.id }, navigator)
+        }
+    }
+    if (news.size > brief.size) Txt(if (all) "Свернуть" else "Все новости недели · ${news.size}", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
+        modifier = Modifier.padding(top = 8.dp).clip(AniMixTheme.shapes.pill).clickable(role = Role.Button) { all = !all; kind = null }.padding(horizontal = 8.dp, vertical = 8.dp))
 }
 
 private fun plural(kind: String) = when (kind) { "Анонс" -> "Анонсы"; "Трейлер" -> "Трейлеры"; "Премьера" -> "Премьеры"; else -> "Новости" }
-
-/** The lead story: its picture under a scrim with the kind and title on it, the beginning of the text below. */
-@Composable
-private fun NewsLead(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () -> Unit, navigator: Navigator) {
-    val colors = AniMixTheme.colors
-    Column(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.surface.copy(alpha = 0.72f))
-        .rim(AniMixTheme.shapes.large, accent = false).clickable(role = Role.Button, onClick = onToggle)) {
-        if (item.imageUrl == null) Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
-            Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
-                AniMixTheme.type.micro, color = colors.accentText)
-            Spacer(Modifier.height(4.dp))
-            Txt(item.title, AniMixTheme.type.subheading, maxLines = 3)
-        } else Box(Modifier.fillMaxWidth().aspectRatio(16f / 8f)) {
-            RemoteImage(item.imageUrl, Modifier.fillMaxSize(), shape = androidx.compose.ui.graphics.RectangleShape)
-            Box(Modifier.matchParentSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color(0xCC0B0B0E)))))
-            Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-                Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
-                    AniMixTheme.type.micro, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
-                Spacer(Modifier.height(4.dp))
-                Txt(item.title, AniMixTheme.type.subheading, color = androidx.compose.ui.graphics.Color.White, maxLines = 3)
-            }
-        }
-        Column(Modifier.padding(16.dp)) {
-            Txt(item.text, AniMixTheme.type.caption, maxLines = if (open) Int.MAX_VALUE else 3)
-            if (open) NewsActions(item, navigator)
-        }
-    }
-}
 
 @Composable
 private fun NewsRow(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () -> Unit, navigator: Navigator) {

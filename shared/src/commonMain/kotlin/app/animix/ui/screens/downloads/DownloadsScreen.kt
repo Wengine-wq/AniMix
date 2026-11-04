@@ -180,7 +180,7 @@ fun TitleDownloadsScreen(graph: AppGraph, navigator: Navigator, opened: app.anim
                         // The title leads to the anime page; the line under it says so.
                         val openInteraction = remember { MutableInteractionSource() }
                         Row(Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
-                            .clickable(openInteraction, indication = null, role = Role.Button, enabled = anime.title.isNotEmpty()) {
+                            .clickable(openInteraction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, enabled = anime.title.isNotEmpty()) {
                                 navigator.pushOrBack(Route.Detail(anime))
                             }.focusOutline(openInteraction, AniMixTheme.shapes.medium).padding(4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -376,7 +376,7 @@ private fun DownloadTitleCard(items: List<DownloadItem>, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val progress = items.overallProgress()
     val failed = items.any { it.status == DownloadStatus.Failed } && items.none { it.active || it.status == DownloadStatus.Queued }
-    Column(Modifier.pressScale(interaction).clickable(interaction, indication = null, role = Role.Button, onClick = onClick)) {
+    Column(Modifier.pressScale(interaction).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)) {
         Box {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             Txt("${(progress * 100).toInt()}%", AniMixTheme.type.micro, color = Color.White,

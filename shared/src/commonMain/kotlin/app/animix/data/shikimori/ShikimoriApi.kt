@@ -13,6 +13,8 @@ import io.ktor.http.contentType
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 
 /** Shikimori catalog through its public GraphQL endpoint. No account needed. */
 internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: String = BASE_URL) {
@@ -27,6 +29,7 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
             query.season?.let { put("season", JsonPrimitive(it)) }
             query.genreIds.takeIf { it.isNotEmpty() }?.let { put("genre", JsonPrimitive(it.joinToString(","))) }
             query.search?.takeIf { it.isNotBlank() }?.let { put("search", JsonPrimitive(it.trim())) }
+            query.studioId?.let { put("studio", JsonPrimitive(it.toString())) }
         }
         val response = AppJson.decodeFromString(AnimesResponse.serializer(), post(LIST_QUERY, JsonObject(variables)))
         response.errors?.firstOrNull()?.let { throw ShikimoriException(it.message) }
@@ -75,58 +78,76 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
     }
 
     suspend fun similar(id: Int): List<RestAnimeDto> =
-        AppJson.decodeFromString(ListSerializer(RestAnimeDto.serializer()), http.get("$baseUrl/api/animes/$id/similar").bodyAsText())
+        AppJson.decodeFromString(ListSerializer(RestAnimeDto.serializer()), limited { http.get("$baseUrl/api/animes/$id/similar").bodyAsText() })
 
     /** Comments of a topic, newest first. */
     suspend fun comments(topicId: Int, page: Int, limit: Int): List<CommentDto> =
         AppJson.decodeFromString(
             ListSerializer(CommentDto.serializer()),
-            http.get("$baseUrl/api/comments") {
+            limited { http.get("$baseUrl/api/comments") {
                 parameter("commentable_id", topicId)
                 parameter("commentable_type", "Topic")
                 parameter("page", page)
                 parameter("limit", limit)
                 parameter("desc", 1)
-            }.bodyAsText(),
+            }.bodyAsText() },
         )
 
     /** Generated events of one anime (anons, ongoing, released, episode), newest first. */
     suspend fun animeTopics(id: Int, limit: Int): List<NewsTopicDto> =
         AppJson.decodeFromString(
             ListSerializer(NewsTopicDto.serializer()),
-            http.get("$baseUrl/api/animes/$id/topics") { parameter("limit", limit) }.bodyAsText(),
+            limited { http.get("$baseUrl/api/animes/$id/topics") { parameter("limit", limit) }.bodyAsText() },
         )
 
     /** The site's news feed: announcements, trailers, premiere dates and other news, newest first. */
     suspend fun newsFeed(page: Int, limit: Int): List<NewsTopicDto> =
         AppJson.decodeFromString(
             ListSerializer(NewsTopicDto.serializer()),
-            http.get("$baseUrl/api/topics") {
+            limited { http.get("$baseUrl/api/topics") {
                 parameter("forum", "news")
                 parameter("page", page)
                 parameter("limit", limit)
-            }.bodyAsText(),
+            }.bodyAsText() },
         )
 
     /** Site news linked to one anime, newest first. */
     suspend fun newsTopics(id: Int, limit: Int): List<NewsTopicDto> =
         AppJson.decodeFromString(
             ListSerializer(NewsTopicDto.serializer()),
-            http.get("$baseUrl/api/topics") {
+            limited { http.get("$baseUrl/api/topics") {
                 parameter("forum", "news")
                 parameter("linked_type", "Anime")
                 parameter("linked_id", id)
                 parameter("limit", limit)
-            }.bodyAsText(),
+            }.bodyAsText() },
         )
 
-    private suspend fun post(query: String, variables: JsonObject?): String =
+    private suspend fun post(query: String, variables: JsonObject?): String = limited {
         http.post("$baseUrl/api/graphql") {
             contentType(ContentType.Application.Json)
             setBody(AppJson.encodeToString(GraphQlRequest.serializer(), GraphQlRequest(query, variables)))
         }.bodyAsText()
+    }
+
+    /**
+     * Shikimori answers «429 Retry later» above about five requests a second. Every request of the app
+     * goes through one gate: three at a time, starts at least 220 ms apart, so the home sections,
+     * picks and the digest no longer knock each other out.
+     */
+    private suspend fun <T> limited(block: suspend () -> T): T = Gate.withPermit {
+        Spacing.withLock {
+            val wait = 220 - (kotlin.time.TimeSource.Monotonic.markNow() - lastStart).inWholeMilliseconds
+            if (wait > 0) kotlinx.coroutines.delay(wait)
+            lastStart = kotlin.time.TimeSource.Monotonic.markNow()
+        }
+        block()
+    }
 
     companion object {
+        private val Gate = kotlinx.coroutines.sync.Semaphore(3)
+        private val Spacing = kotlinx.coroutines.sync.Mutex()
+        private var lastStart = kotlin.time.TimeSource.Monotonic.markNow()
         const val BASE_URL = "https://shikimori.io"
 
         private const val CARD_FIELDS =
@@ -135,13 +156,13 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
 
         private const val LIST_QUERY =
             "query(\$page: PositiveInt, \$limit: PositiveInt, \$order: OrderEnum, \$kind: AnimeKindString, " +
-                "\$status: AnimeStatusString, \$season: SeasonString, \$genre: String, \$search: String) { " +
+                "\$status: AnimeStatusString, \$season: SeasonString, \$genre: String, \$search: String, \$studio: String) { " +
                 "animes(page: \$page, limit: \$limit, order: \$order, kind: \$kind, status: \$status, " +
-                "season: \$season, genre: \$genre, search: \$search, censored: true) { $CARD_FIELDS } }"
+                "season: \$season, genre: \$genre, search: \$search, studio: \$studio, censored: true) { $CARD_FIELDS } }"
 
         private const val DETAIL_QUERY =
             "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
-                "description descriptionHtml duration rating nextEpisodeAt studios { name } screenshots { originalUrl x332Url } " +
+                "description descriptionHtml duration rating nextEpisodeAt studios { id name imageUrl } screenshots { originalUrl x332Url } " +
                 "related { relationKind relationText anime { $CARD_FIELDS } } topic { id commentsCount } } }"
 
         private const val BY_IDS_QUERY =

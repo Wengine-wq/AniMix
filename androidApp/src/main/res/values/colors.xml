@@ -2,4 +2,7 @@
 <resources>
     <color name="horizon_background">#FF08080F</color>
     <color name="ic_launcher_background">#FF120E14</color>
+    <color name="ic_launcher_background_dawn">#FFFBF8FA</color>
+    <color name="ic_launcher_background_coal">#FF0E1316</color>
+    <color name="ic_launcher_background_ice">#FFEAF4F6</color>
 </resources>

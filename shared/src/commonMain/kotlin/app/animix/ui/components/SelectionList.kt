@@ -79,5 +79,5 @@ fun EpisodeCardSurface(selected: Boolean, onClick: (() -> Unit)?, modifier: Modi
     val background by animateColorAsState(if (selected) colors.accentSoft else colors.chip, tween(AniMixMotion.Standard))
     Box(modifier.then(if (onClick != null) Modifier.pressScale(interaction) else Modifier).clip(AniMixTheme.shapes.medium).background(background)
         .rim(AniMixTheme.shapes.medium, accent = selected)
-        .then(if (onClick != null) Modifier.clickable(interaction, indication = null, role = Role.Button, enabled = enabled, onClick = onClick) else Modifier), content = content)
+        .then(if (onClick != null) Modifier.clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, enabled = enabled, onClick = onClick) else Modifier), content = content)
 }

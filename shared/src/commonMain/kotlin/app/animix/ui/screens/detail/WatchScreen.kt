@@ -210,7 +210,9 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                             suggested = suggested,
                             onPlay = { episode -> episodeNumber = episode.number },
                             onDownload = { dubbing, episode -> requestDownload(dubbing, listOf(episode)) },
-                            modifier = if (pip) Modifier else Modifier.widthIn(max = 860.dp),
+                            // A grid item has no height of its own: the small window gives the video the whole of it,
+                            // otherwise the picture is measured to nothing and only a black box with sound remains.
+                            modifier = if (pip) Modifier.height(this@BoxWithConstraints.maxHeight) else Modifier.widthIn(max = 860.dp),
                         )
                     }
                     if (!pip) Spacer(Modifier.height(24.dp))
@@ -340,7 +342,7 @@ private fun PlayerArea(
                 val interaction = remember { MutableInteractionSource() }
                 Box(
                     Modifier.size(56.dp).pressScale(interaction, pressed = 0.92f).clip(CircleShape).background(colors.accentGradient)
-                        .clickable(interaction, indication = null, enabled = suggested != null) { suggested?.let(onPlay) },
+                        .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = suggested != null) { suggested?.let(onPlay) },
                     contentAlignment = Alignment.Center,
                 ) { Icon(AniMixIcons.Play, null, Modifier.size(22.dp), tint = colors.onAccent) }
                 Spacer(Modifier.height(10.dp))

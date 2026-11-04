@@ -113,7 +113,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             queued = downloads.count { it.anime.key == anime.key },
             onFavorite = { graph.library.toggleFavorite(anime) },
             onRate = { sheet = DetailSheet.Rate },
-            onCollection = if (settings.experimentalCollections) { { sheet = DetailSheet.Collection } } else null,
+            onCollection = { sheet = DetailSheet.Collection },
             notice = notice,
         )
     }
@@ -155,7 +155,7 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     Load.Loading -> DescriptionPlaceholder()
                     is Load.Failed -> MessageState("Не удалось загрузить аниме", message = state.error.userMessage(),
                         icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
-                    is Load.Ready -> Description(state.value)
+                    is Load.Ready -> Description(state.value) { studio -> navigator.push(Route.Catalog(app.animix.data.shikimori.CatalogQuery(studioId = studio.id), studio.name)) }
                 }
                 mascotCosplayFor(anime)?.takeIf { app.animix.ui.components.MascotShown }?.let { cosplay ->
                     Spacer(Modifier.height(24.dp))
@@ -375,12 +375,20 @@ private fun WatchActions(
 }
 
 @Composable
-private fun Description(detail: AnimeDetail) {
+private fun Description(detail: AnimeDetail, onStudio: (app.animix.model.Studio) -> Unit) {
     val type = AniMixTheme.type
     if (!detail.description.isBlank) {
         Expandable(collapsedHeight = 112.dp) { RichTextView(detail.description) }
     }
-    if (detail.studios.isNotEmpty()) {
+    // A studio is a way into everything it made: each one a chip that opens its titles in the catalog.
+    if (detail.studioLinks.isNotEmpty()) {
+        Spacer(Modifier.height(14.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically) {
+            Txt(if (detail.studioLinks.size == 1) "Студия" else "Студии", type.caption)
+            detail.studioLinks.forEach { studio -> app.animix.ui.components.Chip(studio.name, false, { onStudio(studio) }, icon = AniMixIcons.Catalog) }
+        }
+    } else if (detail.studios.isNotEmpty()) {
         Spacer(Modifier.height(14.dp))
         Txt("Студия: ${detail.studios.joinToString()}", type.caption)
     }

@@ -35,7 +35,7 @@ internal class PosterDto(
 internal class GenreDto(val id: String, val russian: String? = null, val name: String? = null, val kind: String? = null)
 
 @Serializable
-internal class StudioDto(val name: String)
+internal class StudioDto(val name: String, val id: String? = null, val imageUrl: String? = null)
 
 @Serializable
 internal class ScreenshotDto(val originalUrl: String? = null, val x332Url: String? = null)

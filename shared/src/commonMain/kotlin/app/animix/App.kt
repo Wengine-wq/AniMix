@@ -100,6 +100,7 @@ import app.animix.ui.screens.profile.EditProfileScreen
 import app.animix.ui.screens.watchflow.WatchFlowScreen
 import app.animix.ui.screens.profile.SettingsScreen
 import app.animix.ui.theme.AniMixTheme
+import app.animix.ui.theme.at
 import app.animix.ui.theme.AniMixMotion
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
@@ -144,7 +145,8 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
             .build()
     }
 
-    AniMixTheme(settings.themeMode, settings.animationsEnabled, settings.batterySaver) {
+    val level by graph.level.collectAsState()
+    AniMixTheme(settings.themeMode.at(level.level), settings.animationsEnabled, settings.batterySaver) {
         if (initialized) {
             AppShell(graph, navigator, onExit)
             app.animix.ui.screens.profile.HorizonIncoming(graph,navigator)

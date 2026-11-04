@@ -1,8 +1,21 @@
 package app.animix.ui.screens.profile
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import app.animix.ui.components.Panel
+import app.animix.ui.components.appIconPainter
+import app.animix.ui.components.at
+import app.animix.ui.components.focusOutline
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -23,11 +36,14 @@ import app.animix.ui.theme.AniMixTheme
 /** Release notes and future plans stay visibly separate; the project's own links come right after who we are. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun AboutSection() {
+internal fun AboutSection(graph: app.animix.AppGraph) {
     val uri = LocalUriHandler.current
-    // The app's own mark, as on the home screen of the device; the mascot stays with empty states.
+    val settings by graph.settings.state.collectAsState()
+    val level by graph.level.collectAsState()
+    // The app's own mark, as on the home screen of the device (the chosen icon); the mascot stays with empty states.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(Res.drawable.animix_logo), "Логотип AniMix",
+        val icon = settings.appIcon.at(level.level)
+        Image(if (icon == app.animix.core.AppIcon.Classic) painterResource(Res.drawable.animix_logo) else appIconPainter(icon), "Логотип AniMix",
             Modifier.size(88.dp).accentGlow(AniMixTheme.shapes.large, strength = 0.18f))
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
@@ -39,12 +55,13 @@ internal fun AboutSection() {
     Spacer(Modifier.height(16.dp))
     Txt("Перерождение первого AniMix. Просмотр, свободное время и своя коллекция — в одном приложении на телефоне и ПК.", AniMixTheme.type.body)
     Spacer(Modifier.height(20.dp))
-    // The project: the code on GitHub; support and ideas go to the app's Telegram channel.
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SecondaryButton("Проект на GitHub", { runCatching { uri.openUri(AppLinks.GITHUB) } }, icon = AniMixIcons.Link)
+    // The project as two calm rows of one panel, like the rest of the settings: where the code lives,
+    // and the one channel for news, support and ideas (three buttons to the same link said nothing more).
+    Panel {
+        ProjectLink(AniMixIcons.Link, "Проект на GitHub", "Исходный код, релизы и история изменений") { runCatching { uri.openUri(AppLinks.GITHUB) } }
         if (AppLinks.TELEGRAM.isNotEmpty()) {
-            SecondaryButton("Поддержать проект", { runCatching { uri.openUri(AppLinks.TELEGRAM) } }, icon = AniMixIcons.Heart)
-            SecondaryButton("Предложить идею", { runCatching { uri.openUri(AppLinks.TELEGRAM) } }, icon = AniMixIcons.Bulb)
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 66.dp), color = AniMixTheme.colors.outline, thickness = 1.dp)
+            ProjectLink(AniMixIcons.Bulb, "Telegram-канал AniMix", "Новости, поддержка проекта и ваши идеи") { runCatching { uri.openUri(AppLinks.TELEGRAM) } }
         }
     }
 
@@ -100,6 +117,29 @@ internal fun AboutSection() {
     }
     Spacer(Modifier.height(24.dp))
     Txt("Это план развития, а не список уже доступных функций. Состав может уточняться; дата выхода не объявлена.", AniMixTheme.type.micro)
+}
+
+/** A link out of the app: its mark in the soft accent circle of the menu cards, a name, one line, and an outward arrow. */
+@Composable
+private fun ProjectLink(icon: ImageVector, title: String, description: String, onClick: () -> Unit) {
+    val colors = AniMixTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth().clickable(interaction, androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
+            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(18.dp), tint = colors.accent)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Txt(title, AniMixTheme.type.bodyStrong)
+            Txt(description, AniMixTheme.type.caption)
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(AniMixIcons.ChevronRight, null, Modifier.size(16.dp), tint = colors.textMuted)
+    }
 }
 
 @Composable

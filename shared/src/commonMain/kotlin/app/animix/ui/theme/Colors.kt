@@ -71,6 +71,63 @@ val HorizonDusk = AniMixColors(
     online = Color(0xFF5BD68A),
 )
 
+/**
+ * Horizon Coal — the dark reward theme (level 10): charcoal and turquoise. The second identity of
+ * AniMix next to graphite and pink; the same hierarchy, contrast and glow as Horizon Dusk.
+ */
+val HorizonCoal = AniMixColors(
+    isDark = true,
+    background = Color(0xFF0A0E11),
+    surface = Color(0xFF161C20),
+    surfaceRaised = Color(0xFF1D252A),
+    surfaceGlass = Color(0xB3161C20),
+    outline = Color(0xFF253036),
+    textPrimary = Color(0xFFF1F8F9),
+    textSecondary = Color(0xFF9CABB0),
+    textMuted = Color(0xFF64737A),
+    accent = Color(0xFF6FD8CE),
+    accentStrong = Color(0xFF4CC6BB),
+    accentSoft = Color(0x266FD8CE),
+    onAccent = Color(0xFF062320),
+    gradientStart = Color(0xFF86E3DA),
+    gradientEnd = Color(0xFF4DBFCB),
+    scrim = Color(0xCC0A0E11),
+    star = Color(0xFFFFC978),
+    danger = Color(0xFFFF7A85),
+    accentText = Color(0xFFB2EEE8),
+    rimHighlight = Color(0x14FFFFFF),
+    glowScale = 1f,
+    chip = Color(0x14FFFFFF),
+    online = Color(0xFF5BD68A),
+)
+
+/** Horizon Ice — the light reward theme (level 5): icy white and deep turquoise. */
+val HorizonIce = AniMixColors(
+    isDark = false,
+    background = Color(0xFFF3F8FA),
+    surface = Color(0xFFFFFFFF),
+    surfaceRaised = Color(0xFFE6F0F3),
+    surfaceGlass = Color(0xCCFFFFFF),
+    outline = Color(0xFFD8E5E9),
+    textPrimary = Color(0xFF1B2629),
+    textSecondary = Color(0xFF5A6B70),
+    textMuted = Color(0xFF93A3A8),
+    accent = Color(0xFF2E9F9A),
+    accentStrong = Color(0xFF20807C),
+    accentSoft = Color(0x242E9F9A),
+    onAccent = Color(0xFFFFFFFF),
+    gradientStart = Color(0xFF45B7B0),
+    gradientEnd = Color(0xFF2A8DA4),
+    scrim = Color(0x991B2629),
+    star = Color(0xFFE59A2E),
+    danger = Color(0xFFD94B5A),
+    accentText = Color(0xFF1B6F6B),
+    rimHighlight = Color(0xB3FFFFFF),
+    glowScale = 0.7f,
+    chip = Color(0x0D1B2629),
+    online = Color(0xFF2E9E5B),
+)
+
 /** Horizon Dawn — the light theme: porcelain and muted rose. */
 val HorizonDawn = AniMixColors(
     isDark = false,

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -193,7 +194,8 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, 
     val interaction = remember { MutableInteractionSource() }
     Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)
         .focusOutline(interaction, AniMixTheme.shapes.large)) {
-        Box {
+        // The press shows on the poster itself, in its rounded shape, not as a box around the caption.
+        Box(Modifier.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
         }
@@ -229,7 +231,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
                 AniMixTheme.type.label,
                 color = AniMixTheme.colors.accent,
                 modifier = Modifier.clip(AniMixTheme.shapes.pill)
-                    .clickable(interaction, indication = null, role = Role.Button, onClick = onAction)
+                    .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onAction)
                     .focusOutline(interaction, AniMixTheme.shapes.pill)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
@@ -250,7 +252,7 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifie
             .clip(shape)
             .background(background)
             .rim(shape, accent = selected)
-            .clickable(interaction, indication = null, onClick = onClick)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick)
             .focusOutline(interaction, shape)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -282,7 +284,7 @@ fun PrimaryButton(
             .clip(shape)
             .background(if (enabled) colors.accentGradient else SolidColor(colors.surfaceRaised))
             .then(if (enabled) Modifier.highlight(shape) else Modifier)
-            .clickable(interaction, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, onClick = onClick)
             .focusOutline(interaction, shape)
             .padding(horizontal = 22.dp),
         horizontalArrangement = Arrangement.Center,
@@ -306,10 +308,11 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
         modifier
             .height(50.dp)
             .alpha(if (enabled) 1f else 0.45f)
+            .pressScale(interaction)
             .clip(shape)
             .background(colors.chip)
             .rim(shape, accent = false)
-            .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
             .focusOutline(interaction, shape)
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.Center,
@@ -350,7 +353,7 @@ fun IconCircle(
                     else -> Modifier.clip(CircleShape).background(colors.chip).rim(CircleShape, accent = false)
                 },
             )
-            .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
             .focusOutline(interaction, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
@@ -432,7 +435,7 @@ fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon
     val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().toggleable(checked, interactionSource = interaction,
-            indication = null, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .focusOutline(interaction, AniMixTheme.shapes.medium)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -461,7 +464,7 @@ fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: Stri
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+        Modifier.fillMaxWidth().clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
             .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

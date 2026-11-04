@@ -36,20 +36,30 @@ object AniMixTheme {
     val shapes = AniMixShapes
 }
 
+/** A reward theme that is not open at this level shows as the system theme; the choice itself is kept. */
+fun ThemeMode.at(level: Int): ThemeMode = if (level >= unlockLevel) this else ThemeMode.System
+
+fun themeColors(mode: ThemeMode, systemDark: Boolean): AniMixColors = when (mode) {
+    ThemeMode.System -> if (systemDark) HorizonDusk else HorizonDawn
+    ThemeMode.Dusk -> HorizonDusk
+    ThemeMode.Dawn -> HorizonDawn
+    ThemeMode.Ice -> HorizonIce
+    ThemeMode.Coal -> HorizonCoal
+}
+
 @Composable
 fun AniMixTheme(mode: ThemeMode, animationsEnabled: Boolean = true, batterySaver: Boolean = false, content: @Composable () -> Unit) {
-    val dark = when (mode) {
-        ThemeMode.System -> isSystemInDarkTheme()
-        ThemeMode.Dusk -> true
-        ThemeMode.Dawn -> false
-    }
-    val colors = if (dark) HorizonDusk else HorizonDawn
+    val colors = themeColors(mode, isSystemInDarkTheme())
     val type = rememberAniMixType(colors)
     val ripple = LocalRippleConfiguration.current.takeIf { animationsEnabled && !batterySaver }
     CompositionLocalProvider(LocalColors provides colors, LocalType provides type,
         LocalRippleConfiguration provides ripple,
         LocalUiPerformance provides UiPerformance(animationsEnabled && !batterySaver, batterySaver)) {
-        MaterialTheme(colorScheme = colors.toMaterial(), typography = type.toMaterial(), content = content)
+        MaterialTheme(colorScheme = colors.toMaterial(), typography = type.toMaterial()) {
+            // Every press in AniMix shows the same veil, instead of Material's ripple (off without animations).
+            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides
+                app.animix.ui.components.PressIndication(colors.textPrimary, animationsEnabled && !batterySaver), content = content)
+        }
     }
 }
 

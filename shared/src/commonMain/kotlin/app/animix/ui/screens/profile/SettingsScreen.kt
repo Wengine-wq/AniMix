@@ -38,7 +38,6 @@ private enum class SettingsCategory(val title: String, val icon: ImageVector) {
     Network("Соединение", AniMixIcons.Wifi),
     Performance("Производительность", AniMixIcons.Battery),
     Data("Данные и кэш", AniMixIcons.Refresh),
-    Experimental("Экспериментальные функции", AniMixIcons.Flame),
     About("О приложении", AniMixIcons.Info),
 }
 
@@ -76,8 +75,6 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Performance -> settings.playerMode.label + if (settings.batterySaver) " · экономия" else ""
                     SettingsCategory.Notifications -> if (settings.notifyNewEpisodes) "Новые серии" else "Выключены"
                     SettingsCategory.Data -> "Объём и очистка"
-                    SettingsCategory.Experimental -> listOfNotNull("Подборки".takeIf { settings.experimentalCollections },
-                        "Полка".takeIf { settings.experimentalPicks }).joinToString(", ").ifEmpty { "Выключены" }
                     SettingsCategory.Account -> account.user?.name ?: "Локальный профиль"
                     SettingsCategory.Privacy -> if (account.user != null) "Кто видит коллекцию" else "После входа"
                     SettingsCategory.About -> AppRelease.version
@@ -101,26 +98,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
         PageHeader(category.title, { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
         when (category) {
-            SettingsCategory.Appearance -> Panel {
-                Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeMode.entries.forEach { mode ->
-                        val icon = when (mode) {
-                            ThemeMode.System -> AniMixIcons.Monitor
-                            ThemeMode.Dusk -> AniMixIcons.Moon
-                            ThemeMode.Dawn -> AniMixIcons.Sun
-                        }
-                        ThemeOption(mode.label, icon, settings.themeMode == mode, Modifier.weight(1f)) {
-                            graph.settings.update { it.copy(themeMode = mode) }
-                            graph.achievements.themeChosen(mode.name)
-                        }
-                    }
-                }
-                Divider()
-                ToggleRow("Анимации и переходы", settings.animationsAllowed,
-                    { value -> graph.settings.update { it.copy(animationsEnabled = value) } }, AniMixIcons.Play,
-                    subtitle = if (settings.batterySaver) "Отключены режимом экономии батареи" else "Плавные переходы, нажатия и индикаторы",
-                    enabled = !settings.batterySaver)
-            }
+            SettingsCategory.Appearance -> AppearanceSection(graph)
             SettingsCategory.Performance -> {
                 // The player is chosen like the theme: two named options side by side, the chosen one explained below.
                 Txt("Вид плеера", AniMixTheme.type.heading)
@@ -210,21 +188,8 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 )
             }
             SettingsCategory.Import -> ImportSection(graph, navigator)
-            SettingsCategory.About -> AboutSection()
+            SettingsCategory.About -> AboutSection(graph)
             SettingsCategory.Data -> StorageSection(graph, navigator)
-            SettingsCategory.Experimental -> {
-                Panel {
-                    ToggleRow("Подборки", settings.experimentalCollections,
-                        { v -> graph.settings.update { it.copy(experimentalCollections = v) } }, AniMixIcons.Layers,
-                        subtitle = "Вкладка со своими подборками и умным подбором по вашим фильтрам")
-                    Divider()
-                    ToggleRow("Подобрано для вас", settings.experimentalPicks,
-                        { v -> graph.settings.update { it.copy(experimentalPicks = v) } }, AniMixIcons.Star,
-                        subtitle = "Полка на главной: похожее на любимые тайтлы и лучшее в ваших жанрах")
-                }
-                Txt("Функции в разработке: подбор может ошибаться. Выключение скрывает их и ничего не удаляет — свои подборки сохраняются.",
-                    AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
-            }
             SettingsCategory.Account -> AccountSection(graph, navigator)
             SettingsCategory.Privacy -> PrivacySection(graph, navigator)
         }

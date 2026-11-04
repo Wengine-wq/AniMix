@@ -13,7 +13,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.fromHttpToGmtDate
 import io.ktor.serialization.kotlinx.json.json
 
-const val AppVersion = "1.0.5"
+/** The version in the User-Agent, the same one the app shows. */
+val AppVersion: String get() = AppRelease.build
 
 fun createHttpClient(): HttpClient = HttpClient(createHttpEngine()) {
     expectSuccess = true
@@ -24,10 +25,11 @@ fun createHttpClient(): HttpClient = HttpClient(createHttpEngine()) {
         socketTimeoutMillis = 30_000
     }
     install(HttpRequestRetry) {
-        maxRetries = 2
-        retryOnServerErrors()
+        maxRetries = 3
+        // «Too many requests» (Shikimori allows about five a second) is waited out like a server error.
+        retryIf { _, response -> response.status.value == 429 || response.status.value in 500..599 }
         retryOnException(retryOnTimeout = true)
-        exponentialDelay(base = 2.0, maxDelayMs = 4_000)
+        exponentialDelay(base = 2.0, maxDelayMs = 8_000)
     }
     HttpResponseValidator {
         // Server time anchors rewards that depend on the date (streaks, marathons, months).

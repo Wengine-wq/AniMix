@@ -61,7 +61,7 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
     }, onError = { problem = it })
     val unlocked = achievements.filter { it.unlocked }
     val badge = unlocked.firstOrNull { it.achievement.id == draft.badgeAchievementId }
-    val level = remember(library, achievements) { library.level(achievements.count { it.earned }) }
+    val level by graph.level.collectAsState()
     fun close() {
         val keep = listOfNotNull(library.profile.avatar?.localFileName, library.profile.banner?.localFileName).toSet()
         val discarded = createdFiles.map { ProfileMedia(localFileName = it) }
@@ -72,10 +72,26 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
     ScreenColumn(contentPadding) {
         PageHeader("Редактировать профиль", ::close, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))
+        // A locked design or frame can be tried on here: the preview shows it, saving keeps the open choice.
+        var tryDesign by remember { mutableStateOf<String?>(null) }
+        var tryFrame by remember { mutableStateOf<String?>(null) }
+        val shownDesign = tryDesign ?: draft.design
+        val shownFrame = tryFrame ?: draft.frame
         Box {
-            ProfileDesignLayer(profileDesign(draft.design), Modifier.matchParentSize())
+            ProfileDesignLayer(profileDesign(shownDesign), Modifier.matchParentSize())
             ProfileIdentity(library.profile.copy(name = draft.name.ifBlank { library.profile.name }, about = draft.about,
-                avatar = draft.avatar, banner = draft.banner, design = draft.design, frame = draft.frame), badge, level = level)
+                avatar = draft.avatar, banner = draft.banner, design = shownDesign, frame = shownFrame), badge, level = level)
+        }
+        if (tryDesign != null || tryFrame != null) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(AniMixIcons.Sparkle, null, Modifier.size(16.dp), tint = AniMixTheme.colors.accent)
+                Spacer(Modifier.width(8.dp))
+                val unlockAt = if (tryFrame != null) FrameLevel else DesignLevel
+                Txt("Примерка — так профиль увидят другие с ${unlockAt}-го уровня. Не сохраняется.", AniMixTheme.type.caption, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Chip("Снять", false, { tryDesign = null; tryFrame = null })
+            }
         }
         Spacer(Modifier.height(20.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -115,11 +131,11 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
         Txt(badge?.achievement?.name ?: if (unlocked.isEmpty()) "Значки появятся после первого достижения." else "Без значка",
             AniMixTheme.type.caption)
         Spacer(Modifier.height(28.dp))
-        RewardPicker("Оформление профиля", DesignLevel, level.level, draft.design, { draft = draft.copy(design = it) }) { design ->
+        RewardPicker("Оформление профиля", DesignLevel, level.level, draft.design, { draft = draft.copy(design = it); tryDesign = null }, tryDesign, { tryDesign = it }) { design ->
             ProfileDesignLayer(design, Modifier.fillMaxSize())
         }
         Spacer(Modifier.height(24.dp))
-        RewardPicker("Рамка аватара", FrameLevel, level.level, draft.frame, { draft = draft.copy(frame = it) }) { design ->
+        RewardPicker("Рамка аватара", FrameLevel, level.level, draft.frame, { draft = draft.copy(frame = it); tryFrame = null }, tryFrame, { tryFrame = it }) { design ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape).background(AniMixTheme.colors.accentGradient))
                 ProfileFrameLayer(design, Modifier.size(30.dp))
@@ -142,7 +158,7 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
  */
 @Composable
 private fun RewardPicker(title: String, level: Int, current: Int, selected: String?, onSelect: (String?) -> Unit,
-    preview: @Composable (ProfileDesign) -> Unit) {
+    trying: String?, onTry: (String?) -> Unit, preview: @Composable (ProfileDesign) -> Unit) {
     val colors = AniMixTheme.colors
     val open = current >= level
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -155,7 +171,7 @@ private fun RewardPicker(title: String, level: Int, current: Int, selected: Stri
     }
     Spacer(Modifier.height(6.dp))
     Txt(if (open) "Награда за уровень $level. Видна вам и всем, кто откроет ваш профиль."
-        else "Откроется на уровне $level — осталось ${level - current} ${levelsWord(level - current)}.", AniMixTheme.type.caption)
+        else "Откроется на уровне $level — осталось ${level - current} ${levelsWord(level - current)}. Нажмите, чтобы примерить.", AniMixTheme.type.caption)
     Spacer(Modifier.height(12.dp))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
@@ -164,7 +180,8 @@ private fun RewardPicker(title: String, level: Int, current: Int, selected: Stri
             }
         }
         items(ProfileDesign.entries.toList(), key = { it.id }) { design ->
-            RewardOption(selected == design.id, design.label, open, { if (open) onSelect(design.id) }) { preview(design) }
+            RewardOption(selected == design.id || trying == design.id, design.label, open,
+                { if (open) onSelect(design.id) else onTry(design.id.takeIf { it != trying }) }) { preview(design) }
         }
     }
 }
@@ -176,8 +193,8 @@ private fun RewardOption(selected: Boolean, label: String, open: Boolean, onSele
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(width = 96.dp, height = 64.dp).clip(shape).background(colors.chip)
             .border(1.dp, if (selected) colors.accent else colors.outline, shape)
-            .semantics { contentDescription = if (open) label else "$label, пока закрыто" }
-            .selectable(selected, enabled = open, onClick = onSelect, role = Role.RadioButton),
+            .semantics { contentDescription = if (open) label else "$label, пока закрыто, примерить" }
+            .selectable(selected, onClick = onSelect, role = Role.RadioButton),
             contentAlignment = Alignment.Center) {
             Box(Modifier.fillMaxSize().then(if (open) Modifier else Modifier.alpha(0.45f)), contentAlignment = Alignment.Center) { content() }
             if (!open) Icon(AniMixIcons.Lock, null, Modifier.size(16.dp), tint = colors.textSecondary)

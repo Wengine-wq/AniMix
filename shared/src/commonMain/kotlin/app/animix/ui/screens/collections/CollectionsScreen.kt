@@ -2,6 +2,7 @@ package app.animix.ui.screens.collections
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -60,11 +61,42 @@ fun CollectionsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingVal
         }
         if (!mine) {
             header {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FilterGroup("Жанры") {
-                        genres.forEach { genre ->
+                // The filters fold into one line of what is chosen; open, every genre of the catalog is there.
+                var open by rememberSaveable { mutableStateOf(false) }
+                var allGenres by rememberSaveable { mutableStateOf(false) }
+                val catalogGenres = rememberLoad(allGenres) { if (allGenres) graph.shikimori.genres().filter { !it.isDemographic }.map { it.title } else emptyList() }
+                val chosen = listOfNotNull(
+                    filters.genres.joinToString(" + ").ifEmpty { null },
+                    mapOf("tv" to "Сериалы", "movie" to "Фильмы", "short" to "OVA и спешлы")[filters.kind],
+                    mapOf("new" to "С 2020", "2010s" to "2010-е", "classic" to "Классика")[filters.era],
+                    mapOf("short" to "До 13 серий", "season" to "14–26 серий", "long" to "Длинные")[filters.length],
+                    "Только вышедшие".takeIf { filters.finished },
+                )
+                Panel {
+                    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    Row(Modifier.fillMaxWidth().clickable(interaction, androidx.compose.foundation.LocalIndication.current) { open = !open }
+                        .focusOutline(interaction, AniMixTheme.shapes.large).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(AniMixIcons.Filter, null, Modifier.size(20.dp), tint = AniMixTheme.colors.textSecondary)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Txt("Фильтры", AniMixTheme.type.bodyStrong)
+                            Txt(chosen.joinToString(" · ").ifEmpty { "По вашему вкусу: любимые жанры и тайтлы" }, AniMixTheme.type.caption, maxLines = 2)
+                        }
+                        if (chosen.isNotEmpty()) Chip("Сбросить", false, { setFilters(PickFilters()) })
+                        Spacer(Modifier.width(8.dp))
+                        Icon(if (open) AniMixIcons.ChevronUp else AniMixIcons.ChevronDown, if (open) "Свернуть фильтры" else "Развернуть фильтры",
+                            Modifier.size(18.dp), tint = AniMixTheme.colors.textMuted)
+                    }
+                }
+                if (open) Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    FilterGroup(if (filters.genres.size > 1) "Жанры · все выбранные сразу" else "Жанры") {
+                        val names = ((catalogGenres.value as? Load.Ready)?.value.orEmpty().let { all -> (genres + all).distinct() }
+                            .takeIf { allGenres } ?: genres) + filters.genres.filter { it !in genres }
+                        names.distinct().forEach { genre ->
                             Chip(genre, genre in filters.genres, { setFilters(filters.copy(genres = if (genre in filters.genres) filters.genres - genre else filters.genres + genre)) })
                         }
+                        Chip(if (allGenres) "Свернуть" else "Все жанры", false, { allGenres = !allGenres },
+                            icon = if (allGenres) AniMixIcons.ChevronUp else AniMixIcons.ChevronDown)
                     }
                     FilterGroup("Формат") {
                         listOf(null to "Любой", "tv" to "Сериалы", "movie" to "Фильмы", "short" to "OVA и спешлы").forEach { (key, label) ->

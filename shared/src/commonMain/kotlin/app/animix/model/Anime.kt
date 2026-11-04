@@ -90,7 +90,12 @@ data class AnimeDetail(
     val commentsCount: Int = 0,
     /** Shikimori's relation of each related title («Продолжение», «Предыстория»), by [Anime.key]. */
     val relatedLabels: Map<String, String> = emptyMap(),
+    /** The studios with their Shikimori ids, for the page of everything a studio made. */
+    val studioLinks: List<Studio> = emptyList(),
 )
+
+@Serializable
+data class Studio(val id: Int, val name: String, val imageUrl: String? = null)
 
 /** One item of the week's news in AniPulse: an announcement, trailer, premiere date or other news. */
 @Serializable

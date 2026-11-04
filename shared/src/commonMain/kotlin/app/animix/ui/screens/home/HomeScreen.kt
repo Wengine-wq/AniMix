@@ -123,13 +123,19 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     // Recomputed only when the taste changes, not on every saved position.
     val settings by graph.settings.state.collectAsState()
     val taste = remember(library) { library.tasteGenres().take(3).joinToString { it.first } }
-    val picksOn = settings.experimentalPicks && taste.isNotEmpty()
-    val picks = rememberLoad(taste to picksOn) { if (!picksOn) emptyList() else graph.recommendations.forLibrary(graph.library.state.value) }
+    // «Подобрано для вас»: the one shelf of personal picks, each with its reason; «Все» opens «Подборки».
+    val picksOn = taste.isNotEmpty()
+    val personal = rememberLoad(taste) { if (!picksOn) emptyList() else graph.recommendations.personal(graph.library.state.value) }
     // Read before building lazy items: each request updates only its own section.
     val ongoingState = ongoing.value
     val popularState = popular.value
     val topState = top.value
-    val picksState = picks.value
+    val picksState = when (val state = personal.value) {
+        Load.Loading -> Load.Loading
+        is Load.Failed -> state
+        is Load.Ready -> Load.Ready(state.value.map { it.anime })
+    }
+    val pickReasons = (personal.value as? Load.Ready)?.value.orEmpty().mapNotNull { pick -> pick.reason?.let { pick.anime.key to it } }.toMap()
 
     // Seen «Итоги года» become the first quick chip; until then they get their own banner under the chips.
     val review = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
@@ -162,7 +168,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             }) { navigator.push(Route.History) }
         }
         if (picksOn) item(key = "recommendations") {
-            LoadingShelf("Подобрано для вас", picksState, open, picks::refresh)
+            LoadingShelf("Подобрано для вас", picksState, open, personal::refresh, onMore = { navigator.push(Route.Collections) }, captions = pickReasons)
         }
         item(key = "ongoing") {
             // The request error is already shown by the hero; don't repeat it on the same screen.
@@ -188,10 +194,10 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
 
 @Composable
 private fun LoadingShelf(title: String, state: Load<List<Anime>>, onOpen: (Anime) -> Unit,
-    onRetry: () -> Unit, onMore: (() -> Unit)? = null) {
+    onRetry: () -> Unit, captions: Map<String, String> = emptyMap(), onMore: (() -> Unit)? = null) {
     when (state) {
         Load.Loading -> AnimeShelfPlaceholder(title, Modifier.padding(bottom = 32.dp), showMore = onMore != null)
-        is Load.Ready -> Shelf(title, state.value, onOpen, onMore)
+        is Load.Ready -> Shelf(title, state.value, onOpen, captions, onMore)
         is Load.Failed -> Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
             SectionHeader(title)
             MessageState("Раздел не загрузился", message = state.error.userMessage(), icon = AniMixIcons.Refresh,
@@ -287,7 +293,7 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
         val height = if (wide) 320.dp else 230.dp
         val inset = if (wide) 24.dp else 16.dp
         Box(
-            Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(interaction, indication = null, onClick = onClick),
+            Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick),
         ) {
             if (!LocalUiPerformance.current.batterySaver) RemoteImage(anime.posterUrl, Modifier.fillMaxSize().blur(36.dp), shape = AniMixTheme.shapes.large)
             Box(
@@ -379,7 +385,7 @@ private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> U
 }
 
 @Composable
-private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, onMore: (() -> Unit)?) {
+private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, captions: Map<String, String> = emptyMap(), onMore: (() -> Unit)?) {
     if (items.isEmpty()) return
     Column(Modifier.padding(bottom = 32.dp)) {
         SectionHeader(title, Modifier.padding(horizontal = 20.dp), action = if (onMore != null) "Все" else null, onAction = onMore)
@@ -389,7 +395,7 @@ private fun Shelf(title: String, items: List<Anime>, onOpen: (Anime) -> Unit, on
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(items, key = { it.key }) { anime ->
-                AnimeCard(anime, onClick = { onOpen(anime) }, modifier = Modifier.width(132.dp))
+                AnimeCard(anime, onClick = { onOpen(anime) }, modifier = Modifier.width(132.dp), caption = captions[anime.key])
             }
         }
     }
@@ -540,7 +546,7 @@ private fun YearReviewCard(library: app.animix.data.library.LibraryData, access:
                 .clip(AniMixTheme.shapes.large)
                 .background(colors.accentGradient)
                 .highlight(AniMixTheme.shapes.large)
-                .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button) { onOpen(access.year) }
+                .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button) { onOpen(access.year) }
                 .padding(horizontal = if (wide) 28.dp else 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

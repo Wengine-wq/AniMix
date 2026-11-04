@@ -18,6 +18,9 @@ data class FreshEpisodes(val anime: Anime, val watched: Int, val available: Int,
     val unseen: Int get() = (available - watched).coerceAtLeast(0)
 }
 
+/** A title watched this week: how many of its episodes were finished, and whether the title is now done. */
+data class WeekTitle(val anime: Anime, val episodes: Int, val finished: Boolean)
+
 /** A title almost finished: a few episodes to go. */
 data class AlmostDone(val entry: LibraryEntry, val left: Int)
 
@@ -39,6 +42,8 @@ data class WeeklyDigest(
     val picks: List<Anime>,
     /** The week's news and announcements, about the viewer's titles first. */
     val news: List<app.animix.model.NewsItem> = emptyList(),
+    /** What the week was made of: titles with episodes finished this week, most first. */
+    val watched: List<WeekTitle> = emptyList(),
 ) {
     /** Change of watching time against the previous week, in percent; null when there is nothing to compare. */
     val change: Int? get() = if (previous.minutes < 10) null else ((week.minutes - previous.minutes) * 100 / previous.minutes)
@@ -68,11 +73,15 @@ fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), tod
         entry.anime.genres.map { it to finished }
     }.filter { it.second > 0 }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }.maxByOrNull { it.value }?.key
     val watching = library.entries.values.filter { it.status == ListStatus.Watching }
+    // New episodes are those of an ongoing title, or of a series already begun. A film or a series not
+    // started yet is something to watch, not «a new episode».
     val fresh = watching.mapNotNull { entry ->
         val anime = cards[entry.anime.key] ?: entry.anime
         val available = anime.availableEpisodes
         val watched = entry.watchedEpisodeCount
-        if (available > watched) FreshEpisodes(anime, watched, available, nextEpisodes[anime.key]) else null
+        val series = anime.kind != app.animix.model.AnimeKind.Movie && available > 1
+        if (available > watched && series && (anime.status == AnimeStatus.Ongoing || watched > 0))
+            FreshEpisodes(anime, watched, available, nextEpisodes[anime.key]) else null
     }.sortedWith(compareByDescending<FreshEpisodes> { it.anime.status == AnimeStatus.Ongoing }.thenByDescending { it.unseen })
     val almost = library.entries.values.filter { it.status == ListStatus.Watching || it.status == ListStatus.OnHold }.mapNotNull { entry ->
         val total = (cards[entry.anime.key] ?: entry.anime).let { if (it.status == AnimeStatus.Ongoing) 0 else it.episodes }
@@ -86,5 +95,10 @@ fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), tod
     val linked = news.map { item -> if (item.anime != null) item else known.firstOrNull { item.title.contains(it.title, ignoreCase = true) }
         ?.let { item.copy(anime = it) } ?: item }
     val sortedNews = linked.sortedWith(compareByDescending<app.animix.model.NewsItem> { it.anime?.key in mine }.thenByDescending { it.createdAt })
-    return WeeklyDigest(weeks.last(), weeks[weeks.lastIndex - 1], weeks, streak, topGenre, fresh, almost, onHold, ongoingForYou, picks, sortedNews)
+    val watchedThisWeek = library.entries.values.mapNotNull { entry ->
+        val count = entry.viewing.values.count { v -> v.completedAt?.let { localDayIndex(it) >= current } == true }
+        if (count == 0) null else WeekTitle(cards[entry.anime.key] ?: entry.anime, count, entry.status == ListStatus.Completed)
+    }.sortedByDescending { it.episodes }
+    return WeeklyDigest(weeks.last(), weeks[weeks.lastIndex - 1], weeks, streak, topGenre, fresh, almost, onHold, ongoingForYou, picks, sortedNews,
+        watchedThisWeek)
 }

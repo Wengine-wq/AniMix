@@ -1,5 +1,7 @@
 package app.animix.ui.player
 
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
 import app.animix.ui.theme.MotionVisibility as AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -74,6 +76,11 @@ import app.animix.ui.theme.LocalUiPerformance
 internal fun skipTarget(positionMs: Long, range: SkipRange?): Long? = range?.takeIf {
     it.start >= 0 && it.length > 0 && positionMs >= it.start * 1000L && positionMs < it.end * 1000L
 }?.let { it.end * 1000L }
+
+private enum class SkipKind { Opening, Ending, Usual }
+
+/** How long one skip offer stays on screen while the picture plays. */
+internal const val SkipOfferMs = 10_000
 
 /** Story-end boundary for resume/next-episode UI. Rewards additionally require actual coverage. */
 internal fun watchedFromMs(durationMs: Long, ending: SkipRange?): Long? {
@@ -363,14 +370,36 @@ fun AniMixPlayer(
     }
     val showAction by rememberUpdatedState<() -> Unit>(::show)
 
-    val activeSkip = when {
-        skipTarget(state.positionMs, plan.opening) != null -> "Пропустить опенинг" to skipTarget(state.positionMs, plan.opening)!!
-        skipTarget(state.positionMs, plan.ending) != null -> "Пропустить эндинг" to skipTarget(state.positionMs, plan.ending)!!
-        // No timing for this release: while the controls are up in the first minutes, offer the usual
-        // length of an opening, as streaming players do. Never automatic, never once the controls hide.
-        plan.opening == null && controlsVisible && state.durationMs >= 600_000 && state.positionMs in 3_000 until 240_000 ->
-            "Пропустить 1:30" to (state.positionMs + 90_000)
+    // The skip offered right now: the opening or ending the position is in, or, for a release without
+    // timings, the usual length of an opening once at the start of a long episode. Each offer lasts
+    // SkipOfferMs of playback, drained as a fill on the button, then the button goes away.
+    var fallbackOffered by remember { mutableStateOf(false) }
+    val skipKind = when {
+        skipTarget(state.positionMs, plan.opening) != null -> SkipKind.Opening
+        skipTarget(state.positionMs, plan.ending) != null -> SkipKind.Ending
+        plan.opening == null && !fallbackOffered && state.ready && state.durationMs >= 600_000 && state.positionMs in 3_000 until 240_000 -> SkipKind.Usual
         else -> null
+    }
+    var activeSkip by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var skipLeft by remember { mutableFloatStateOf(1f) }
+    val playingForSkip by rememberUpdatedState(state.playing)
+    LaunchedEffect(skipKind) {
+        val kind = skipKind ?: run { activeSkip = null; return@LaunchedEffect }
+        // A fixed target: the old «+1:30 from here» moved with the picture and never ended.
+        activeSkip = when (kind) {
+            SkipKind.Opening -> "Пропустить опенинг" to (skipTarget(player.state.value.positionMs, currentPlan.opening) ?: return@LaunchedEffect)
+            SkipKind.Ending -> "Пропустить эндинг" to (skipTarget(player.state.value.positionMs, currentPlan.ending) ?: return@LaunchedEffect)
+            SkipKind.Usual -> { fallbackOffered = true; "Пропустить 1:30" to (player.state.value.positionMs + 90_000) }
+        }
+        var left = SkipOfferMs
+        skipLeft = 1f
+        // The time runs with the picture: on pause the offer waits.
+        while (left > 0) {
+            delay(50)
+            if (playingForSkip) left -= 50
+            skipLeft = left / SkipOfferMs.toFloat()
+        }
+        activeSkip = null
     }
 
     val frame: @Composable (Modifier) -> Unit = { frameModifier ->
@@ -492,7 +521,7 @@ fun AniMixPlayer(
             ) {
                 var label by remember { mutableStateOf("") }
                 activeSkip?.first?.let { label = it }
-                AccentPill(label, AniMixIcons.SkipAhead) { activeSkip?.let { (_, target) -> jump(target) }; show() }
+                AccentPill(label, AniMixIcons.SkipAhead, remaining = { skipLeft }) { activeSkip?.let { (_, target) -> activeSkip = null; jump(target) }; show() }
             }
             if (atEnd && state.error == null && !pip) {
                 EndCard(
@@ -519,6 +548,10 @@ fun AniMixPlayer(
         }
     }
 
+    // Over the picture a press shows in white, whatever the theme.
+    val animatePress = LocalUiPerformance.current.animations
+    val pressOverVideo = remember(animatePress) { app.animix.ui.components.PressIndication(Color.White, animatePress) }
+    CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides pressOverVideo) {
     if (pip) {
         // The small window is the whole picture: no rounded card, no controls.
         frame(modifier.fillMaxSize())
@@ -532,6 +565,7 @@ fun AniMixPlayer(
         }
     } else {
         frame(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(AniMixTheme.shapes.large))
+    }
     }
 }
 
@@ -653,7 +687,7 @@ private fun PlayerOverlay(
                 val interaction = remember { MutableInteractionSource() }
                 Box(
                     Modifier.size(if (compact) 60.dp else 72.dp).pressScale(interaction, pressed = 0.92f).frameGlass(CircleShape)
-                        .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
+                        .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onTogglePlay),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (state.buffering && state.playRequested) CircularProgressIndicator(Modifier.size(30.dp), color = Color.White)
@@ -703,7 +737,7 @@ private fun PlayerOverlay(
                     if (hasNext) {
                         val interaction = remember { MutableInteractionSource() }
                         Row(Modifier.pressScale(interaction).frameGlass(AniMixTheme.shapes.pill)
-                            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onNext)
+                            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onNext)
                             .heightIn(min = 44.dp).padding(start = 16.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(nextLabel ?: "Следующая серия", AniMixTheme.type.label, color = Color.White, maxLines = 1)
                             Spacer(Modifier.width(8.dp))
@@ -742,7 +776,7 @@ private fun RoundButton(icon: ImageVector, onClick: () -> Unit, size: Int, descr
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).frameGlass(CircleShape)
-            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         // The seek arrows carry their step, "10", in the middle, as YouTube's do.
@@ -886,7 +920,7 @@ private fun OverlayIcon(icon: ImageVector, onClick: () -> Unit, size: Int = 44, 
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier.size(size.dp).pressScale(interaction, pressed = 0.9f).clip(CircleShape)
-            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, description, Modifier.size((size * 0.5f).dp), tint = Color.White)
@@ -912,7 +946,7 @@ internal fun TopAction(icon: ImageVector, label: String, onClick: () -> Unit, ac
     val tint = if (active) AniMixTheme.colors.accent else Color.White
     Row(
         Modifier.heightIn(min = 44.dp).widthIn(min = 44.dp).pressScale(interaction, pressed = 0.94f).clip(AniMixTheme.shapes.pill)
-            .clickable(interaction, indication = null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .padding(horizontal = if (showLabel) 10.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
@@ -1020,18 +1054,32 @@ private fun GestureLevel(brightness: Boolean, value: Float, modifier: Modifier) 
 }
 
 @Composable
-private fun AccentPill(text: String, icon: ImageVector?, onClick: () -> Unit) {
+private fun AccentPill(text: String, icon: ImageVector?, remaining: (() -> Float)? = null, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
-    Row(
-        Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill).background(colors.accentGradient)
-            .clickable(interaction, indication = null, onClick = onClick).padding(horizontal = 18.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Txt(text, AniMixTheme.type.label, color = colors.onAccent, maxLines = 1)
+    val gradient = colors.accentGradient
+    @Composable fun label(color: Color, modifier: Modifier) = Row(modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Txt(text, AniMixTheme.type.label, color = color, maxLines = 1)
         if (icon != null) {
             Spacer(Modifier.width(8.dp))
-            Icon(icon, null, Modifier.size(16.dp), tint = colors.onAccent)
+            Icon(icon, null, Modifier.size(16.dp), tint = color)
+        }
+    }
+    Box(Modifier.pressScale(interaction).clip(AniMixTheme.shapes.pill)
+        .then(if (remaining == null) Modifier.background(gradient) else Modifier.background(Color(0xCC000000)))
+        .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick)) {
+        if (remaining == null) label(colors.onAccent, Modifier)
+        else {
+            // A timed offer: the accent drains from right to left over the player's dark pill. The words are
+            // white on the dark part and dark on the accent, cut at the same edge, so they read whole.
+            label(Color.White, Modifier)
+            label(colors.onAccent, Modifier.matchParentSize().drawWithContent {
+                val width = size.width * remaining().coerceIn(0f, 1f)
+                if (width > 0f) clipRect(right = width) {
+                    drawRect(gradient)
+                    this@drawWithContent.drawContent()
+                }
+            })
         }
     }
 }
@@ -1108,7 +1156,7 @@ private fun CardButton(text: String, primary: Boolean, modifier: Modifier, onCli
     Box(
         modifier.height(42.dp).pressScale(interaction).clip(AniMixTheme.shapes.pill)
             .then(if (primary) Modifier.background(colors.accentGradient) else Modifier.background(Color.White.copy(alpha = 0.14f)))
-            .clickable(interaction, indication = null, onClick = onClick).padding(horizontal = 14.dp),
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick).padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) { Txt(text, AniMixTheme.type.label, color = if (primary) colors.onAccent else Color.White, maxLines = 1) }
 }
@@ -1125,7 +1173,7 @@ private fun ErrorCard(
     OverlayCard(modifier) {
         Txt(message, AniMixTheme.type.caption, color = Color.White, align = androidx.compose.ui.text.style.TextAlign.Center)
         Spacer(Modifier.height(14.dp))
-        AccentPill(if (refresh) "Обновить ссылку" else "Повторить", AniMixIcons.Refresh, onRetry)
+        AccentPill(if (refresh) "Обновить ссылку" else "Повторить", AniMixIcons.Refresh, onClick = onRetry)
         if (otherQualities.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -19,9 +19,14 @@ data class EpisodeViewing(
     val uniqueMs: Long get() = ranges.sumOf { it.endMs - it.startMs }
 
     fun qualifies(): Boolean {
-        if (durationMs <= 0 || !reachedEnd) return false
+        if (durationMs <= 0) return false
         val end = ending?.start?.times(1000L)?.takeIf { it > durationMs / 2 && it < durationMs }
             ?: (durationMs * 92 / 100)
+        // Ending timings of a release are often a minute off (a preview, a late credit roll). Watched
+        // coverage that reaches the last stretch of the story counts as reaching its end, as the
+        // player's flag does; the 80% coverage below still has to be real playback.
+        val reach = end - durationMs / 20
+        if (!reachedEnd && ranges.none { it.endMs >= reach }) return false
         val openingStart = opening?.start?.times(1000L)?.coerceIn(0, end) ?: 0
         val openingEnd = opening?.end?.times(1000L)?.coerceIn(openingStart, end) ?: 0
         // Bad skip metadata must never reduce a whole episode to a few seconds.
@@ -56,6 +61,20 @@ fun mergeViewedRanges(ranges: List<ViewedRange>, durationMs: Long): List<ViewedR
 fun viewingKey(number: String): String = number.toDoubleOrNull()?.let {
     if (it.isFinite() && it == it.toLong().toDouble()) it.toLong().toString() else number
 } ?: number
+
+/**
+ * Confirms episodes whose saved coverage qualifies but that have no confirmation yet: coverage
+ * merged from two devices, or saved before the qualification rule accepted inaccurate ending
+ * timings. Uses the same rule as live playback; list marks and positions play no part.
+ */
+fun LibraryEntry.confirmQualifiedViewing(now: Long): LibraryEntry {
+    if (viewing.values.none { it.completedAt == null && it.qualifies() }) return this
+    val all = viewing.mapValues { (_, value) -> if (value.completedAt == null && value.qualifies()) value.copy(completedAt = now) else value }
+    var watched = episodesWatched
+    while (all[(watched + 1).toString()]?.completedAt != null) watched++
+    return copy(viewing = all, episodesWatched = watched,
+        status = if (anime.episodes > 0 && watched >= anime.episodes) ListStatus.Completed else status)
+}
 
 val LibraryEntry.verifiedEpisodes: Int get() = viewing.values.count { it.completedAt != null }
 val LibraryEntry.hasVerifiedCompletion: Boolean get() = anime.episodes > 0 && (1..anime.episodes).all { viewing[it.toString()]?.completedAt != null }

@@ -15,7 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import app.animix.App
-import app.animix.core.ThemeMode
+import app.animix.ui.theme.at
 import app.animix.ui.navigation.Navigator
 import kotlinx.coroutines.launch
 
@@ -30,11 +30,8 @@ class MainActivity : ComponentActivity() {
         pendingLink = intent?.dataString?.let { link -> link.takeUnless { graph.account.handlesCallback(it) } }
         setContent {
             val settings by graph.settings.state.collectAsState()
-            val dark = when (settings.themeMode) {
-                ThemeMode.System -> isSystemInDarkTheme()
-                ThemeMode.Dusk -> true
-                ThemeMode.Dawn -> false
-            }
+            val level by graph.level.collectAsState()
+            val dark = app.animix.ui.theme.themeColors(settings.themeMode.at(level.level), isSystemInDarkTheme()).isDark
             // Status and navigation bar icons follow the app theme, not only the system one.
             LaunchedEffect(dark) {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -77,6 +74,8 @@ class MainActivity : ComponentActivity() {
         graph.social.setActive(false)
         graph.watchFlow.pause()
         graph.scope.launch { graph.flushUserData() }
+        // Launchers may close a running app whose entry changes, so the icon switches once AniMix is away.
+        LauncherIcon.apply(this, graph.settings.state.value.appIcon, graph.level.value.level)
     }
     override fun onStart() {
         super.onStart()

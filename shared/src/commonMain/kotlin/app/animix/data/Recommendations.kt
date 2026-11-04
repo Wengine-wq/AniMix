@@ -27,6 +27,9 @@ data class PickFilters(
     val finished: Boolean = false,
 )
 
+/** A personal pick and, in a few words, why it is here. */
+data class Pick(val anime: Anime, val reason: String?)
+
 /** A title found for «Подобрано для вас», with the liked title it resembles, if any. */
 data class PickCandidate(val anime: Anime, val similarTo: Anime? = null)
 
@@ -36,19 +39,45 @@ data class PickCandidate(val anime: Anime, val similarTo: Anime? = null)
  */
 class Recommendations(private val shikimori: ShikimoriRepository, private val anime: AnimeRepository) {
 
-    suspend fun forLibrary(library: LibraryData, limit: Int = 24): List<Anime> = coroutineScope {
-        val taste = library.tasteGenres().take(3).map { it.first }
+    suspend fun forLibrary(library: LibraryData, limit: Int = 24): List<Anime> = personal(library, limit).map { it.anime }
+
+    /**
+     * «Подобрано для вас» with the reason of each pick. Seeds are the titles that say most about the
+     * viewer — favourites, high scores, finished and recently watched series, the recent ones weighing
+     * more — and each brings its similar titles. Genre pairs of the taste («Романтика + Школа») find
+     * the specific rather than the overall top of one genre. Everything is ranked against the whole taste.
+     */
+    suspend fun personal(library: LibraryData, limit: Int = 24): List<Pick> = coroutineScope {
+        val taste = library.tasteGenres().take(4).map { it.first }
         if (taste.isEmpty()) return@coroutineScope emptyList()
-        val genreIds = shikimori.genres().filter { it.title in taste }.sortedBy { taste.indexOf(it.title) }.map { it.id }
-        val liked = library.entries.values
-            .filter { it.status != ListStatus.Dropped && (it.favorite || (it.score ?: 0) >= 8 || it.status == ListStatus.Completed) }
-            .sortedByDescending { (it.score ?: 0) * 10 + it.episodesWatched + if (it.favorite) 40 else 0 }
-            .take(4)
-            .map { it.anime }
-        val byGenre = genreIds.map { id -> async { safe { shikimori.catalog(CatalogQuery(genreIds = listOf(id), order = CatalogOrder.Ranked, limit = 30)).map(::PickCandidate) } } }
-        val bySimilar = liked.map { title -> async { safe { anime.similar(title).map { PickCandidate(it, title) } } } }
-        rankPicks(library, (bySimilar + byGenre).awaitAll().flatten(), limit)
+        val genres = safeGenres()
+        fun ids(names: List<String>) = names.mapNotNull { name -> genres.firstOrNull { it.title == name }?.id }
+        val newest = library.entries.values.maxOfOrNull { it.updatedAt } ?: 0L
+        val seeds = library.entries.values
+            .filter { it.status != ListStatus.Dropped && it.anime.title.isNotBlank() &&
+                (it.favorite || (it.score ?: 0) >= 8 || it.status == ListStatus.Completed || it.episodesWatched >= 3) }
+            .sortedByDescending { entry ->
+                val recency = ((entry.updatedAt - newest + 60L * 86_400_000) / 86_400_000).coerceIn(0, 60)
+                (entry.score ?: 6) * 6 + (if (entry.favorite) 30 else 0) + entry.episodesWatched.coerceAtMost(24) + recency
+            }.take(8).map { it.anime }
+        val pairs = taste.take(3).let { top -> listOfNotNull(top.getOrNull(0)?.let { a -> top.getOrNull(1)?.let { listOf(a, it) } },
+            top.getOrNull(0)?.let { a -> top.getOrNull(2)?.let { listOf(a, it) } }, top.getOrNull(1)?.let { a -> top.getOrNull(2)?.let { listOf(a, it) } }) }
+        val byPair = pairs.map { pair -> async { safe {
+            val genreIds = ids(pair)
+            if (genreIds.size < 2) emptyList()
+            else shikimori.catalog(CatalogQuery(genreIds = genreIds, order = CatalogOrder.Ranked, limit = 30)).map(::PickCandidate)
+        } } }
+        val byGenre = ids(taste.take(1)).map { id -> async { safe { shikimori.catalog(CatalogQuery(genreIds = listOf(id), order = CatalogOrder.Ranked, limit = 30)).map(::PickCandidate) } } }
+        val bySimilar = seeds.map { title -> async { safe { anime.similar(title).map { PickCandidate(it, title) } } } }
+        val ranked = varied(rankPickCandidates(library, (bySimilar + byPair + byGenre).awaitAll().flatten(), limit))
+        ranked.map { candidate ->
+            val matching = candidate.anime.genres.filter { it in taste }.take(2)
+            Pick(candidate.anime, candidate.similarTo?.let { "Похоже на «${it.title}»" }
+                ?: matching.takeIf { it.isNotEmpty() }?.joinToString(" + ")?.let { "Ваши жанры: $it" })
+        }
     }
+
+    private suspend fun safeGenres() = try { shikimori.genres() } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
 
     /**
      * «Подборки» → «Умный подбор»: the best titles for the chosen filters. Candidates come from the
@@ -68,10 +97,17 @@ class Recommendations(private val shikimori: ShikimoriRepository, private val an
             else -> null
         }
         val kinds = when (filters.kind) { "tv" -> listOf("tv"); "movie" -> listOf("movie"); "short" -> listOf("ova", "ona", "special"); else -> emptyList() }
-        fun query(genre: String?, page: Int) = CatalogQuery(page = page, limit = 50, order = CatalogOrder.Ranked, kinds = kinds,
-            status = if (filters.finished) "released" else null, season = season, genreIds = listOfNotNull(genre))
-        val sources = (if (genreIds.isEmpty()) listOf(null) else genreIds).flatMap { genre -> listOf(1, 2).map { page ->
-            async { safe { shikimori.catalog(query(genre, page)).map(::PickCandidate) } } } }
+        fun query(genres: List<String>, page: Int) = CatalogQuery(page = page, limit = 50, order = CatalogOrder.Ranked, kinds = kinds,
+            status = if (filters.finished) "released" else null, season = season, genreIds = genres)
+        // Several chosen genres are asked together: the catalog returns titles with all of them, instead of
+        // the top of each genre with almost nothing in common. Without a choice, each favourite genre on its own.
+        val groups = when {
+            filters.genres.isNotEmpty() -> listOf(genreIds)
+            genreIds.isEmpty() -> listOf(emptyList())
+            else -> genreIds.map { listOf(it) }
+        }
+        val sources = groups.flatMap { group -> listOf(1, 2, 3).map { page ->
+            async { safe { shikimori.catalog(query(group, page)).map(::PickCandidate) } } } }
         val liked = if (filters.genres.isEmpty()) library.entries.values.filter { it.favorite || (it.score ?: 0) >= 8 }.take(3).map { it.anime } else emptyList()
         val similar = liked.map { title -> async { safe { anime.similar(title).map { PickCandidate(it, title) } } } }
         val candidates = (sources + similar).awaitAll().flatten().filter { candidate ->
@@ -103,7 +139,26 @@ class Recommendations(private val shikimori: ShikimoriRepository, private val an
  * and the catalog score. Announcements, music clips, adult titles and anything listed are left out;
  * no more than three picks resemble the same liked title, so one favourite cannot fill the shelf.
  */
-fun rankPicks(library: LibraryData, candidates: List<PickCandidate>, limit: Int = 24): List<Anime> {
+fun rankPicks(library: LibraryData, candidates: List<PickCandidate>, limit: Int = 24): List<Anime> =
+    rankPickCandidates(library, candidates, limit).map { it.anime }
+
+/**
+ * The best order with variety: the next pick comes from another liked title than the one before
+ * whenever such a pick remains, so the shelf does not open with three «Похоже на …» of one favourite.
+ */
+internal fun varied(ranked: List<PickCandidate>): List<PickCandidate> {
+    val left = ranked.toMutableList()
+    val result = mutableListOf<PickCandidate>()
+    while (left.isNotEmpty()) {
+        val previous = result.lastOrNull()?.similarTo?.key
+        val next = left.firstOrNull { previous == null || it.similarTo?.key != previous } ?: left.first()
+        left.remove(next); result += next
+    }
+    return result
+}
+
+/** [rankPicks] with the liked title each pick resembles most, for its reason. */
+fun rankPickCandidates(library: LibraryData, candidates: List<PickCandidate>, limit: Int = 24): List<PickCandidate> {
     val taste = library.tasteGenres()
     val strongest = taste.firstOrNull()?.second?.toDouble()?.takeIf { it > 0 } ?: return emptyList()
     val weights = taste.associate { (genre, weight) -> genre to weight / strongest }
@@ -121,12 +176,12 @@ fun rankPicks(library: LibraryData, candidates: List<PickCandidate>, limit: Int 
         val dislike = a.genres.sumOf { (disliked[it] ?: 0).coerceAtMost(3) * 0.15 }
         val resemblance = same.mapNotNull { it.similarTo?.key }.distinct().size
         val quality = ((a.score ?: 7.0) - 7.0) * 0.6
-        Triple(a, fit + resemblance * 1.2 + quality - dislike, same.firstOrNull { it.similarTo != null }?.similarTo?.key)
+        Triple(a, fit + resemblance * 1.2 + quality - dislike, same.firstOrNull { it.similarTo != null }?.similarTo)
     }.sortedByDescending { it.second }
     val perSource = HashMap<String, Int>()
     return scored.filter { (_, _, source) ->
-        source == null || (perSource[source] ?: 0).let { count -> perSource[source] = count + 1; count < 3 }
-    }.take(limit).map { it.first }
+        source == null || (perSource[source.key] ?: 0).let { count -> perSource[source.key] = count + 1; count < 3 }
+    }.take(limit).map { PickCandidate(it.first, it.third) }
 }
 
 private val AdultGenres = setOf("Хентай", "Эротика", "Hentai", "Erotica")
