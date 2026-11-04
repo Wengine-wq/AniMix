@@ -34,16 +34,26 @@ actual fun createHttpEngine(): HttpClientEngine = OkHttp.create()
 /** The motherboard from WMI (asked once, a few hundred milliseconds), then the system name. */
 private val desktopName: String by lazy {
     val board = if (Platform.name == "Windows") runCatching {
-        val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command",
-            "\$b = Get-CimInstance Win32_BaseBoard; \"\$(\$b.Manufacturer) \$(\$b.Product)\"")
-            .redirectErrorStream(true).start()
-        val text = process.inputStream.bufferedReader().readText().trim()
-        if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) { process.destroy(); "" } else text
+        // Encoded, so Java's argument quoting cannot break the script (it did: a localized parse error
+        // in the console code page became the device name); UTF-8 out, errors kept apart and discarded.
+        val script = "\$ProgressPreference = 'SilentlyContinue'; [Console]::OutputEncoding = [Text.Encoding]::UTF8; " +
+            "\$b = Get-CimInstance Win32_BaseBoard -ErrorAction Stop; Write-Output (\$b.Manufacturer + ' ' + \$b.Product)"
+        val encoded = java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
+        val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+            .redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        val text = process.inputStream.bufferedReader(Charsets.UTF_8).readText().trim()
+        when {
+            !process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) -> { process.destroy(); "" }
+            process.exitValue() != 0 -> ""
+            else -> text
+        }
     }.getOrDefault("") else ""
-    val clean = board.lines().firstOrNull().orEmpty()
+    val clean = board.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() && !it.startsWith("#<") && !it.startsWith("<") }.orEmpty()
         .replace(Regex("""(?i)\b(?:Corporation|Inc\.?|Co\.?,?\s*Ltd\.?|Computer|Technology)(?=\s|$)"""), "")
         .replace(Regex("""(?i)to be filled by o\.?e\.?m\.?|default string|system product name"""), "")
         .replace(Regex("""\s+"""), " ").trim()
+        // A board name is plain letters, digits and a few signs; anything else is not a name.
+        .takeIf { it.matches(Regex("""[\p{L}\p{N} .,()/+&_-]+""")) && '�' !in it }.orEmpty()
     val system = System.getProperty("os.name").orEmpty().ifBlank { Platform.name }
     if (clean.length >= 3) "$clean · $system" else "Компьютер · $system"
 }
