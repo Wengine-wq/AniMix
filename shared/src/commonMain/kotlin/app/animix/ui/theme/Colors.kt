@@ -72,7 +72,7 @@ val HorizonDusk = AniMixColors(
 )
 
 /**
- * Horizon Midnight — the dark reward theme (level 10): charcoal and turquoise. The second identity of
+ * Horizon Midnight — the dark reward theme (level 10): charcoal and pale ice turquoise, calm rather than neon. The second identity of
  * AniMix next to graphite and pink; the same hierarchy, contrast and glow as Horizon Dusk.
  */
 val HorizonCoal = AniMixColors(
@@ -85,16 +85,16 @@ val HorizonCoal = AniMixColors(
     textPrimary = Color(0xFFF1F8F9),
     textSecondary = Color(0xFF9CABB0),
     textMuted = Color(0xFF64737A),
-    accent = Color(0xFF6FD8CE),
-    accentStrong = Color(0xFF4CC6BB),
-    accentSoft = Color(0x266FD8CE),
-    onAccent = Color(0xFF062320),
-    gradientStart = Color(0xFF86E3DA),
-    gradientEnd = Color(0xFF4DBFCB),
+    accent = Color(0xFFA6D8E0),
+    accentStrong = Color(0xFF86C2CE),
+    accentSoft = Color(0x24A6D8E0),
+    onAccent = Color(0xFF0B1E23),
+    gradientStart = Color(0xFFC2E8EE),
+    gradientEnd = Color(0xFF8CC4D2),
     scrim = Color(0xCC0A0E11),
     star = Color(0xFFFFC978),
     danger = Color(0xFFFF7A85),
-    accentText = Color(0xFFB2EEE8),
+    accentText = Color(0xFFD3EEF2),
     rimHighlight = Color(0x14FFFFFF),
     glowScale = 1f,
     chip = Color(0x14FFFFFF),
