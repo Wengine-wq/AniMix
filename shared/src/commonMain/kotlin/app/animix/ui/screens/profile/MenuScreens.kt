@@ -185,10 +185,10 @@ fun LevelScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
 internal class LevelRewardInfo(val level: Int, val title: String, val description: String, val preview: @Composable () -> Unit)
 
 internal val LevelRewards = listOf(
-    LevelRewardInfo(app.animix.core.ThemeMode.Ice.unlockLevel, "Тема Horizon Ice", "Лёд и бирюза — светлая тема и значок приложения") {
+    LevelRewardInfo(app.animix.core.ThemeMode.Ice.unlockLevel, "Тема Horizon Noon", "Лёд и бирюза — светлая тема и значок приложения") {
         ThemePreview(app.animix.ui.theme.HorizonIce)
     },
-    LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Coal", "Уголь и бирюза — тёмная тема и значок приложения") {
+    LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Midnight", "Уголь и бирюза — тёмная тема и значок приложения") {
         ThemePreview(app.animix.ui.theme.HorizonCoal)
     },
     LevelRewardInfo(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон за шапкой профиля") {

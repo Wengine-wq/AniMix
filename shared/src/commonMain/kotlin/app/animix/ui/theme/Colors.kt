@@ -72,7 +72,7 @@ val HorizonDusk = AniMixColors(
 )
 
 /**
- * Horizon Coal — the dark reward theme (level 10): charcoal and turquoise. The second identity of
+ * Horizon Midnight — the dark reward theme (level 10): charcoal and turquoise. The second identity of
  * AniMix next to graphite and pink; the same hierarchy, contrast and glow as Horizon Dusk.
  */
 val HorizonCoal = AniMixColors(
@@ -101,7 +101,7 @@ val HorizonCoal = AniMixColors(
     online = Color(0xFF5BD68A),
 )
 
-/** Horizon Ice — the light reward theme (level 5): icy white and deep turquoise. */
+/** Horizon Noon — the light reward theme (level 5): icy white and deep turquoise. */
 val HorizonIce = AniMixColors(
     isDark = false,
     background = Color(0xFFF3F8FA),

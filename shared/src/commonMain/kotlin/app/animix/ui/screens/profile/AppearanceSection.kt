@@ -70,7 +70,7 @@ internal fun AppearanceSection(graph: AppGraph) {
 private fun themeNote(mode: ThemeMode, level: Int): String = when {
     level < mode.unlockLevel -> "${mode.label} откроется на ${mode.unlockLevel}-м уровне. Пока действует тема системы."
     mode == ThemeMode.Ice || mode == ThemeMode.Coal -> "Бирюза, лёд и уголь — вторая палитра AniMix, награда за уровень."
-    else -> "Ледяная тема открывается на 5-м уровне, угольная — на 10-м."
+    else -> "Horizon Noon открывается на 5-м уровне, Horizon Midnight — на 10-м."
 }
 
 /** Three cards in a row on a phone, all five in one row on a wide screen. */

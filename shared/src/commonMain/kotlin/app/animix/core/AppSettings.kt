@@ -19,8 +19,8 @@ enum class ThemeMode(val label: String, val unlockLevel: Int = 0) {
     System("Как в системе"),
     Dusk("Horizon Dusk"),
     Dawn("Horizon Dawn"),
-    Ice("Horizon Ice", 5),
-    Coal("Horizon Coal", 10),
+    Ice("Horizon Noon", 5),
+    Coal("Horizon Midnight", 10),
 }
 
 /** The launcher and window icon, one for each theme; turquoise ones open with their themes. */
@@ -28,8 +28,8 @@ enum class ThemeMode(val label: String, val unlockLevel: Int = 0) {
 enum class AppIcon(val label: String, val unlockLevel: Int = 0) {
     Classic("Классика"),
     Dawn("Светлая"),
-    Ice("Лёд", 5),
-    Coal("Уголь", 10),
+    Ice("Полдень", 5),
+    Coal("Полночь", 10),
 }
 
 /** «Производительность → Вид плеера»: everything of «Плеер+», or a plain, lighter player. */
