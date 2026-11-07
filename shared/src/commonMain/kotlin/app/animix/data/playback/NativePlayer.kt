@@ -18,7 +18,7 @@ data class PlayerSnapshot(
     /** Decoded picture size, 0 until the first frame. */
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
-    /** Playback rate, 1 = normal; «Плеер+» offers 0.75–2×. */
+    /** Playback rate, 1 = normal; both players offer 0.75–2×. */
     val speed: Float = 1f,
 )
 

@@ -33,7 +33,7 @@ import org.jetbrains.compose.resources.painterResource
 import app.animix.ui.icons.AniMixIcons
 import app.animix.ui.theme.AniMixTheme
 
-/** Release notes and future plans stay visibly separate; the project's own links come right after who we are. */
+/** Who we are, the project's links, what changed in this version and what the app can do. No roadmap: updates are bug fixes unless announced. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AboutSection(graph: app.animix.AppGraph) {
@@ -87,36 +87,24 @@ internal fun AboutSection(graph: app.animix.AppGraph) {
         ReleaseFeature(AniMixIcons.Search, "Каталог и поиск",
             "Shikimori и YummyAnime в одной выдаче, фильтры по типу, жанрам и году, которые сохраняются при переходах.")
         ReleaseFeature(AniMixIcons.Play, "Плеер на выбор",
-            "«Плеер+» — стекло, свечение рамок, скорость, жесты и «картинка в картинке»; «Упрощённый» — плотные кнопки без эффектов. Качество, пропуск опенингов и эндингов, автопереход в обоих.")
+            "«Плеер+» — стекло, свечение рамок и «картинка в картинке»; «Упрощённый» — плотные кнопки без эффектов. Скорость, качество, свайпы яркости и громкости, пропуск опенингов и эндингов, автопереход в обоих.")
         ReleaseFeature(AniMixIcons.Bell, "Уведомления о новых сериях",
-            "Онгоинги из «Смотрю» сообщают о новой серии и о её выходе в выбранной озвучке — системным уведомлением и под колокольчиком в профиле.")
+            "Онгоинги из «Смотрю» сообщают о новой серии и о её выходе в выбранной озвучке — системным уведомлением и в «Меню» профиля, где число новых видно сразу.")
         ReleaseFeature(AniMixIcons.Download, "Загрузки и просмотр без сети",
             "Очередь серий с выбором озвучки и качества, паузой и продолжением. Скачанные серии доступны в приложении без интернета.")
         ReleaseFeature(AniMixIcons.Clock, "Watch flow",
             "Очередь под свободное время: подбор серий, прогноз окончания и остановка по лимиту. Можно объединять разные тайтлы в одну сессию.")
         ReleaseFeature(AniMixIcons.Pulse, "AniPulse",
-            "Еженедельник: анонсы, трейлеры и премьеры недели из новостей Shikimori, YummyAnime и GoHa.ru, ваши время и серии, новые серии, почти досмотренное, онгоинги в ваших жанрах и подборка недели. Без ИИ.")
+            "Еженедельный выпуск: вступление о вашей неделе, главная история и короткие пересказы новостей Shikimori, YummyAnime и GoHa.ru, затем новые серии, почти досмотренное и подборка недели. Без ИИ.")
         ReleaseFeature(AniMixIcons.User, "Профиль, уровень и награды",
             "Свой аватар, баннер и значок. Уровень — кольцо вокруг аватара; на 10-м уровне открывается оформление профиля, на 20-м — рамка аватара.")
         ReleaseFeature(AniMixIcons.Share, "Аккаунт, друзья и Horizon Link",
             "Синхронизация телефона и ПК, друзья с коллекциями и достижениями, приватность для каждого раздела, продолжение серии на другом устройстве.")
         ReleaseFeature(AniMixIcons.Trophy, "Достижения",
             "Награды за подтверждённый просмотр, коллекцию и привычки, включая секретные. Импорт из Shikimori и Anixart открывает награды из истории без XP.")
-        ReleaseFeature(AniMixIcons.Flame, "Экспериментальные функции",
-            "Свои подборки с умным подбором и полка «Подобрано для вас» включаются в настройках.")
+        ReleaseFeature(AniMixIcons.Flame, "Подборки",
+            "Свои подборки, умный подбор по фильтрам и полка «Подобрано для вас» на главной по вашим спискам.")
     }
-
-    // What comes next, kept apart from what already works: no dates, no promises of speed.
-    Spacer(Modifier.height(32.dp))
-    Txt("Дальше · ${AppRelease.nextVersion}", AniMixTheme.type.heading)
-    Spacer(Modifier.height(20.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        RoadmapStage("01", "Подборки для всех", "Свои подборки и умный подбор выйдут из экспериментальных функций с учётом ваших отзывов.")
-        RoadmapStage("02", "Стабильность и скорость", "Замеры производительности плеера и списков на слабых устройствах.")
-        RoadmapStage("03", "Совместный просмотр", "Отложен: вернёмся к нему, когда AniMix будет пользоваться больше людей.")
-    }
-    Spacer(Modifier.height(24.dp))
-    Txt("Это план развития, а не список уже доступных функций. Состав может уточняться; дата выхода не объявлена.", AniMixTheme.type.micro)
 }
 
 /** A link out of the app: its mark in the soft accent circle of the menu cards, a name, one line, and an outward arrow. */
@@ -146,19 +134,6 @@ private fun ProjectLink(icon: ImageVector, title: String, description: String, o
 private fun ReleaseFeature(icon: ImageVector, title: String, description: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Icon(icon, null, Modifier.padding(top = 2.dp).size(22.dp), tint = AniMixTheme.colors.accentText)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Txt(title, AniMixTheme.type.bodyStrong)
-            Spacer(Modifier.height(6.dp))
-            Txt(description, AniMixTheme.type.caption)
-        }
-    }
-}
-
-@Composable
-private fun RoadmapStage(number: String, title: String, description: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Txt(number, AniMixTheme.type.label, color = AniMixTheme.colors.accentText, modifier = Modifier.width(28.dp).padding(top = 2.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Txt(title, AniMixTheme.type.bodyStrong)

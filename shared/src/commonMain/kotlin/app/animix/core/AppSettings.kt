@@ -73,9 +73,9 @@ data class Settings(
     val experimentalPicks: Boolean = false,
     /** The update version the viewer put off with «Позже»; a newer one is offered again. */
     val dismissedUpdate: String? = null,
-    /** «Плеер+» (glass, glow, speed, gestures, picture-in-picture) or the simplified player. */
+    /** «Плеер+» (glass, glow, picture-in-picture) or the simplified player; speed and swipes are in both. */
     val playerMode: PlayerMode = PlayerMode.Plus,
-    /** Playback speed of «Плеер+», kept for the next episode; the simplified player always plays at 1×. */
+    /** Playback speed of both players, kept for the next episode. */
     val playbackSpeed: Float = 1f,
     /** «Уведомления»: a new episode of an ongoing title in «Смотрю». */
     val notifyNewEpisodes: Boolean = true,

@@ -47,24 +47,21 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
     // The page takes its mood from the person's own banner (or avatar), blurred behind the plates.
     app.animix.Ambient(library.profile.banner?.url ?: library.profile.avatar?.url)
     Box(Modifier.fillMaxSize()) {
-    ProfileDesignLayer(profileDesign(library.profile.design), Modifier.fillMaxWidth().height(380.dp))
+    ProfileDesignLayer(profileDesign(library.profile.design), Modifier.fillMaxWidth().height(ProfileDesignHeight), animated = true)
     ScreenColumn(contentPadding) {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt("Профиль", AniMixTheme.type.title, modifier = Modifier.weight(1f))
-            // New episodes reach guests too, so the bell is always here; its badge counts what is unread.
+            IconCircle(AniMixIcons.Edit, { navigator.push(Route.EditProfile()) }, contentDescription = "Редактировать профиль")
+            Spacer(Modifier.width(8.dp))
+            // Notifications live in the menu; the menu button carries their unread count, so the header
+            // keeps two actions and nothing is offered twice. New episodes reach guests too.
             val notices by graph.notifier.notices.collectAsState()
             val unread = (if (account.user != null) social.incomingRequests().size else 0) + notices.count { !it.read }
             Box {
-                IconCircle(AniMixIcons.Bell, { navigator.push(Route.Notifications) },
-                    contentDescription = if (unread > 0) "Уведомления: новых — $unread" else "Уведомления")
-                if (unread > 0) Box(Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(AniMixTheme.colors.accent),
-                    contentAlignment = Alignment.Center) { Txt(if (unread > 9) "9+" else "$unread", AniMixTheme.type.micro, color = AniMixTheme.colors.onAccent) }
+                IconCircle(AniMixIcons.Menu, { navigator.push(Route.Menu) },
+                    contentDescription = if (unread > 0) "Меню. Новых уведомлений: $unread" else "Меню")
+                if (unread > 0) CountBadge(unread, Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp))
             }
-            Spacer(Modifier.width(8.dp))
-            IconCircle(AniMixIcons.Edit, { navigator.push(Route.EditProfile()) }, contentDescription = "Редактировать профиль")
-            Spacer(Modifier.width(8.dp))
-            // Menu, not just settings: achievements, friends, level, history, settings and «О приложении».
-            IconCircle(AniMixIcons.Menu, { navigator.push(Route.Menu) }, contentDescription = "Меню")
         }
         Spacer(Modifier.height(20.dp))
         val self = social.devices.firstOrNull { it.id == graph.social.deviceId }
@@ -138,9 +135,9 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
         Column {
             // The avatar overlaps the banner's edge; the name and presence sit to its right, under the banner.
             Box(Modifier.fillMaxWidth()) {
-                ProfileBanner(profile.banner, Modifier.fillMaxWidth().height(bannerHeight))
+                ProfileBanner(profile.banner, Modifier.fillMaxWidth().height(bannerHeight), design = profileDesign(profile.design))
                 Row(Modifier.fillMaxWidth().padding(top = bannerHeight - avatarSize / 2, start = 16.dp)) {
-                    ProfileAvatar(profile, avatarSize, level = level,
+                    ProfileAvatar(profile, avatarSize, level = level, animatedFrame = true,
                         clickModifier = Modifier
                         .then(if (onEdit != null) Modifier.semantics { contentDescription = "Изменить аватар и оформление профиля" }
                             .clickable(avatarInteraction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onEdit)
@@ -185,12 +182,17 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
 }
 
 @Composable
-internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier) {
+internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier, design: ProfileDesign? = null) {
     val colors = AniMixTheme.colors
     val model = remember(media) { media?.imageModel() }
     Box(modifier.clip(AniMixTheme.shapes.large).background(colors.surfaceRaised)) {
+        // Without a photo of one's own, the chosen design is the cover: the level reward is seen in full.
+        if (design != null && model == null) Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.linearGradient(listOf(colors.surfaceRaised, colors.accentSoft, colors.surface)))
+        }
+        if (design != null && model == null) ProfileDesignLayer(design, Modifier.fillMaxSize(), animated = true, fade = false)
         // The default cover uses the existing palette, also serving as the failed-image fallback.
-        Canvas(Modifier.fillMaxSize()) {
+        else Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.linearGradient(listOf(colors.surfaceRaised, colors.accentSoft, colors.surface)))
             drawCircle(colors.accent.copy(alpha = 0.13f), size.width * 0.35f, Offset(size.width * 0.82f, size.height * 0.2f))
             val horizon = Path().apply {
@@ -207,7 +209,7 @@ internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier) 
 
 @Composable
 internal fun ProfileAvatar(profile: LocalProfile, size: Dp, modifier: Modifier = Modifier, level: ProfileLevel? = null,
-    clickModifier: Modifier = Modifier) {
+    clickModifier: Modifier = Modifier, animatedFrame: Boolean = false) {
     val colors = AniMixTheme.colors
     val model = remember(profile.avatar) { profile.avatar?.imageModel() }
     Box(modifier.size(size)) {
@@ -221,7 +223,7 @@ internal fun ProfileAvatar(profile: LocalProfile, size: Dp, modifier: Modifier =
         }
         if (level != null) LevelRing(level, Modifier.matchParentSize())
         // The level-20 reward sits just outside the ring, in the style of the page design.
-        ProfileFrameLayer(profileDesign(profile.frame), Modifier.matchParentSize())
+        ProfileFrameLayer(profileDesign(profile.frame), Modifier.matchParentSize(), animated = animatedFrame)
     }
 }
 

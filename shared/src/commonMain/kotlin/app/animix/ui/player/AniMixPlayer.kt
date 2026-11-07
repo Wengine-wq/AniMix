@@ -15,6 +15,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import app.animix.ui.components.LoadingIndicator as CircularProgressIndicator
 import androidx.compose.ui.window.Popup
@@ -151,7 +153,7 @@ fun AniMixPlayer(
     onFullscreenChange: (Boolean) -> Unit = {},
     /** «Плеер+» on the watch screen may continue in a small window over other apps (Android). */
     pictureInPicture: Boolean = false,
-    /** The viewer picked a speed in «Плеер+»; kept for the next episode. */
+    /** The viewer picked a speed in the gear; kept for the next episode. */
     onSpeedChange: (Float) -> Unit = {},
     playerFactory: () -> NativePlayer = ::createNativePlayer,
     modifier: Modifier = Modifier,
@@ -201,9 +203,10 @@ fun AniMixPlayer(
     var seekFeedback by remember { mutableStateOf<Int?>(null) }
     var lastVolume by remember { mutableFloatStateOf(1f) }
     var fill by remember { mutableStateOf(settings.fillScreen) }
-    // «Плеер+» adds glass, glow, speed, gestures and the small window; the simplified player is plain and light.
+    // «Плеер+» adds glass, glow and the small window; the simplified player is plain and light. Speed,
+    // quality and the brightness and volume swipes are basic controls, so both players have them.
     val plus = settings.playerMode == app.animix.core.PlayerMode.Plus
-    var speed by remember { mutableFloatStateOf(if (plus) settings.playbackSpeed.coerceIn(0.5f, 2f) else 1f) }
+    var speed by remember { mutableFloatStateOf(settings.playbackSpeed.coerceIn(0.5f, 2f)) }
     LaunchedEffect(player, speed, state.ready) { if (state.ready) player.setSpeed(speed) }
     val pip by PictureInPicture.active.collectAsState()
     val pipAllowed = pictureInPicture && plus && PictureInPicture.supported
@@ -462,8 +465,8 @@ fun AniMixPlayer(
             val backdrop = rememberUpdatedState(rememberFrameBackdrop(player, enabled = plus && overlayVisible && !LocalUiPerformance.current.batterySaver))
             val picture = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
             VideoArea(player, state, zoomed = fill, glow = plus && settings.ambientGlow, onPicture = { picture.value = it })
-            // «Плеер+» in fullscreen on a phone: swipe up or down on the left for brightness, on the right for volume.
-            if (plus && fullscreen && hardware != null && !pip) Box(Modifier.fillMaxSize().pointerInput(hardware) {
+            // Fullscreen on a phone, in both players: swipe up or down on the left for brightness, on the right for volume.
+            if (fullscreen && hardware != null && !pip) Box(Modifier.fillMaxSize().pointerInput(hardware) {
                 var left = true
                 detectVerticalDragGestures(
                     onDragStart = { offset -> left = offset.x < size.width / 2f },
@@ -504,7 +507,8 @@ fun AniMixPlayer(
                 onMute = ::toggleMute,
                 onVolume = { player.setVolume(it); show() },
                 onNext = { nextCallback?.invoke() },
-                speed = if (plus) speed else null,
+                speed = speed,
+                glowAvailable = plus,
                 onSpeed = { value -> speed = value; onSpeedChange(value); show() },
                 onPictureInPicture = if (pipAllowed) { { if (fullscreen) onFullscreenChange(false); PictureInPicture.enter() } } else null,
             )
@@ -645,8 +649,10 @@ private fun PlayerOverlay(
     onMute: () -> Unit,
     onVolume: (Float) -> Unit,
     onNext: () -> Unit,
-    /** The current rate in «Плеер+»; null in the simplified player, which has no speed menu. */
-    speed: Float? = null,
+    /** The current rate; both players offer the same speeds. */
+    speed: Float = 1f,
+    /** Only «Плеер+» draws the glow around letterboxed pictures, so only it offers the switch. */
+    glowAvailable: Boolean = false,
     onSpeed: (Float) -> Unit = {},
     onPictureInPicture: (() -> Unit)? = null,
 ) {
@@ -675,7 +681,7 @@ private fun PlayerOverlay(
                 // A small player has no bottom row: «Скачать» joins the top actions there.
                 if (onDownload != null && !bottomRow) OverlayIcon(AniMixIcons.Download, onDownload, description = "Скачать серию")
                 if (onPictureInPicture != null) OverlayIcon(AniMixIcons.PictureInPicture, onPictureInPicture, description = "Картинка в картинке")
-                SettingsMenu(quality, qualities, onQuality, glow = if (speed != null) ambientGlow else null, onGlow = onAmbientGlow,
+                SettingsMenu(quality, qualities, onQuality, glow = if (glowAvailable) ambientGlow else null, onGlow = onAmbientGlow,
                     speed = speed, onSpeed = onSpeed)
             }
 
@@ -966,17 +972,18 @@ private fun GlassChip(text: String, onClick: () -> Unit) {
 }
 
 /**
- * The gear: quality (with a short HD mark on the icon like YouTube's) and the glow around letterboxed
- * pictures. «Без рамок» has its own named action in the top bar.
+ * The gear, the same in both players: speed, quality (with a short HD mark on the icon like YouTube's)
+ * and, in «Плеер+», the glow around letterboxed pictures. It is never an empty list: a source with one
+ * quality still names it and says there is nothing else to pick. «Без рамок» has its own action in the top bar.
  */
 @Composable
 private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (String) -> Unit, glow: Boolean?, onGlow: (Boolean) -> Unit,
-    speed: Float? = null, onSpeed: (Float) -> Unit = {}) {
+    speed: Float = 1f, onSpeed: (Float) -> Unit = {}) {
     var open by remember { mutableStateOf(false) }
     val colors = AniMixTheme.colors
     Box {
         Box(Modifier.size(44.dp)) {
-            OverlayIcon(AniMixIcons.Settings, { open = !open }, description = "Настройки плеера · качество $quality" + (speed?.takeIf { it != 1f }?.let { " · скорость ${speedLabel(it)}" } ?: ""))
+            OverlayIcon(AniMixIcons.Settings, { open = !open }, description = "Настройки плеера · качество $quality" + (speed.takeIf { it != 1f }?.let { " · скорость ${speedLabel(it)}" } ?: ""))
             // Only a short HD mark, as on YouTube; the exact quality is one tap away in the menu.
             if ((lines(quality) ?: 0) >= 720) Txt("HD", AniMixTheme.type.micro, color = colors.onAccent, maxLines = 1,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 4.dp).clip(AniMixTheme.shapes.small)
@@ -984,25 +991,23 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
         }
         if (open) Popup(alignment = Alignment.TopEnd, offset = androidx.compose.ui.unit.IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
             onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
-            Column(Modifier.width(248.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418)).padding(vertical = 8.dp)) {
-                // «Плеер+»: speed first, as the most frequent change during an episode.
-                if (speed != null) {
-                    Txt("Скорость", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        PlayerSpeeds.forEach { value ->
-                            val selected = value == speed
-                            Box(Modifier.weight(1f).heightIn(min = 40.dp).clip(AniMixTheme.shapes.pill)
-                                .background(if (selected) colors.accent else Color.Transparent)
-                                .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onSpeed(value) },
-                                contentAlignment = Alignment.Center) {
-                                Txt(speedLabel(value), AniMixTheme.type.label, color = if (selected) colors.onAccent else Color.White, maxLines = 1)
-                            }
+            Column(Modifier.width(248.dp).heightIn(max = 420.dp).clip(AniMixTheme.shapes.medium).background(Color(0xF0141418))
+                .verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                // Speed first, as the most frequent change during an episode.
+                MenuCaption("Скорость")
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    PlayerSpeeds.forEach { value ->
+                        val selected = value == speed
+                        Box(Modifier.weight(1f).heightIn(min = 40.dp).clip(AniMixTheme.shapes.pill)
+                            .background(if (selected) colors.accent else Color.Transparent)
+                            .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onSpeed(value) },
+                            contentAlignment = Alignment.Center) {
+                            Txt(speedLabel(value), AniMixTheme.type.label, color = if (selected) colors.onAccent else Color.White, maxLines = 1)
                         }
                     }
-                    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
                 }
-                // A downloaded file has one quality: nothing to choose, so no list.
-                if (qualities.size > 1) Txt("Качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                MenuDivider()
+                MenuCaption("Качество")
                 if (qualities.size > 1) qualities.forEach { label ->
                     val selected = label == quality
                     Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open = false; onQuality(label) }.padding(horizontal = 16.dp),
@@ -1010,11 +1015,19 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
                         Txt(label, AniMixTheme.type.bodyStrong, color = if (selected) colors.accent else Color.White, modifier = Modifier.weight(1f))
                         if (selected) Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.accent)
                     }
+                } else {
+                    // A downloaded file or a single-quality source: the one quality, and why there is no choice.
+                    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Txt(quality, AniMixTheme.type.bodyStrong, color = colors.accent, modifier = Modifier.weight(1f))
+                        Icon(AniMixIcons.Check, null, Modifier.size(16.dp), tint = colors.accent)
+                    }
+                    Txt("Источник отдаёт только это качество", AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp))
                 }
                 // The glow around letterboxed pictures, for those who prefer plain black bars.
                 // The simplified player has no glow, so nothing to switch there.
                 if (glow != null) {
-                    if (qualities.size > 1) Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+                    MenuDivider()
                     Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onGlow(!glow) }.padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Txt("Свечение рамок", AniMixTheme.type.bodyStrong, color = Color.White, modifier = Modifier.weight(1f))
@@ -1026,7 +1039,14 @@ private fun SettingsMenu(quality: String, qualities: List<String>, onQuality: (S
     }
 }
 
-/** The rates of «Плеер+». */
+@Composable
+private fun MenuCaption(text: String) =
+    Txt(text, AniMixTheme.type.micro, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+
+@Composable
+private fun MenuDivider() = Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+
+/** The playback rates offered in both players. */
 private val PlayerSpeeds = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
 
 /** «1×», «1,25×»: a Russian decimal comma, no trailing zeros. */

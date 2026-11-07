@@ -28,7 +28,8 @@ import app.animix.ui.theme.AniMixTheme
 
 /**
  * Settings → «Аккаунт», top to bottom: who you are and the one action that matters (sign in, or the
- * sync state), this account's devices, the move from AniMix 2.x, linked services, and signing out last.
+ * sync state), this account's devices, linked services, and signing out last. The move from AniMix 2.x
+ * lives in «Импорт списков», with the other ways to bring lists in.
  */
 @Composable
 internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
@@ -76,9 +77,6 @@ internal fun AccountSection(graph: AppGraph, navigator: Navigator) {
             Section("Устройства")
             HorizonDevices(graph)
         }
-
-        Section("Перенос из AniMix 2.x")
-        LegacyMigrationSection(graph, navigator)
 
         Section("Привязки")
         Panel {
@@ -165,56 +163,6 @@ private fun SyncPanel(graph: AppGraph) {
         }
     }
     account.error?.let { Txt(it, AniMixTheme.type.caption, color = colors.danger, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
-}
-
-@Composable
-private fun LegacyMigrationSection(graph: AppGraph, navigator: Navigator) {
-    val colors = AniMixTheme.colors
-    val state by graph.legacy.state.collectAsState()
-    val account by graph.account.state.collectAsState()
-    val library by graph.library.state.collectAsState()
-    var local by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(Unit) { local = withContext(Dispatchers.Default) { graph.legacy.hasLocalData() } }
-    val android = Platform.name == "Android"
-    val done = state.result ?: library.legacyMigration
-    when (local) {
-        null -> Unit
-        true -> Panel {
-            AccountRow(AniMixIcons.Monitor, if (android) "Перенести с этого устройства" else "Перенести с этого компьютера",
-                if (account.user != null) "Списки, оценки, часы и достижения — в профиль «${account.user?.name}»"
-                else "Списки, оценки, часы и достижения. Войдите, чтобы они попали и в онлайн-профиль",
-                trailing = if (done != null) "Повторить" else "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
-        }
-        // Android keeps each app's data private: a separately installed 2.x can't be read from here.
-        false -> {
-            if (android) Txt("AniMix 2.x установлен отдельным приложением, и Android не даёт читать его данные. Перенесите списки одним из способов:",
-                AniMixTheme.type.caption)
-            else Txt("Данные AniMix 2.x на этом компьютере не найдены. Если 2.x был связан с Shikimori, импортируйте списки оттуда.",
-                AniMixTheme.type.caption)
-            Spacer(Modifier.height(12.dp))
-            Panel {
-                AccountRow(AniMixIcons.Share, "Импорт из Shikimori", "Если в 2.x был подключён Shikimori, списки уже там",
-                    trailing = "Открыть", onClick = { navigator.push(Route.SettingsSection("Import")) })
-                if (android) {
-                    Divider()
-                    AccountRow(AniMixIcons.Monitor, "Через AniMix на ПК", "Перенесите 2.x на компьютере под тем же аккаунтом — списки придут сюда сами")
-                }
-            }
-        }
-    }
-    when {
-        state.busy -> Row(Modifier.padding(top = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            LoadingIndicator(Modifier.size(18.dp))
-            Spacer(Modifier.width(10.dp))
-            Txt(state.stage, AniMixTheme.type.caption)
-        }
-        state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.danger,
-            modifier = Modifier.padding(top = 10.dp, start = 4.dp))
-        done != null -> Txt(
-            "Перенесено${done.accountName?.let { " в онлайн-профиль «$it»" } ?: " на это устройство"}: " +
-                "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
-            AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
-    }
 }
 
 /** While the system browser is open: what to do there, and a way back. */

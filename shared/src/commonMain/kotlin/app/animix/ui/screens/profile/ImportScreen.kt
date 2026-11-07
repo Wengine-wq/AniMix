@@ -26,8 +26,11 @@ import app.animix.ui.navigation.Navigator
 import app.animix.ui.navigation.Route
 import app.animix.ui.theme.AniMixTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import app.animix.core.Platform
 
-/** Settings → «Импорт списков»: Shikimori (sign-in required) and public Anixart lists. */
+/** Settings → «Импорт списков»: Shikimori (sign-in required), public Anixart lists and the move from AniMix 2.x. */
 @Composable
 internal fun ImportSection(graph: AppGraph, navigator: Navigator) {
     LaunchedEffect(Unit) { graph.shikimoriAccount.load() }
@@ -48,6 +51,13 @@ internal fun ImportSection(graph: AppGraph, navigator: Navigator) {
             "Статус и оценка с этого устройства сохраняются, просмотренных серий становится только больше. Награды за тайтлы и количество завершённых открываются с пометкой «Из истории просмотров», без XP. Часы, марафоны и серии дней зарабатываются в AniMix. Для ранее перенесённых списков повторите импорт.",
             AniMixTheme.type.micro,
         )
+        // AniMix 2.x is one more source of lists, so its move lives here rather than in the account.
+        Spacer(Modifier.height(32.dp))
+        Txt("AniMix 2.x", AniMixTheme.type.heading)
+        Spacer(Modifier.height(4.dp))
+        Txt("Списки, оценки, часы просмотра и достижения из прежней версии.", AniMixTheme.type.caption)
+        Spacer(Modifier.height(12.dp))
+        LegacyMigration(graph)
     }
 }
 
@@ -266,4 +276,53 @@ internal fun titlesWord(n: Int): String = when {
     n % 10 == 1 -> "тайтл"
     n % 10 in 2..4 -> "тайтла"
     else -> "тайтлов"
+}
+
+@Composable
+private fun LegacyMigration(graph: AppGraph) {
+    val colors = AniMixTheme.colors
+    val state by graph.legacy.state.collectAsState()
+    val account by graph.account.state.collectAsState()
+    val library by graph.library.state.collectAsState()
+    var local by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { local = withContext(Dispatchers.Default) { graph.legacy.hasLocalData() } }
+    val android = Platform.name == "Android"
+    val done = state.result ?: library.legacyMigration
+    when (local) {
+        null -> Unit
+        true -> Panel {
+            AccountRow(AniMixIcons.Monitor, if (android) "Перенести с этого устройства" else "Перенести с этого компьютера",
+                if (account.user != null) "Списки, оценки, часы и достижения — в профиль «${account.user?.name}»"
+                else "Списки, оценки, часы и достижения. Войдите, чтобы они попали и в онлайн-профиль",
+                trailing = if (done != null) "Повторить" else "Перенести", enabled = !state.busy, onClick = graph.legacy::migrateLocal)
+        }
+        // Android keeps each app's data private: a separately installed 2.x can't be read from here.
+        false -> {
+            if (android) Txt("AniMix 2.x установлен отдельным приложением, и Android не даёт читать его данные. Перенесите списки одним из способов:",
+                AniMixTheme.type.caption)
+            else Txt("Данные AniMix 2.x на этом компьютере не найдены. Если 2.x был связан с Shikimori, импортируйте списки оттуда — в начале страницы.",
+                AniMixTheme.type.caption)
+            if (android) {
+                Spacer(Modifier.height(12.dp))
+                Panel {
+                    AccountRow(AniMixIcons.Share, "Через Shikimori", "Если в 2.x был подключён Shikimori, списки уже там — импорт в начале страницы")
+                    AccountDivider()
+                    AccountRow(AniMixIcons.Monitor, "Через AniMix на ПК", "Перенесите 2.x на компьютере под тем же аккаунтом — списки придут сюда сами")
+                }
+            }
+        }
+    }
+    when {
+        state.busy -> Row(Modifier.padding(top = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            LoadingIndicator(Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Txt(state.stage, AniMixTheme.type.caption)
+        }
+        state.error != null -> Txt(state.error.orEmpty(), AniMixTheme.type.caption, color = colors.danger,
+            modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+        done != null -> Txt(
+            "Перенесено${done.accountName?.let { " в онлайн-профиль «$it»" } ?: " на это устройство"}: " +
+                "тайтлов — ${done.titles}, достижений — ${done.achievements}, часов просмотра — ${done.watchSeconds / 3600}. Повторный перенос не дублирует данные.",
+            AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+    }
 }

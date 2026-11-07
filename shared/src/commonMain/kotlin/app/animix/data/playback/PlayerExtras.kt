@@ -16,7 +16,7 @@ expect object PictureInPicture {
     fun enter(): Boolean
 }
 
-/** Window brightness and media volume for the vertical swipes of «Плеер+» in fullscreen. */
+/** Window brightness and media volume for the vertical swipes of both players in fullscreen. */
 interface PlayerHardware {
     /** 0..1; the screen's own brightness until the first swipe. */
     var brightness: Float

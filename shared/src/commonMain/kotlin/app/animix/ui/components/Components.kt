@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Icon
@@ -323,6 +324,28 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
             Spacer(Modifier.width(8.dp))
         }
         Txt(text, AniMixTheme.type.subheading, maxLines = 1)
+    }
+}
+
+/**
+ * Unread count on the corner of a round button: an accent pill outlined in the page colour so it
+ * reads as separate from the button under it. Above nine it says «9+».
+ */
+@Composable
+fun CountBadge(count: Int, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    Box(
+        modifier
+            .height(20.dp)
+            .widthIn(min = 20.dp)
+            .border(2.dp, colors.background, CircleShape)
+            .padding(2.dp)
+            .clip(CircleShape)
+            .background(colors.accent)
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Txt(if (count > 9) "9+" else "$count", AniMixTheme.type.micro, color = colors.onAccent, maxLines = 1)
     }
 }
 

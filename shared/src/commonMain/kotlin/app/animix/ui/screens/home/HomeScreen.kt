@@ -24,6 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import app.animix.ui.components.at
+import app.animix.ui.components.accentGlow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -75,6 +79,7 @@ import androidx.compose.runtime.getValue
 import app.animix.data.shikimori.CatalogOrder
 import app.animix.data.shikimori.CatalogQuery
 import app.animix.model.Anime
+import app.animix.resources.animix_logo
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.AnimeShelfPlaceholder
 import app.animix.ui.components.SkeletonGroup
@@ -437,8 +442,9 @@ internal fun HomeHeroPlaceholder() {
 }
 
 /**
- * A newer release from GitHub, as a dialog over the app once per launch: what changed, «Обновить» and
- * «Позже». «Позже» hides it until the next launch; meanwhile the update waits in «Настройки».
+ * A newer release from GitHub, as a dialog over the app once per launch: the version with the app's own
+ * mark, why it is worth installing, what changed, and one clear «Обновить сейчас». «Позже» is a quiet
+ * text action and hides the dialog until the next launch; meanwhile the update waits in «Настройки».
  */
 @Composable
 fun UpdateDialog(graph: AppGraph) {
@@ -449,32 +455,65 @@ fun UpdateDialog(graph: AppGraph) {
     if (later == update.version && !state.downloading && state.message == null) return
     androidx.compose.ui.window.Dialog(onDismissRequest = { if (!state.downloading) later = update.version }) {
         Column(Modifier.widthIn(max = 420.dp).clip(AniMixTheme.shapes.large).background(AniMixTheme.colors.surfaceRaised)
-            .rim(AniMixTheme.shapes.large, accent = false).padding(20.dp)) {
-            UpdateDetails(graph)
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryButton("Обновить", graph.updates::install, Modifier.weight(1f), icon = AniMixIcons.Download, enabled = !state.downloading)
-                SecondaryButton("Позже", { later = update.version }, Modifier.weight(1f), enabled = !state.downloading)
+            .rim(AniMixTheme.shapes.large, accent = false)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(20.dp)) {
+            UpdateDetails(graph, hero = true)
+            Spacer(Modifier.height(20.dp))
+            PrimaryButton(if (state.downloading) "Скачиваем · ${(state.progress * 100).toInt()} %" else "Обновить сейчас",
+                graph.updates::install, Modifier.fillMaxWidth(), icon = AniMixIcons.Download, enabled = !state.downloading)
+            Spacer(Modifier.height(4.dp))
+            val laterInteraction = remember { MutableInteractionSource() }
+            Box(Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(AniMixTheme.shapes.pill)
+                .clickable(laterInteraction, androidx.compose.foundation.LocalIndication.current, enabled = !state.downloading,
+                    role = androidx.compose.ui.semantics.Role.Button) { later = update.version },
+                contentAlignment = Alignment.Center) {
+                Txt("Напомнить при следующем запуске", AniMixTheme.type.label,
+                    color = if (state.downloading) AniMixTheme.colors.textMuted else AniMixTheme.colors.textSecondary)
             }
         }
     }
 }
 
-/** The update's name, what changed (three lines, the rest on request), download progress and errors. */
+/**
+ * The update: the app's mark and the new version next to the installed one, a short reason to keep the
+ * app current (stronger when several releases were skipped), what changed (three lines, the rest on
+ * request), what installing will do on this platform, download progress and errors. [hero] is the dialog;
+ * «Настройки» shows the same in a panel.
+ */
 @Composable
-fun UpdateDetails(graph: AppGraph) {
+fun UpdateDetails(graph: AppGraph, hero: Boolean = false) {
     val colors = AniMixTheme.colors
     val state by graph.updates.state.collectAsState()
+    val settings by graph.settings.state.collectAsState()
+    val level by graph.level.collectAsState()
     val update = state.available ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
-            Icon(AniMixIcons.Download, null, Modifier.size(20.dp), tint = colors.accent)
-        }
+        // The same mark as on the device's home screen and in «О приложении»: the update is for this app.
+        val icon = settings.appIcon.at(level.level)
+        val markSize = if (hero) 56.dp else 44.dp
+        androidx.compose.foundation.Image(
+            if (icon == app.animix.core.AppIcon.Classic) org.jetbrains.compose.resources.painterResource(app.animix.resources.Res.drawable.animix_logo)
+            else app.animix.ui.components.appIconPainter(icon), null,
+            Modifier.size(markSize).then(if (hero) Modifier.accentGlow(AniMixTheme.shapes.medium, strength = 0.16f) else Modifier))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Txt("Доступна версия ${update.label}", AniMixTheme.type.subheading)
-            Txt(update.title, AniMixTheme.type.caption, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+            Txt("Доступно обновление", AniMixTheme.type.micro, color = colors.accentText)
+            Txt("AniMix ${update.label}", if (hero) AniMixTheme.type.heading else AniMixTheme.type.subheading, maxLines = 1)
+            val name = update.title.takeUnless { it.isBlank() || it.trim() == "AniMix ${update.label}" || it.trim() == "v${update.version}-re" }
+            name?.let { Txt(it, AniMixTheme.type.caption, maxLines = 2) }
         }
+    }
+    Spacer(Modifier.height(10.dp))
+    val size = update.asset.size.takeIf { it > 0 }?.let { " · ${(it + 524_288) / 1_048_576} МБ" }.orEmpty()
+    Txt("Сейчас установлена ${app.animix.data.AppRelease.version}$size", AniMixTheme.type.micro, color = colors.textSecondary)
+    Spacer(Modifier.height(14.dp))
+    // Why to install: plain words, one soft accent block — the only emphasis besides the button.
+    Row(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.medium).background(colors.accentSoft).padding(12.dp), verticalAlignment = Alignment.Top) {
+        Icon(AniMixIcons.Sparkle, null, Modifier.padding(top = 1.dp).size(16.dp), tint = colors.accent)
+        Spacer(Modifier.width(10.dp))
+        Txt(if (update.behind > 1) "Вы пропустили обновлений: ${update.behind}. Это обновление включает их все — исправления ошибок и улучшения придут разом."
+            else "Рекомендуем установить. Обновления исправляют ошибки и делают AniMix стабильнее, а с актуальной версией вы не пропустите крупные обновления и важные исправления.",
+            AniMixTheme.type.caption, color = colors.textPrimary, modifier = Modifier.weight(1f))
     }
     val changes = remember(update.notes) { releaseChanges(update.notes) }
     if (changes.isNotEmpty()) {
@@ -492,10 +531,14 @@ fun UpdateDetails(graph: AppGraph) {
         if (changes.size > 3) Txt(if (expanded) "Свернуть" else "Ещё ${changes.size - 3}", AniMixTheme.type.label, color = colors.accent,
             modifier = Modifier.padding(top = 4.dp).clip(AniMixTheme.shapes.pill).clickable { expanded = !expanded }.padding(vertical = 6.dp))
     }
+    Spacer(Modifier.height(12.dp))
+    Txt(if (app.animix.core.Platform.name == "Android") "Откроется установщик Android. Списки, просмотр и настройки сохранятся."
+        else "AniMix закроется, обновится и откроется снова. Списки, просмотр и настройки сохранятся.",
+        AniMixTheme.type.micro, color = colors.textSecondary)
     if (state.downloading) {
         Spacer(Modifier.height(12.dp))
         ProgressLine(state.progress)
-        Txt("Скачиваем · ${(state.progress * 100).toInt()} %", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
+        if (!hero) Txt("Скачиваем · ${(state.progress * 100).toInt()} %", AniMixTheme.type.micro, modifier = Modifier.padding(top = 6.dp))
     }
     state.message?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 10.dp)) }
 }

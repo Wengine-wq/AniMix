@@ -37,7 +37,9 @@ object UpdateSource {
 
 data class UpdateAsset(val name: String, val url: String, val size: Long)
 
-data class AvailableUpdate(val version: String, val title: String, val notes: String, val pageUrl: String, val asset: UpdateAsset) {
+/** [behind]: how many releases of this line are newer than the installed one (this one included). */
+data class AvailableUpdate(val version: String, val title: String, val notes: String, val pageUrl: String, val asset: UpdateAsset,
+    val behind: Int = 1) {
     val label: String get() = "$version re"
 }
 
@@ -57,8 +59,8 @@ fun compareVersions(a: String, b: String): Int {
  * [current] and has a file for this platform: an APK for this device's ABI (or universal) on
  * Android; an installer (.msi, .exe) or else a .zip on Windows.
  */
-fun pickUpdate(releases: JsonArray, current: String, platform: String, abis: List<String> = emptyList()): AvailableUpdate? =
-    releases.mapNotNull { it as? JsonObject }
+fun pickUpdate(releases: JsonArray, current: String, platform: String, abis: List<String> = emptyList()): AvailableUpdate? {
+    val newer = releases.mapNotNull { it as? JsonObject }
         .filter { (it["draft"] as? JsonPrimitive)?.booleanOrNull != true && (it["prerelease"] as? JsonPrimitive)?.booleanOrNull != true }
         .mapNotNull { release ->
             val tag = release.text("tag_name") ?: return@mapNotNull null
@@ -73,7 +75,8 @@ fun pickUpdate(releases: JsonArray, current: String, platform: String, abis: Lis
             AvailableUpdate(version, release.text("name") ?: tag, release.text("body").orEmpty().take(2000),
                 release.text("html_url") ?: "https://github.com/${UpdateSource.REPOSITORY}/releases", file)
         }
-        .maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
+    return newer.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }?.copy(behind = newer.size)
+}
 
 internal fun chooseAsset(assets: List<UpdateAsset>, platform: String, abis: List<String>): UpdateAsset? = when (platform) {
     "Android" -> {

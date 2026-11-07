@@ -26,11 +26,19 @@ class AppUpdatesTest {
         val update = assertNotNull(pickUpdate(list, "1.0.5", "Android", listOf("arm64-v8a", "armeabi-v7a")))
         assertEquals("1.0.6", update.version)
         assertEquals("1.0.6 re", update.label)
+        assertEquals(1, update.behind)
         assertEquals("AniMix-1.0.6-arm64-v8a.apk", update.asset.name)
         assertEquals("AniMix-1.0.6-universal.apk", pickUpdate(list, "1.0.5", "Android", listOf("x86"))?.asset?.name)
         assertEquals("AniMix-1.0.6.msi", pickUpdate(list, "1.0.5", "Windows")?.asset?.name)
         // 2.x tags never count, and the same or a newer build sees nothing.
         assertNull(pickUpdate(list, "1.0.6", "Android", listOf("arm64-v8a")))
+        // Two newer releases of the line: the newest is offered and knows it covers both.
+        val two = releases("""[
+            {"tag_name":"v1.0.7-re","name":"b","assets":[${asset("b-universal.apk")}]},
+            {"tag_name":"v1.0.6-re","name":"a","assets":[${asset("a-universal.apk")}]}
+        ]""")
+        assertEquals(2, pickUpdate(two, "1.0.5", "Android")?.behind)
+        assertEquals("1.0.7", pickUpdate(two, "1.0.5", "Android")?.version)
         assertNull(pickUpdate(releases("""[{"tag_name":"v9.9.9","assets":[${asset("x-universal.apk")}]}]"""), "1.0.5", "Android"))
     }
 

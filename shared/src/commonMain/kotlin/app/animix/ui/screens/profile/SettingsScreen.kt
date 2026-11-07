@@ -70,7 +70,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                     SettingsCategory.Playback -> if (settings.autoNextEpisode) "Автопереход вкл." else "Автопереход выкл."
                     SettingsCategory.Lists -> if (settings.favoritesLast) "Избранное в конце" else "Избранное первым"
                     SettingsCategory.Downloads -> settings.downloadQuality ?: "Не выбрано"
-                    SettingsCategory.Import -> "Shikimori, Anixart"
+                    SettingsCategory.Import -> "Shikimori, Anixart, 2.x"
                     SettingsCategory.Network -> if (settings.smartConnection) "Умное" else "Обычное"
                     SettingsCategory.Performance -> settings.playerMode.label + if (settings.batterySaver) " · экономия" else ""
                     SettingsCategory.Notifications -> if (settings.notifyNewEpisodes) "Новые серии" else "Выключены"
@@ -111,10 +111,10 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                         }
                     }
                     Txt(when (settings.playerMode) {
-                        app.animix.core.PlayerMode.Plus -> "Стеклянные кнопки и свечение рамок, скорость от 0,75× до 2×. На телефоне в полноэкранном режиме — " +
-                            "яркость и громкость свайпом, и «картинка в картинке»: серия продолжится в маленьком окне, если выйти из приложения."
-                        app.animix.core.PlayerMode.Simple -> "Плотные тёмные кнопки без стекла и свечения, обычная скорость. Меньше нагрузки на слабых устройствах; " +
-                            "качество, пропуски, автопереход и Horizon Link на месте."
+                        app.animix.core.PlayerMode.Plus -> "Стеклянные кнопки и свечение рамок, «картинка в картинке»: серия продолжится в маленьком окне, если выйти из приложения. " +
+                            "Скорость от 0,75× до 2× и на телефоне в полноэкранном режиме яркость и громкость свайпом."
+                        app.animix.core.PlayerMode.Simple -> "Плотные тёмные кнопки без стекла и свечения. Меньше нагрузки на слабых устройствах; скорость, качество, пропуски, " +
+                            "автопереход, Horizon Link и свайпы яркости и громкости на телефоне на месте."
                     }, AniMixTheme.type.caption, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp))
                 }
                 Spacer(Modifier.height(24.dp))
@@ -136,8 +136,8 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                         subtitle = if (settings.notifyNewEpisodes) "Когда серия выходит в озвучке, выбранной для тайтла на экране «Смотреть»" else "Сначала включите новые серии",
                         enabled = settings.notifyNewEpisodes)
                 }
-                Txt(if (app.animix.core.Platform.name == "Android") "Проверяем каждые полчаса, пока AniMix открыт, и раз в несколько часов в фоне. Уведомления копятся и под колокольчиком в профиле."
-                    else "Проверяем каждые полчаса, пока AniMix открыт; уведомление появляется в углу экрана и под колокольчиком в профиле.",
+                Txt(if (app.animix.core.Platform.name == "Android") "Проверяем каждые полчаса, пока AniMix открыт, и раз в несколько часов в фоне. Уведомления копятся в меню профиля, число новых видно на кнопке меню."
+                    else "Проверяем каждые полчаса, пока AniMix открыт; уведомление появляется в углу экрана и остаётся в меню профиля.",
                     AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
             }
             SettingsCategory.Playback -> Panel {

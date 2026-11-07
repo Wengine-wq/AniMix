@@ -39,7 +39,7 @@ fun PulseEntry(graph: AppGraph, onRead: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Txt("AniPulse · ваша аниме-неделя", AniMixTheme.type.subheading, maxLines = 1)
             Txt(if (week.minutes > 0) "${minutesLabel(week.minutes)} и ${week.episodes} ${episodesWord(week.episodes)} на этой неделе"
-                else "Новые серии, почти досмотренное и подборка недели", AniMixTheme.type.caption, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                else "Главные новости недели и ваши новые серии", AniMixTheme.type.caption, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
         }
         Spacer(Modifier.width(8.dp))
         Icon(AniMixIcons.ChevronRight, "Открыть AniPulse", Modifier.size(18.dp), tint = colors.accentText)
@@ -47,32 +47,46 @@ fun PulseEntry(graph: AppGraph, onRead: () -> Unit) {
 }
 
 /**
- * AniPulse: the week in numbers, the week-by-week chart, new episodes of «Смотрю», what is almost
- * finished, what waits on hold, ongoing titles in your genres and the week's picks. Counted on the
- * device from your lists and the catalog; no AI and nothing written for you by a service.
+ * AniPulse — an issue to read, not a set of blocks: an opening paragraph about the week, the main story
+ * with its picture, a few more stories told in two or three sentences, then what waits in your lists and
+ * what to watch, and the long view last. Written on the device from the sources' own words and your
+ * lists; no AI and nothing about you leaves the device.
  */
 @Composable
 fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val library by graph.library.state.collectAsState()
     val loaded = rememberLoad(Unit) { graph.pulse.build() }
-    // The counting part is ready at once; the catalog fills in new episodes and shelves when it answers.
+    // The counting part is ready at once; the catalog and the news fill in the stories when they answer.
     val digest = (loaded.value as? Load.Ready)?.value ?: remember(library) { digestFrom(library) }
     val loading = loaded.value is Load.Loading
+    val mine = library.entries.keys
+    val issue = remember(digest, mine) { issueFrom(digest, mine, app.animix.core.TrustedClock.now()) }
     ScreenColumn(padding) {
         PageHeader("AniPulse", { navigator.back() }, Modifier.padding(top = 12.dp))
-        Txt(weekLabel(digest.week.start), AniMixTheme.type.caption, modifier = Modifier.padding(top = 4.dp, start = 56.dp))
         Spacer(Modifier.height(20.dp))
-        WeekHero(digest)
-        // A digest of your week, in this order: what you watched, what is waiting for you, a short
-        // brief of the week's news, and only then picks and the long view. The news is a part, not the page.
-        if (digest.watched.isNotEmpty()) {
-            Section("Вы смотрели", AniMixIcons.Play)
-            Shelf(digest.watched.map { it.anime to if (it.finished) "Досмотрено" else "+${it.episodes} ${episodesWord(it.episodes)}" }, navigator)
+        Masthead(digest, issue, loading)
+
+        // The stories: one main story in full, a few more in short, the whole feed on request.
+        if (issue.lead != null || loading) {
+            Section("Главное за неделю", AniMixIcons.Sparkle)
+            val lead = issue.lead
+            if (lead == null) LoadingIndicator(Modifier.size(22.dp)) else LeadStory(lead, navigator)
         }
-        if (digest.fresh.isNotEmpty() || loading) {
-            Section("Новые серии", AniMixIcons.Bell)
-            if (digest.fresh.isEmpty()) LoadingIndicator(Modifier.size(22.dp))
-            else Panel {
+        if (issue.stories.isNotEmpty()) {
+            Section("Ещё о неделе", AniMixIcons.Layers)
+            Panel {
+                issue.stories.forEachIndexed { index, story ->
+                    if (index > 0) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(AniMixTheme.colors.outline))
+                    StoryRow(story, navigator)
+                }
+            }
+        }
+        if (issue.rest.isNotEmpty()) RestOfFeed(issue.rest, mine, navigator)
+
+        // Then the viewer's own week: what is waiting, what was watched, what to watch next.
+        if (digest.fresh.isNotEmpty()) {
+            Section("Новые серии в ваших списках", AniMixIcons.Bell)
+            Panel {
                 digest.fresh.take(6).forEachIndexed { index, item ->
                     if (index > 0) Box(Modifier.fillMaxWidth().padding(start = 72.dp).height(1.dp).background(AniMixTheme.colors.outline))
                     FreshRow(item) { navigator.push(Route.Watch(item.anime, (item.watched + 1).toString())) }
@@ -83,9 +97,9 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
             Section("Почти досмотрели", AniMixIcons.Check)
             Shelf(digest.almostDone.map { it.entry.anime to if (it.entry.anime.kind == app.animix.model.AnimeKind.Movie) "Фильм не досмотрен" else "Осталось ${it.left} ${episodesWord(it.left)}" }, navigator)
         }
-        if (digest.news.isNotEmpty() || loading) {
-            Section("Коротко о главном", AniMixIcons.Sparkle)
-            if (digest.news.isEmpty()) LoadingIndicator(Modifier.size(22.dp)) else NewsBlock(digest.news, library.entries.keys, navigator)
+        if (digest.watched.isNotEmpty()) {
+            Section("Вы смотрели", AniMixIcons.Play)
+            Shelf(digest.watched.map { it.anime to if (it.finished) "Досмотрено" else "+${it.episodes} ${episodesWord(it.episodes)}" }, navigator)
         }
         if (digest.onHold.isNotEmpty()) {
             Section("Ждут на паузе", AniMixIcons.Pause)
@@ -96,53 +110,140 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
             Shelf(digest.ongoingForYou.map { it to it.score?.takeIf { s -> s > 0 }?.let { s -> "★ ${formatScore(s)}" } }, navigator)
         }
         if (digest.picks.isNotEmpty()) {
-            Section("Подборка недели", AniMixIcons.Sparkle)
+            Section("Подборка недели", AniMixIcons.Star)
             Shelf(digest.picks.map { it to it.year?.toString() }, navigator)
         }
         Section("Неделя за неделей", AniMixIcons.Calendar)
         WeeksChart(digest.weeks)
-        if (loaded.value is Load.Failed) Txt("Каталог не ответил: новые серии и подборки появятся при подключении.", AniMixTheme.type.caption,
+        if (loaded.value is Load.Failed) Txt("Каталог не ответил: новости, новые серии и подборки появятся при подключении.", AniMixTheme.type.caption,
             modifier = Modifier.padding(top = 16.dp))
         Spacer(Modifier.height(28.dp))
-        Txt("AniPulse собирается на устройстве по вашим спискам, просмотру, каталогу Shikimori и новостям Shikimori, YummyAnime и GoHa.ru. Без ИИ и без отправки ваших данных.",
-            AniMixTheme.type.micro)
+        Txt("Выпуск собирается на устройстве. Истории — короткий пересказ начала публикаций Shikimori, YummyAnime и GoHa.ru со ссылкой на источник, " +
+            "остальное — по вашим спискам, просмотру и каталогу Shikimori. Без ИИ и без отправки ваших данных.", AniMixTheme.type.micro)
     }
 }
 
 /**
- * The week's news: chips by kind, the first item as a large card with its picture, the rest as rows.
- * A row opens in place to the whole text, with the anime page and the source one tap away.
+ * The top of the issue: the week's dates, the mascot greeting it, the opening paragraph and the week
+ * in one quiet line of numbers. The paragraph is the heart of the digest; numbers only support it.
+ */
+@Composable
+private fun Masthead(digest: WeeklyDigest, issue: PulseIssue, loading: Boolean) {
+    val colors = AniMixTheme.colors
+    val week = digest.week
+    Column(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.accentSoft).rim(AniMixTheme.shapes.large, accent = true)
+        .padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 20.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Txt("Выпуск · ${weekLabel(week.start)}", AniMixTheme.type.label, color = colors.accentText)
+                Spacer(Modifier.height(6.dp))
+                Txt("Ваша аниме-неделя", AniMixTheme.type.title)
+            }
+            // The mascot greets the issue: small, at the edge, never over the text or the numbers.
+            AniMixMascot(Modifier.padding(start = 8.dp).size(width = 64.dp, height = 96.dp),
+                pose = if (week.minutes > 0) MascotPose.Happy else MascotPose.Welcome)
+        }
+        Spacer(Modifier.height(10.dp))
+        Txt(issue.intro, AniMixTheme.type.body, color = colors.textPrimary, modifier = Modifier.padding(end = 8.dp))
+        if (loading && issue.lead == null) Txt("Собираем новости недели…", AniMixTheme.type.caption, modifier = Modifier.padding(top = 8.dp))
+        // The week in one line: time, episodes, days, and the change once there is something to compare.
+        val change = digest.change?.takeIf { week.minutes > 0 }
+        val facts = listOfNotNull(
+            minutesLabel(week.minutes).takeIf { week.minutes > 0 },
+            "${week.episodes} ${episodesWord(week.episodes)}".takeIf { week.episodes > 0 },
+            "${week.activeDays} ${daysWord(week.activeDays)} с просмотром".takeIf { week.activeDays > 0 },
+            change?.let { if (it >= 0) "+$it% к прошлой" else "$it% к прошлой" },
+            "${digest.streak} ${daysWord(digest.streak)} подряд".takeIf { digest.streak > 1 },
+        )
+        if (facts.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.accent.copy(alpha = 0.18f)))
+            Spacer(Modifier.height(12.dp))
+            Txt(facts.joinToString(" · "), AniMixTheme.type.label, color = colors.textPrimary, modifier = Modifier.padding(end = 8.dp))
+        }
+    }
+}
+
+/** The main story in full: its picture, what and where, the headline, two or three sentences and the ways to read on. */
+@Composable
+private fun LeadStory(story: PulseStory, navigator: Navigator) {
+    val item = story.item
+    Column(Modifier.fillMaxWidth()) {
+        if (item.imageUrl != null) {
+            RemoteImage(item.imageUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f), shape = AniMixTheme.shapes.large)
+            Spacer(Modifier.height(14.dp))
+        }
+        StoryMeta(story)
+        Spacer(Modifier.height(4.dp))
+        Txt(item.title, AniMixTheme.type.heading)
+        if (story.summary.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Txt(story.summary, AniMixTheme.type.body, color = AniMixTheme.colors.textSecondary)
+        }
+        NewsActions(item, navigator)
+    }
+}
+
+/** A shorter story: what and where, the headline and its summary; the picture at the side. A tap shows the ways to read on. */
+@Composable
+private fun StoryRow(story: PulseStory, navigator: Navigator) {
+    var open by remember(story.item.id) { mutableStateOf(false) }
+    val item = story.item
+    Column(Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open }.padding(16.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                StoryMeta(story)
+                Spacer(Modifier.height(4.dp))
+                Txt(item.title, AniMixTheme.type.bodyStrong, maxLines = if (open) Int.MAX_VALUE else 3)
+                if (story.summary.isNotEmpty()) Txt(story.summary, AniMixTheme.type.caption, maxLines = if (open) Int.MAX_VALUE else 3,
+                    modifier = Modifier.padding(top = 4.dp))
+            }
+            if (item.imageUrl != null) {
+                Spacer(Modifier.width(12.dp))
+                RemoteImage(item.imageUrl, Modifier.size(width = 88.dp, height = 66.dp), shape = AniMixTheme.shapes.small)
+            }
+        }
+        if (open) NewsActions(item, navigator)
+    }
+}
+
+/** «Анонс · Из ваших списков · 5 нояб. · GoHa.ru» — the accent only when the story is about your titles. */
+@Composable
+private fun StoryMeta(story: PulseStory) {
+    val item = story.item
+    Txt(listOfNotNull(item.kind, "Из ваших списков".takeIf { story.mine }, newsDate(item.createdAt), item.source).joinToString(" · "),
+        AniMixTheme.type.micro, color = if (story.mine) AniMixTheme.colors.accentText else AniMixTheme.colors.textSecondary)
+}
+
+/**
+ * The rest of the week's feed, folded: one link, and the list by kind when opened. A row opens in place
+ * to the whole text, with the anime page and the source one tap away.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun NewsBlock(news: List<NewsItem>, mine: Set<String>, navigator: Navigator) {
+private fun RestOfFeed(news: List<NewsItem>, mine: Set<String>, navigator: Navigator) {
     var kind by remember { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf<Long?>(null) }
     var all by remember { mutableStateOf(false) }
-    // The brief: one line of what the week brought, the stories about your titles, then a few of the
-    // rest. The whole feed with its kinds is one tap away, not the page itself.
-    val counts = listOf("Анонс", "Трейлер", "Премьера").mapNotNull { k -> news.count { it.kind == k }.takeIf { it > 0 }?.let { k to it } }
-    if (counts.isNotEmpty()) Txt("За неделю: " + counts.joinToString(", ") { (k, n) -> "${plural(k).lowercase()} — $n" },
-        AniMixTheme.type.caption, modifier = Modifier.padding(bottom = 12.dp))
-    val yours = news.filter { it.anime?.key in mine }
-    val brief = (yours + news.filter { it !in yours && it.imageUrl != null } + news).distinct().take(4)
-    if (all) {
-        val kinds = listOf("Анонс", "Трейлер", "Премьера", "Новость").filter { k -> news.any { it.kind == k } }
+    Txt(if (all) "Свернуть остальные новости" else "Остальные новости недели · ${news.size}", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
+        modifier = Modifier.padding(top = 12.dp).clip(AniMixTheme.shapes.pill).clickable(role = Role.Button) { all = !all; kind = null }
+            .padding(horizontal = 4.dp, vertical = 10.dp))
+    if (!all) return
+    val kinds = listOf("Анонс", "Трейлер", "Премьера", "Новость").filter { k -> news.any { it.kind == k } }
+    if (kinds.size > 1) {
+        Spacer(Modifier.height(4.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Всё · ${news.size}", kind == null, { kind = null })
             kinds.forEach { k -> Chip(plural(k), kind == k, { kind = k }) }
         }
         Spacer(Modifier.height(12.dp))
     }
-    val shown = if (all) news.filter { kind == null || it.kind == kind } else brief
     Panel {
-        shown.forEachIndexed { index, item ->
+        news.filter { kind == null || it.kind == kind }.forEachIndexed { index, item ->
             if (index > 0) Box(Modifier.fillMaxWidth().padding(start = 88.dp).height(1.dp).background(AniMixTheme.colors.outline))
             NewsRow(item, item.anime?.key in mine, expanded == item.id, { expanded = if (expanded == item.id) null else item.id }, navigator)
         }
     }
-    if (news.size > brief.size) Txt(if (all) "Свернуть" else "Все новости недели · ${news.size}", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
-        modifier = Modifier.padding(top = 8.dp).clip(AniMixTheme.shapes.pill).clickable(role = Role.Button) { all = !all; kind = null }.padding(horizontal = 8.dp, vertical = 8.dp))
 }
 
 private fun plural(kind: String) = when (kind) { "Анонс" -> "Анонсы"; "Трейлер" -> "Трейлеры"; "Премьера" -> "Премьеры"; else -> "Новости" }
@@ -170,10 +271,11 @@ private fun NewsRow(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () -
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NewsActions(item: NewsItem, navigator: Navigator) {
     val uri = LocalUriHandler.current
-    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item.anime?.let { anime -> Chip("Страница аниме", false, { navigator.push(Route.Detail(anime)) }, icon = AniMixIcons.Play) }
         Chip("Читать на ${item.source}", false, { runCatching { uri.openUri(item.url) } }, icon = AniMixIcons.Link)
     }
@@ -184,40 +286,6 @@ private fun newsDate(iso: String): String? {
     val month = iso.substring(5, 7).toIntOrNull() ?: return null
     val day = iso.substring(8, 10).toIntOrNull() ?: return null
     return "$day ${Months.getOrNull(month - 1) ?: return null}"
-}
-
-/** The week in large type with the mascot greeting it, the change against last week in words. */
-@Composable
-private fun WeekHero(digest: WeeklyDigest) {
-    val colors = AniMixTheme.colors
-    val week = digest.week
-    Box(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large).background(colors.accentSoft).rim(AniMixTheme.shapes.large, accent = true)) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 18.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Txt("Ваша неделя", AniMixTheme.type.label, color = colors.accentText)
-                Spacer(Modifier.height(6.dp))
-                Txt(if (week.minutes > 0) minutesLabel(week.minutes) else "Пока тихо", AniMixTheme.type.display, maxLines = 1)
-                Spacer(Modifier.height(4.dp))
-                Txt(listOfNotNull(
-                    "${week.episodes} ${episodesWord(week.episodes)} досмотрено",
-                    "${week.activeDays} ${daysWord(week.activeDays)} с просмотром".takeIf { week.activeDays > 0 },
-                ).joinToString(" · "), AniMixTheme.type.caption)
-                // A change is shown once this week has something to compare; a quiet Monday is not «−100%».
-                val change = digest.change?.takeIf { week.minutes > 0 }
-                val streak = digest.streak
-                if (change != null || streak > 1) {
-                    Spacer(Modifier.height(10.dp))
-                    Txt(listOfNotNull(
-                        change?.let { if (it >= 0) "+$it% к прошлой неделе" else "$it% к прошлой неделе" },
-                        "$streak ${daysWord(streak)} подряд".takeIf { streak > 1 },
-                    ).joinToString(" · "), AniMixTheme.type.label, color = colors.textPrimary)
-                }
-            }
-            // The mascot greets the week: small, at the edge, never over the numbers.
-            AniMixMascot(Modifier.padding(start = 8.dp, end = 12.dp).size(width = 92.dp, height = 140.dp),
-                pose = if (week.minutes > 0) MascotPose.Happy else MascotPose.Welcome)
-        }
-    }
 }
 
 /** Eight weeks as bars, the current one in the accent; labels under the first and the last. */

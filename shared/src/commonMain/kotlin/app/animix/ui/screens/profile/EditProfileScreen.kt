@@ -78,7 +78,7 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
         val shownDesign = tryDesign ?: draft.design
         val shownFrame = tryFrame ?: draft.frame
         Box {
-            ProfileDesignLayer(profileDesign(shownDesign), Modifier.matchParentSize())
+            ProfileDesignLayer(profileDesign(shownDesign), Modifier.matchParentSize(), animated = true)
             ProfileIdentity(library.profile.copy(name = draft.name.ifBlank { library.profile.name }, about = draft.about,
                 avatar = draft.avatar, banner = draft.banner, design = shownDesign, frame = shownFrame), badge, level = level)
         }
@@ -132,13 +132,13 @@ fun EditProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Pad
             AniMixTheme.type.caption)
         Spacer(Modifier.height(28.dp))
         RewardPicker("Оформление профиля", DesignLevel, level.level, draft.design, { draft = draft.copy(design = it); tryDesign = null }, tryDesign, { tryDesign = it }) { design ->
-            ProfileDesignLayer(design, Modifier.fillMaxSize())
+            ProfileDesignLayer(design, Modifier.fillMaxSize(), fade = false)
         }
         Spacer(Modifier.height(24.dp))
         RewardPicker("Рамка аватара", FrameLevel, level.level, draft.frame, { draft = draft.copy(frame = it); tryFrame = null }, tryFrame, { tryFrame = it }) { design ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape).background(AniMixTheme.colors.accentGradient))
-                ProfileFrameLayer(design, Modifier.size(30.dp))
+                Box(Modifier.size(32.dp).clip(androidx.compose.foundation.shape.CircleShape).background(AniMixTheme.colors.accentGradient))
+                ProfileFrameLayer(design, Modifier.size(32.dp))
             }
         }
         Spacer(Modifier.height(32.dp))
@@ -196,8 +196,12 @@ private fun RewardOption(selected: Boolean, label: String, open: Boolean, onSele
             .semantics { contentDescription = if (open) label else "$label, пока закрыто, примерить" }
             .selectable(selected, onClick = onSelect, role = Role.RadioButton),
             contentAlignment = Alignment.Center) {
-            Box(Modifier.fillMaxSize().then(if (open) Modifier else Modifier.alpha(0.45f)), contentAlignment = Alignment.Center) { content() }
-            if (!open) Icon(AniMixIcons.Lock, null, Modifier.size(16.dp), tint = colors.textSecondary)
+            // A closed reward is shown in full, so it is worth waiting for; the lock sits in the corner, off the design.
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+            if (!open) Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(22.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                .background(colors.background.copy(alpha = 0.78f)), contentAlignment = Alignment.Center) {
+                Icon(AniMixIcons.Lock, null, Modifier.size(12.dp), tint = colors.textSecondary)
+            }
         }
         Spacer(Modifier.height(6.dp))
         Txt(label, AniMixTheme.type.label, color = if (selected) colors.textPrimary else colors.textSecondary, maxLines = 1)

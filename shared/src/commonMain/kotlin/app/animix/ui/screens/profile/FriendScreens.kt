@@ -72,7 +72,7 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
     // Presence changes while the page is open; the rest is cached on the server side of the request.
     LaunchedEffect(id) { while (isActive) { delay(60_000); overview.refresh() } }
     Box(Modifier.fillMaxSize()) {
-    ProfileDesignLayer(profileDesign((overview.value as? Load.Ready)?.value?.profile?.design), Modifier.fillMaxWidth().height(380.dp))
+    ProfileDesignLayer(profileDesign((overview.value as? Load.Ready)?.value?.profile?.design), Modifier.fillMaxWidth().height(ProfileDesignHeight), animated = true)
     ScreenColumn(padding) {
         PageHeader("Профиль", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))

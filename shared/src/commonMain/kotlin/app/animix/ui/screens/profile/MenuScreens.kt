@@ -55,7 +55,8 @@ fun MenuScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
                 else -> "В друзьях"
             }, if (account.user != null) "${social.acceptedFriends().size}" else null, accent = requests > 0) { navigator.push(Route.Friends) },
             MenuTile(AniMixIcons.History, "История", last?.anime?.title ?: "Пока пусто") { navigator.push(Route.History) },
-            MenuTile(AniMixIcons.Bell, "Уведомления", if (unread > 0) "Новых: $unread" else "Новых нет", accent = unread > 0) { navigator.push(Route.Notifications) },
+            MenuTile(AniMixIcons.Bell, "Уведомления", if (unread > 0) "Новых" else "Новых нет",
+                if (unread > 0) "$unread" else null, accent = unread > 0) { navigator.push(Route.Notifications) },
             MenuTile(AniMixIcons.Pulse, "AniPulse", "Ваша аниме-неделя") { navigator.push(Route.Pulse) },
         ))
         Spacer(Modifier.height(28.dp))
@@ -191,8 +192,8 @@ internal val LevelRewards = listOf(
     LevelRewardInfo(app.animix.core.ThemeMode.Coal.unlockLevel, "Тема Horizon Midnight", "Тёмная тема с бирюзовым акцентом и её значок") {
         ThemePreview(app.animix.ui.theme.HorizonCoal)
     },
-    LevelRewardInfo(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон за шапкой профиля") {
-        ProfileDesignLayer(ProfileDesign.Sakura, Modifier.fillMaxSize())
+    LevelRewardInfo(DesignLevel, "Оформление профиля", "Волны, сакура, звёзды или неон в шапке профиля, с движением") {
+        ProfileDesignLayer(ProfileDesign.Sakura, Modifier.fillMaxSize(), fade = false)
     },
     LevelRewardInfo(FrameLevel, "Рамка аватара", "В стиле выбранного оформления, вокруг кольца уровня") {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

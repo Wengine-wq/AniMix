@@ -310,10 +310,7 @@ private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: 
                 Row(Modifier.weight(1f).clip(AniMixTheme.shapes.medium)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button) { navigator.push(Route.FriendProfile(user.id)) }
                     .padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accentGradient),
-                        contentAlignment = Alignment.Center) {
-                        Txt(user.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?", AniMixTheme.type.bodyStrong, color = colors.onAccent)
-                    }
+                    SocialAvatar(user, 44.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Txt(user.name, AniMixTheme.type.bodyStrong, maxLines = 2)
@@ -323,8 +320,23 @@ private fun SocialUserRow(user: SocialUser, navigator: Navigator, actionsBelow: 
                 }
                 if (actions != null && !actionsBelow) { Spacer(Modifier.width(8.dp)); actions() }
             }
-            if (actions != null && actionsBelow) Box(Modifier.fillMaxWidth().padding(top = 10.dp, start = 56.dp)) { actions() }
+            if (actions != null && actionsBelow) Box(Modifier.fillMaxWidth().padding(top = 10.dp, start = 60.dp)) { actions() }
         }
+    }
+}
+
+/**
+ * A person's own photo in a circle, the same as on their profile; the initial on the accent gradient
+ * shows underneath while it loads and stays when there is no photo or it fails to load.
+ */
+@Composable
+internal fun SocialAvatar(user: SocialUser, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    val url = user.avatar?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+    Box(modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape).background(colors.accentGradient),
+        contentAlignment = Alignment.Center) {
+        Txt(user.name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?", AniMixTheme.type.bodyStrong, color = colors.onAccent)
+        if (url != null) RemoteImage(url, Modifier.matchParentSize(), shape = androidx.compose.foundation.shape.CircleShape, placeholder = false)
     }
 }
 
