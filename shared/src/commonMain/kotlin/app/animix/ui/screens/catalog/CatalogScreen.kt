@@ -51,6 +51,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -87,6 +88,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+
+/** [query] first among the last six searches; the same words in another case are one query. */
+internal fun rememberSearch(recent: List<String>, query: String): List<String> {
+    val text = query.trim()
+    if (text.isEmpty()) return recent
+    return (listOf(text) + recent.filterNot { it.equals(text, ignoreCase = true) }).take(6)
+}
 
 /** Shikimori season filter values: recent years one by one, then decades. */
 private val seasonFilters: List<Pair<String, String>> = run {
@@ -132,6 +140,7 @@ fun CatalogScreen(
         search = search.trim().ifEmpty { null }, page = 1,
     )
     val genreList = rememberLoad(Unit) { graph.shikimori.genres() }
+    val recentSearches = graph.settings.state.collectAsState().value.recentSearches
     // Loaded pages outlive the screen, so «Назад» returns to the same results and scroll position.
     val paging = remember(query) { cachedPaging(graph, query) }
     val userFiltered = kinds != preset.kinds || genres.any { it !in preset.genreIds } || (season != null && season != preset.season)
@@ -195,6 +204,21 @@ fun CatalogScreen(
                         }
                     }
                 }
+                if (searchMode && search.isBlank() && recentSearches.isNotEmpty()) {
+                    // Before typing: the last queries that led somewhere, one tap to repeat.
+                    Spacer(Modifier.height(24.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Txt("Недавние запросы", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
+                        Txt("Очистить", AniMixTheme.type.label, color = AniMixTheme.colors.accent,
+                            modifier = Modifier.clip(AniMixTheme.shapes.pill)
+                                .clickable(role = androidx.compose.ui.semantics.Role.Button) { graph.settings.update { it.copy(recentSearches = emptyList()) } }
+                                .padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        recentSearches.forEach { text -> Chip(text, selected = false, onClick = { search = text }, icon = AniMixIcons.Clock) }
+                    }
+                }
                 if (!searchMode && active > 0) {
                     // What is applied right now; a tap on a chip removes that filter.
                     Spacer(Modifier.height(12.dp))
@@ -256,6 +280,8 @@ fun CatalogScreen(
 
         items(paging.items, key = { it.key }) { anime ->
             AnimeCard(anime, onClick = {
+                // A query that led to a title is worth keeping: half-typed words never reach the list.
+                query.search?.let { found -> graph.settings.update { it.copy(recentSearches = rememberSearch(it.recentSearches, found)) } }
                 if (query.search != null) graph.achievements.openedFromSearch(anime.key)
                 if (userFiltered) graph.achievements.openedFromFilter(anime.key)
                 navigator.push(Route.Detail(anime))
@@ -270,7 +296,7 @@ fun CatalogScreen(
                 icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = { scope.launch { paging.loadNext() } })
         }
         when {
-            searchMode && query.search == null -> item(span = { GridItemSpan(maxLineSpan) }) {
+            searchMode && query.search == null -> if (recentSearches.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 MessageState(
                     "Что будем искать?",
                     message = "Название на русском, английском или японском",

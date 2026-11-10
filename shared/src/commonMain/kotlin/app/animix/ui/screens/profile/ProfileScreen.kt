@@ -158,7 +158,7 @@ internal fun ProfileIdentity(profile: LocalProfile, badge: AchievementProgress?,
                                 }
                             }
                           }
-                          // «В сети» is short and sits opposite the name; a long «Был в сети …» would squeeze it, so it goes below.
+                          // «В сети» is short and sits opposite the name; a long «В сети вчера в 21:40» would squeeze it, so it goes below.
                           if (online == true) {
                               Spacer(Modifier.width(8.dp))
                               PresenceLine(online, lastSeenAt, Modifier.widthIn(max = if (wide) 260.dp else 150.dp).clip(AniMixTheme.shapes.pill)

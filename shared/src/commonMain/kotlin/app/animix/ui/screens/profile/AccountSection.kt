@@ -188,7 +188,7 @@ private fun Section(title: String) {
 }
 
 @Composable
-internal fun AccountDivider() = Box(Modifier.fillMaxWidth().padding(start = 50.dp).height(1.dp).background(AniMixTheme.colors.outline))
+internal fun AccountDivider() = RowDivider()
 
 @Composable
 private fun Divider() = AccountDivider()
@@ -201,8 +201,8 @@ internal fun AccountRow(icon: ImageVector, title: String, subtitle: String, trai
         Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(20.dp), tint = if (enabled) colors.textSecondary else colors.textMuted)
-        Spacer(Modifier.width(14.dp))
+        RowIcon(icon, enabled = enabled)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Txt(title, AniMixTheme.type.bodyStrong, color = if (enabled) colors.textPrimary else colors.textSecondary)
             Txt(subtitle, AniMixTheme.type.caption)

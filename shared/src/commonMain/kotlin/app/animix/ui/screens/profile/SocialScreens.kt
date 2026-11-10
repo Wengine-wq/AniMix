@@ -143,7 +143,7 @@ internal fun PrivacySection(graph: AppGraph, navigator: Navigator) {
         visibility = next
         run { try { visibility = graph.social.setVisibility(next) } catch (error: Exception) { visibility = before; throw error } }
     }
-    if (current == null) { if (error == null) LoadingIndicator() } else Panel {
+    if (current == null) { if (error == null) PageLoading() } else Panel {
         PrivacyRow(AniMixIcons.Bookmark, "Коллекция", "Списки и избранное", current.collection, !busy) { change(current.copy(collection = it)) }
         AccountDivider()
         PrivacyRow(AniMixIcons.Clock, "Статистика", "Часы, серии, уровень, активность и любимые жанры", current.stats, !busy) { change(current.copy(stats = it)) }
@@ -163,8 +163,8 @@ internal fun PrivacySection(graph: AppGraph, navigator: Navigator) {
 private fun PrivacyRow(icon: ImageVector, title: String, subtitle: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     val colors = AniMixTheme.colors
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.Top) {
-        Icon(icon, null, Modifier.padding(top = 2.dp).size(20.dp), tint = colors.textSecondary)
-        Spacer(Modifier.width(14.dp))
+        RowIcon(icon)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Txt(title, AniMixTheme.type.bodyStrong)
             Txt(subtitle, AniMixTheme.type.caption)
@@ -178,7 +178,7 @@ private fun PrivacyRow(icon: ImageVector, title: String, subtitle: String, value
     }
 }
 
-/** «был в сети 5 минут назад», «вчера в 21:40», «12 окт.»: when someone was last online. */
+/** «В сети 5 минут назад», «В сети вчера в 21:40», «В сети 12 окт.»: when someone was last online, in words that fit anyone. */
 internal fun lastSeenLabel(at: Long, now: Long = TrustedClockNow()): String {
     if (at <= 0) return "Не в сети"
     val minutes = ((now - at) / 60_000).coerceAtLeast(0)
@@ -186,7 +186,7 @@ internal fun lastSeenLabel(at: Long, now: Long = TrustedClockNow()): String {
     val day = app.animix.core.localDayIndex(at)
     val date = dayToDate(day)
     val clock = app.animix.core.localTimeLabel(at)
-    return "Был в сети " + when {
+    return "В сети " + when {
         minutes < 1 -> "только что"
         minutes < 60 -> "$minutes ${plural(minutes, "минуту", "минуты", "минут")} назад"
         day == today -> "сегодня в $clock"
@@ -457,8 +457,8 @@ internal fun HorizonDevices(graph: AppGraph) {
                 if (index > 0) AccountDivider()
                 Column {
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(deviceIcon(device), null, Modifier.size(20.dp), tint = AniMixTheme.colors.textSecondary)
-                        Spacer(Modifier.width(14.dp))
+                        RowIcon(deviceIcon(device))
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Txt(device.label, AniMixTheme.type.bodyStrong, maxLines = 2)
                             Txt(when { self -> "Это устройство"; device.online() -> "В сети"; else -> lastSeenLabel(device.seenAt) }, AniMixTheme.type.caption)
@@ -468,7 +468,7 @@ internal fun HorizonDevices(graph: AppGraph) {
                             Chip("Отключить", false, { confirm = device.id }, icon = AniMixIcons.Close)
                         }
                     }
-                    if (confirm == device.id) Column(Modifier.padding(start = 50.dp, end = 16.dp, bottom = 14.dp)) {
+                    if (confirm == device.id) Column(Modifier.padding(start = RowTextInset, end = 16.dp, bottom = 14.dp)) {
                         Txt("Отключить «${device.label}»? На нём придётся войти заново. Списки и загрузки на устройстве останутся.", AniMixTheme.type.caption)
                         Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             SecondaryButton("Отмена", { confirm = null }, Modifier.weight(1f))

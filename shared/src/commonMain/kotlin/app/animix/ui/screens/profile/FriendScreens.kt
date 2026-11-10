@@ -1,5 +1,6 @@
 package app.animix.ui.screens.profile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
@@ -77,7 +78,7 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
         PageHeader("Профиль", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))
         when (val state = overview.value) {
-            Load.Loading -> LoadingIndicator()
+            Load.Loading -> FriendProfilePlaceholder()
             is Load.Failed -> MessageState("Не удалось открыть профиль", message = state.error.userMessage(), icon = AniMixIcons.User,
                 actionLabel = "Повторить", onAction = overview::refresh)
             is Load.Ready -> {
@@ -126,7 +127,7 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 items(recent, key = { it.anime.key }) { title ->
                                     AnimeCard(title.anime, { navigator.push(Route.Detail(title.anime)) }, Modifier.width(96.dp),
-                                        caption = title.status?.label ?: if (title.favorite) "Избранное" else null)
+                                        caption = title.status?.label ?: if (title.favorite) "Избранное" else null, mark = false)
                                 }
                             }
                         }
@@ -166,6 +167,44 @@ fun FriendProfileScreen(graph: AppGraph, navigator: Navigator, id: String, paddi
             }
         }
     }
+    }
+}
+
+/**
+ * The page before the friend's data arrives: the banner, the avatar over its edge, the name and the
+ * plates of numbers, collection and awards in their real places, so nothing jumps when it loads.
+ */
+@Composable
+private fun FriendProfilePlaceholder() {
+    SkeletonGroup("Загружается профиль") {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val wide = maxWidth >= 600.dp
+            val avatar = if (wide) 104.dp else 88.dp
+            val banner = if (wide) 204.dp else 152.dp
+            Column {
+                Box(Modifier.fillMaxWidth()) {
+                    Shimmer(Modifier.fillMaxWidth().height(banner), AniMixTheme.shapes.large)
+                    Row(Modifier.fillMaxWidth().padding(top = banner - avatar / 2, start = 16.dp)) {
+                        // The page colour under the avatar keeps its edge clear of the banner, as the real ring does.
+                        Box(Modifier.size(avatar).clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(AniMixTheme.colors.background).padding(4.dp)) {
+                            Shimmer(Modifier.fillMaxSize(), androidx.compose.foundation.shape.CircleShape)
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f).padding(top = avatar / 2 + 6.dp, end = 48.dp)) {
+                            SkeletonText(AniMixTheme.type.heading, fraction = 0.62f)
+                            SkeletonText(AniMixTheme.type.caption, fraction = 0.4f)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+                Shimmer(Modifier.fillMaxWidth().height(92.dp), AniMixTheme.shapes.large)
+                Spacer(Modifier.height(12.dp))
+                Shimmer(Modifier.fillMaxWidth().height(236.dp), AniMixTheme.shapes.large)
+                Spacer(Modifier.height(12.dp))
+                Shimmer(Modifier.fillMaxWidth().height(132.dp), AniMixTheme.shapes.large)
+            }
+        }
     }
 }
 
@@ -272,7 +311,7 @@ fun FriendCollectionScreen(graph: AppGraph, navigator: Navigator, id: String, pa
             }
         }
         when {
-            overview.value is Load.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { LoadingIndicator(Modifier.padding(top = 40.dp)) }
+            overview.value is Load.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { PageLoading() }
             overview.value is Load.Failed -> item(span = { GridItemSpan(maxLineSpan) }) {
                 MessageState("Не удалось открыть коллекцию", message = (overview.value as Load.Failed).error.userMessage(),
                     icon = AniMixIcons.Bookmark, actionLabel = "Повторить", onAction = overview::refresh)
@@ -299,7 +338,7 @@ fun FriendAchievementsScreen(graph: AppGraph, navigator: Navigator, id: String, 
         PageHeader("Достижения", { navigator.back() }, Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(20.dp))
         when (val state = overview.value) {
-            Load.Loading -> LoadingIndicator()
+            Load.Loading -> PageLoading()
             is Load.Failed -> MessageState("Не удалось открыть достижения", message = state.error.userMessage(), icon = AniMixIcons.Trophy,
                 actionLabel = "Повторить", onAction = overview::refresh)
             is Load.Ready -> {

@@ -92,6 +92,10 @@ internal fun closestEpisode(episodes: List<Episode>, number: String?): Episode? 
     return episodes.minByOrNull { kotlin.math.abs(it.sortKey - wanted) }
 }
 
+/** Episodes by a hundred once there are more than a hundred; a short title stays one range. */
+internal fun episodeRanges(episodes: List<Episode>): List<List<Episode>> =
+    if (episodes.size <= 100) listOf(episodes) else episodes.chunked(100)
+
 private fun Episode.isWatched(entry: LibraryEntry?): Boolean = entry?.isEpisodeWatched(number) == true
 
 /**
@@ -114,6 +118,11 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     val library by graph.library.state.collectAsState()
     val entry = library.entry(anime)
     val scope = rememberCoroutineScope()
+    // An airing title says when the next episode comes; the catalog page is cached, so this is rarely a request.
+    val airing = rememberLoad(anime.key to anime.status) {
+        if (anime.status != app.animix.model.AnimeStatus.Ongoing) null
+        else app.animix.core.nextEpisodeLine(anime.episodesAired, graph.anime.detail(anime).nextEpisodeAt)
+    }
     val downloads by graph.downloads.state.collectAsState()
     var downloadMessage by remember { mutableStateOf<String?>(null) }
     var askQuality by remember { mutableStateOf<Pair<Dubbing, List<Episode>>?>(null) }
@@ -151,6 +160,8 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
     val remembered = settings.dubbingByAnime[anime.key]
     var selectedKey by rememberSaveable(anime.key) { mutableStateOf(remembered) }
     var episodeNumber by rememberSaveable(anime.key) { mutableStateOf(openEpisode) }
+    // The range of a long title chosen by hand; a new episode or dubbing returns to the range it is in.
+    var pickedRange by rememberSaveable(anime.key, episodeNumber, selectedKey) { mutableStateOf<Int?>(null) }
     val dubbings = (source.value as? Load.Ready)?.value?.dubbings.orEmpty()
     val selectedDubbing = dubbings.firstOrNull { it.key == selectedKey } ?: dubbings.firstOrNull()
     val selectedEpisode = selectedDubbing?.episodes?.firstOrNull { it.number == episodeNumber }
@@ -245,14 +256,25 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                         }
                     }
                     if (selected != null) {
+                        // A long title is paged by a hundred: the range with the current episode opens first.
+                        val ranges = episodeRanges(selected.episodes)
+                        val current = episodeNumber ?: suggested?.number
+                        val range = ranges.getOrNull(pickedRange ?: ranges.indexOfFirst { range -> range.any { it.number == current } }) ?: ranges.firstOrNull().orEmpty()
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Column(Modifier.padding(top = 20.dp, bottom = 4.dp)) {
                                 Txt("Серии · ${selected.episodes.size}", AniMixTheme.type.heading)
+                                (airing.value as? Load.Ready)?.value?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 4.dp)) }
                                 downloadMessage?.let { Txt(it, AniMixTheme.type.caption, modifier = Modifier.padding(top = 6.dp)) }
+                                if (ranges.size > 1) androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(ranges.size) { index ->
+                                        val item = ranges[index]
+                                        app.animix.ui.components.Chip("${item.first().number}–${item.last().number}", item === range, { pickedRange = index })
+                                    }
+                                }
                             }
                         }
                         val saved = downloads.filter { it.anime.key == anime.key && it.dubbingKey == selected.key && it.status == app.animix.data.downloads.DownloadStatus.Completed }.map { it.episode.number }.toSet()
-                        items(selected.episodes, key = { "${selected.key}:${it.number}" }) { episode ->
+                        items(range, key = { "${selected.key}:${it.number}" }) { episode ->
                             EpisodeCell(
                                 episode,
                                 selected = episode.number == episodeNumber,

@@ -139,7 +139,7 @@ fun CollectionsScreen(graph: AppGraph, navigator: Navigator, padding: PaddingVal
             } else header {
                 Panel {
                     collections.forEachIndexed { index, collection ->
-                        if (index > 0) Box(Modifier.fillMaxWidth().padding(start = 50.dp).height(1.dp).background(AniMixTheme.colors.outline))
+                        if (index > 0) RowDivider()
                         NavRow(collection.name, AniMixIcons.Layers, { navigator.push(Route.Collection(collection.id)) },
                             trailing = "${collection.titles.size} ${app.animix.ui.screens.profile.titlesWord(collection.titles.size)}")
                     }

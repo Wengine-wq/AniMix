@@ -160,11 +160,6 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             QuickFilters(onOpen = { query, title -> navigator.push(Route.Catalog(query, title)) },
                 review = review.year.takeIf { reviewSeen }, onReview = { navigator.push(Route.YearInReview(review.year)) })
         }
-        if (!reviewSeen) item(key = "year-review") {
-            YearReviewCard(library, review) { year -> navigator.push(Route.YearInReview(year)) }
-        }
-        // AniPulse: one quiet entry after the filters (and «Итоги года», which stay right under them).
-        item(key = "anipulse") { app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) } }
         item(key = "continue") {
             ContinueShelf(continueItems, onOpen = { item ->
                 val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&
@@ -172,6 +167,11 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                 navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
             }) { navigator.push(Route.History) }
         }
+        if (!reviewSeen) item(key = "year-review") {
+            YearReviewCard(library, review) { year -> navigator.push(Route.YearInReview(year)) }
+        }
+        // What one was watching comes first after the chips; then «Итоги года» and AniPulse.
+        item(key = "anipulse") { app.animix.ui.screens.pulse.PulseEntry(graph) { navigator.push(Route.Pulse) } }
         if (picksOn) item(key = "recommendations") {
             LoadingShelf("Подобрано для вас", picksState, open, personal::refresh, onMore = { navigator.push(Route.Collections) }, captions = pickReasons)
         }
@@ -225,13 +225,13 @@ fun AniMixWordmark(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HomeTopBar(onSearch: () -> Unit) {
+private fun HomeTopBar(onSearch: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 18.dp),
+        modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AniMixWordmark(Modifier.weight(1f))
-        IconCircle(AniMixIcons.Search, onSearch)
+        IconCircle(AniMixIcons.Search, onSearch, contentDescription = "Поиск")
     }
 }
 
@@ -258,6 +258,16 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (
         scope.launch { pager.animateScrollToPage(pager.currentPage + 1,
             animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) }
     }
+    val indicator: @Composable (Modifier) -> Unit = { modifier ->
+        PageIndicator(items.size, carouselItem(pager.currentPage, items.size) + pager.currentPageOffsetFraction,
+            onSelect = { index ->
+                selectionRevision++
+                val target = pager.currentPage + index - carouselItem(pager.currentPage, items.size)
+                scope.launch { if (performance.animations) pager.animateScrollToPage(target,
+                    animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) else pager.scrollToPage(target) }
+            }, modifier = modifier,
+            autoProgress = timer.value.takeIf { performance.animations && !paused })
+    }
     Column(Modifier.hoverable(hoverInteraction)) {
         HorizontalPager(
             state = pager,
@@ -278,16 +288,12 @@ private fun HeroCarousel(items: List<Anime>, onOpen: (Anime) -> Unit, onShown: (
                 },
             )
         }
-        PageIndicator(items.size, carouselItem(pager.currentPage, items.size) + pager.currentPageOffsetFraction,
-            onSelect = { index ->
-                selectionRevision++
-                val target = pager.currentPage + index - carouselItem(pager.currentPage, items.size)
-                scope.launch { if (performance.animations) pager.animateScrollToPage(target,
-                    animationSpec = tween(AniMixMotion.Page, easing = FastOutSlowInEasing)) else pager.scrollToPage(target) }
-            }, modifier = Modifier.padding(top = 2.dp),
-            autoProgress = timer.value.takeIf { performance.animations && !paused })
+        indicator(Modifier.padding(top = 2.dp))
     }
 }
+
+/** The phone banner: big enough for the poster and two lines of title, small enough to leave the page to the shelves. */
+private val HeroPhoneHeight = 196.dp
 
 /** The same banner on every platform: blurred backdrop, poster on the right, title and play on the left. */
 @Composable
@@ -295,8 +301,8 @@ private fun HeroCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Mod
     val colors = AniMixTheme.colors
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val wide = maxWidth > 700.dp
-        val height = if (wide) 320.dp else 230.dp
-        val inset = if (wide) 24.dp else 16.dp
+        val height = if (wide) 300.dp else HeroPhoneHeight
+        val inset = if (wide) 24.dp else 14.dp
         Box(
             Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large).clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick),
         ) {
@@ -342,7 +348,7 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, review: Int? = 
         Triple("Анонсы", CatalogQuery(status = "anons"), AniMixIcons.Bell),
     )
     LazyRow(
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Already seen: the year stays one tap away, first in the row and in the accent, without a banner.
@@ -353,7 +359,11 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, review: Int? = 
     }
 }
 
-/** «Продолжить просмотр»: wide cards with the episode to open and how far the title is watched. */
+/**
+ * «Продолжить просмотр»: wide picture cards, the first thing after the chips. The poster fills the card
+ * under a scrim; over it the episode, the title and how far the title is watched; the play button is
+ * the accent. A tap opens the episode (a downloaded one plays offline).
+ */
 @Composable
 private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> Unit, onMore: () -> Unit) {
     if (items.isEmpty()) return
@@ -363,25 +373,27 @@ private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> U
         Spacer(Modifier.height(12.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items, key = { it.entry.anime.key }) { item ->
-                Row(
-                    Modifier.width(300.dp).height(112.dp).clip(AniMixTheme.shapes.large).background(colors.surface)
-                        .rim(AniMixTheme.shapes.large, accent = false).clickable { onOpen(item) }.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                val interaction = remember { MutableInteractionSource() }
+                Box(
+                    Modifier.width(264.dp).aspectRatio(16f / 10f).pressScale(interaction).clip(AniMixTheme.shapes.large)
+                        .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current,
+                            role = androidx.compose.ui.semantics.Role.Button) { onOpen(item) },
                 ) {
-                    RemoteImage(item.entry.anime.posterUrl, Modifier.fillMaxHeight().aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Txt(item.entry.anime.title, AniMixTheme.type.bodyStrong, maxLines = 2)
-                        Spacer(Modifier.height(4.dp))
-                        Txt(if (item.episodeStarted) "Серия ${item.episode} · продолжить" else "Серия ${item.episode} · дальше по списку", AniMixTheme.type.micro, maxLines = 1)
-                        Spacer(Modifier.height(10.dp))
-                        Box(Modifier.fillMaxWidth().height(4.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)) {
-                            Box(Modifier.fillMaxWidth(item.titleProgress.coerceAtLeast(0.03f)).fillMaxHeight().background(colors.accentGradient))
-                        }
+                    RemoteImage(item.entry.anime.posterUrl, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large)
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x14000000), 0.45f to Color(0x33000000), 1f to Color(0xD9000000))))
+                    Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(40.dp).accentGlow(CircleShape).clip(CircleShape)
+                        .background(colors.accentGradient).highlight(CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(AniMixIcons.Play, "Продолжить", Modifier.size(16.dp), tint = colors.onAccent)
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Box(Modifier.size(36.dp).clip(CircleShape).background(colors.accentGradient), contentAlignment = Alignment.Center) {
-                        Icon(AniMixIcons.Play, null, Modifier.size(15.dp), tint = colors.onAccent)
+                    Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                        Txt(if (item.episodeStarted) "Серия ${item.episode} · продолжить" else "Серия ${item.episode} · дальше по списку",
+                            AniMixTheme.type.micro, color = Color(0xD9FFFFFF), maxLines = 1)
+                        Spacer(Modifier.height(2.dp))
+                        Txt(item.entry.anime.title, AniMixTheme.type.subheading, color = Color.White, maxLines = 2)
+                        Spacer(Modifier.height(10.dp))
+                        Box(Modifier.fillMaxWidth().height(3.dp).clip(AniMixTheme.shapes.pill).background(Color(0x4DFFFFFF))) {
+                            Box(Modifier.fillMaxWidth(item.titleProgress.coerceAtLeast(0.03f)).fillMaxHeight().background(colors.accent))
+                        }
                     }
                 }
             }
@@ -413,8 +425,8 @@ internal fun HomeHeroPlaceholder() {
         Column {
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                 val wide = maxWidth > 700.dp
-                val height = if (wide) 320.dp else 230.dp
-                val inset = if (wide) 24.dp else 16.dp
+                val height = if (wide) 300.dp else HeroPhoneHeight
+                val inset = if (wide) 24.dp else 14.dp
                 Row(Modifier.fillMaxWidth().height(height).clip(AniMixTheme.shapes.large)
                     .background(AniMixTheme.colors.surface).padding(inset), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).fillMaxHeight().padding(start = if (wide) 8.dp else 2.dp, end = 12.dp)) {

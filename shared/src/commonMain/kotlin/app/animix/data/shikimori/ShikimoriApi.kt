@@ -162,7 +162,7 @@ internal class ShikimoriApi(private val http: HttpClient, private val baseUrl: S
 
         private const val DETAIL_QUERY =
             "query(\$ids: String) { animes(ids: \$ids, limit: 1, censored: false) { $CARD_FIELDS " +
-                "description descriptionHtml duration rating nextEpisodeAt studios { id name imageUrl } screenshots { originalUrl x332Url } " +
+                "description descriptionHtml duration rating nextEpisodeAt studios { id name imageUrl } screenshots { originalUrl x332Url } videos { url name kind imageUrl } " +
                 "related { relationKind relationText anime { $CARD_FIELDS } } topic { id commentsCount } } }"
 
         private const val BY_IDS_QUERY =

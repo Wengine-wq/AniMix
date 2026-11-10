@@ -62,8 +62,16 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
             Spacer(Modifier.height(24.dp))
         }
         // History, achievements and «О приложении» live in the profile menu; settings hold only settings.
-        val shown = SettingsCategory.entries.filter { it != SettingsCategory.About }
-        Panel {
+        // Four named groups instead of one long list: what it is about reads before the rows.
+        val groups = listOf(
+            "Профиль" to listOf(SettingsCategory.Account, SettingsCategory.Privacy),
+            "Просмотр" to listOf(SettingsCategory.Appearance, SettingsCategory.Playback, SettingsCategory.Notifications),
+            "Коллекция" to listOf(SettingsCategory.Lists, SettingsCategory.Downloads, SettingsCategory.Import),
+            "Устройство" to listOf(SettingsCategory.Network, SettingsCategory.Performance, SettingsCategory.Data),
+        )
+        groups.forEachIndexed { groupIndex, (groupTitle, shown) ->
+          if (groupIndex > 0) Spacer(Modifier.height(24.dp))
+          RowGroup(groupTitle) {
             shown.forEachIndexed { index, category ->
                 val summary = when (category) {
                     SettingsCategory.Appearance -> settings.themeMode.label
@@ -82,6 +90,7 @@ fun SettingsScreen(graph: AppGraph, navigator: Navigator, contentPadding: Paddin
                 NavRow(category.title, category.icon, onClick = { navigator.push(Route.SettingsSection(category.name)) }, trailing = summary)
                 if (index < shown.lastIndex) Divider()
             }
+          }
         }
         Spacer(Modifier.height(12.dp))
         Spacer(Modifier.height(24.dp))
@@ -208,7 +217,7 @@ internal fun ScreenColumn(contentPadding: PaddingValues, content: @Composable an
 }
 
 @Composable
-private fun Divider() = HorizontalDivider(Modifier.padding(start = 50.dp), color = AniMixTheme.colors.outline, thickness = 1.dp)
+private fun Divider() = RowDivider()
 
 @Composable
 private fun ThemeOption(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {

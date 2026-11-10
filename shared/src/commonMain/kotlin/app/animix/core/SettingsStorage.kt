@@ -15,6 +15,7 @@ internal object SettingsPreferences {
     val schema = intPreferencesKey("schema_version")
     private val theme = stringPreferencesKey("themeMode")
     private val dubbings = stringPreferencesKey("dubbingByAnime")
+    private val searches = stringPreferencesKey("recentSearches")
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
         "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "ambientGlow", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled",
         "notifyNewEpisodes", "notifyDubbing", "experimentalCollections")
@@ -35,6 +36,7 @@ internal object SettingsPreferences {
                 put(name, kotlinx.serialization.json.JsonPrimitive(it))
             }
             preferences[dubbings]?.let { put("dubbingByAnime", AppJson.parseToJsonElement(it)) }
+            preferences[searches]?.let { put("recentSearches", AppJson.parseToJsonElement(it)) }
         }
         return AppJson.decodeFromJsonElement(Settings.serializer(), json)
     }
@@ -55,6 +57,7 @@ internal object SettingsPreferences {
             }
             for (name in floats) this[floatPreferencesKey(name)] = (json.getValue(name) as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
             this[dubbings] = AppJson.encodeToString<Map<String, String>>(settings.dubbingByAnime)
+            this[searches] = AppJson.encodeToString<List<String>>(settings.recentSearches)
         }
     }
 }

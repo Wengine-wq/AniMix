@@ -514,9 +514,22 @@ fun AniMixPlayer(
             )
             }
             gesture?.let { (brightness, value) -> GestureLevel(brightness, value, Modifier.align(Alignment.TopCenter).padding(top = 24.dp)) }
-            seekFeedback?.let { seconds ->
-                SeekBubble(seconds, Modifier.align(if (seconds < 0) BiasAlignment(-0.6f, 0f) else BiasAlignment(0.6f, 0f)))
-            }
+            // What a seek added up to. It fades away instead of vanishing, and keeps its number while it does.
+            // With the controls on screen the ±10 buttons already are the arrows: only the sum shows, under
+            // the pressed button, never a second arrow over it.
+            var shownSeek by remember { mutableIntStateOf(0) }
+            var seekUnderButton by remember { mutableStateOf(false) }
+            seekFeedback?.let { shownSeek = it; seekUnderButton = overlayVisible }
+            val compactPlayer = maxWidth < 480.dp
+            val seekSide = if (shownSeek < 0) -1 else 1
+            AnimatedVisibility(
+                visible = seekFeedback != null && !pip,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(260)),
+                modifier = if (seekUnderButton) Modifier.align(Alignment.Center)
+                    .offset(x = (if (compactPlayer) 76.dp else 102.dp) * seekSide, y = if (compactPlayer) 44.dp else 50.dp)
+                else Modifier.align(BiasAlignment(0.6f * seekSide, 0f)),
+            ) { SeekBubble(shownSeek, arrow = !seekUnderButton) }
             AnimatedVisibility(
                 visible = activeSkip != null && !atEnd && state.error == null && !pip,
                 enter = fadeIn(tween(160)),
@@ -1105,13 +1118,16 @@ private fun AccentPill(text: String, icon: ImageVector?, remaining: (() -> Float
 }
 
 @Composable
-private fun SeekBubble(seconds: Int, modifier: Modifier) {
-    Box(modifier.size(76.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
+private fun SeekBubble(seconds: Int, arrow: Boolean) {
+    val label = "${if (seconds > 0) "+" else "−"}${kotlin.math.abs(seconds)} с"
+    if (arrow) Box(Modifier.size(76.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(if (seconds < 0) AniMixIcons.SeekBack else AniMixIcons.SeekForward, null, Modifier.size(24.dp), tint = Color.White)
-            Txt("${if (seconds > 0) "+" else "−"}${kotlin.math.abs(seconds)} с", AniMixTheme.type.micro, color = Color.White)
+            Txt(label, AniMixTheme.type.micro, color = Color.White)
         }
     }
+    else Txt(label, AniMixTheme.type.label, color = Color.White, maxLines = 1,
+        modifier = Modifier.clip(AniMixTheme.shapes.pill).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 4.dp))
 }
 
 @Composable

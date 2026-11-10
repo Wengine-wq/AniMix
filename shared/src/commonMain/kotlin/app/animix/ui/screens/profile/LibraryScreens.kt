@@ -138,7 +138,7 @@ private fun LibraryGrid(
             item(span = { GridItemSpan(maxLineSpan) }) { empty() }
         } else {
             items(entries, key = { it.anime.key }) { entry ->
-                AnimeCard(entry.anime, onClick = { navigator.push(Route.Detail(entry.anime)) })
+                AnimeCard(entry.anime, onClick = { navigator.push(Route.Detail(entry.anime)) }, mark = false)
             }
         }
     }

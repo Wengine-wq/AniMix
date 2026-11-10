@@ -7,6 +7,8 @@ import app.animix.ui.theme.LocalUiPerformance
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
@@ -72,11 +74,12 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import app.animix.ui.components.Txt
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.unit.dp
 import app.animix.core.Platform
-import app.animix.ui.components.Txt
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import app.animix.ui.navigation.Navigator
@@ -162,6 +165,17 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     }
 }
 
+/** The list of each title as its poster says it; a title only in favourites is «Избранное». */
+internal fun listMarks(entries: Collection<app.animix.data.library.LibraryEntry>): Map<String, app.animix.ui.components.ListMark> = buildMap {
+    for (entry in entries) {
+        val label = entry.status?.label ?: if (entry.favorite) "Избранное" else continue
+        val total = entry.anime.availableEpisodes
+        val progress = if (entry.status == app.animix.data.library.ListStatus.Watching && total > 0 && entry.episodesWatched > 0)
+            (entry.episodesWatched.toFloat() / total).coerceIn(0f, 1f) else null
+        put(entry.anime.key, app.animix.ui.components.ListMark(label, progress))
+    }
+}
+
 /** What the ambient backdrop behind the current screen shows; screens set it with [Ambient]. */
 @Stable
 class AmbientState {
@@ -194,7 +208,10 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
     val ambient = remember { AmbientState() }
     BackHandler(enabled = navigator.canGoBack) { if (!navigator.back()) onExit() }
 
-    CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient) {
+    // Every poster knows the viewer's lists; equal marks do not recompose the cards when only a position is saved.
+    val library by graph.library.state.collectAsState()
+    val marks = remember(library.entries) { listMarks(library.entries.values) }
+    CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient, app.animix.ui.components.LocalListMarks provides marks) {
         BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
             val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -238,6 +255,9 @@ private fun SaveErrorBar(graph: AppGraph, modifier: Modifier = Modifier) {
 
 private val BottomBarSpace = 92.dp
 
+/** How much wider than the others the chosen tab is, for its name. */
+private const val SelectedShare = 2.3f
+
 @Composable
 private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     val holder = rememberSaveableStateHolder()
@@ -245,6 +265,9 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
     // Remember which route each key showed, so a screen can still draw while it animates out.
     val routes = remember { HashMap<String, Route?>() }
     routes[screenKey] = navigator.current
+    // How deep each screen sits in its tab: a deeper one arrives from the right, «Назад» returns to the left.
+    val depths = remember { HashMap<String, Int>() }
+    depths[screenKey] = navigator.depth
     val ambient = LocalAmbient.current
     val motion = LocalUiPerformance.current.animations
     SideEffect { ambient.currentKey = screenKey }
@@ -252,8 +275,19 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
         targetState = screenKey,
         transitionSpec = {
             val enter = tween<Float>(AniMixMotion.Page, easing = FastOutSlowInEasing)
-            if (motion) (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(AniMixMotion.Fast))
-            else EnterTransition.None togetherWith ExitTransition.None
+            val slide = tween<androidx.compose.ui.unit.IntOffset>(AniMixMotion.Page, easing = FastOutSlowInEasing)
+            val sameTab = initialState.substringBefore('/') == targetState.substringBefore('/')
+            val step = (depths[targetState] ?: 0) - (depths[initialState] ?: 0)
+            when {
+                !motion -> EnterTransition.None togetherWith ExitTransition.None
+                // A short travel, not a full-width push: the page settles into place while it fades in.
+                sameTab && step > 0 -> (fadeIn(enter) + slideInHorizontally(slide) { it / 12 }) togetherWith
+                    (fadeOut(tween(AniMixMotion.Fast)) + slideOutHorizontally(slide) { -it / 24 })
+                sameTab && step < 0 -> ((fadeIn(enter) + slideInHorizontally(slide) { -it / 24 }) togetherWith
+                    (fadeOut(tween(AniMixMotion.Fast)) + slideOutHorizontally(slide) { it / 12 })).apply { targetContentZIndex = -1f }
+                // Tabs are neighbours, not steps: they cross-fade in place.
+                else -> (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(AniMixMotion.Fast))
+            }
         },
         modifier = Modifier.fillMaxSize(),
     ) { key ->
@@ -302,7 +336,10 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
     }
 }
 
-/** Floating frosted-glass navigation, icons only; the selected tab gets a quiet tinted pill. */
+/**
+ * Floating frosted-glass navigation. The chosen tab is a wider pill with its icon and name, so where
+ * one is reads in words; the others are icons. The pill grows and travels with the widths of the slots.
+ */
 @Composable
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
@@ -316,28 +353,33 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
             .glass(shape)
             .padding(6.dp),
     ) {
-        val slot = maxWidth / Tab.entries.size
-        val position by animateFloatAsState(navigator.tab.ordinal.toFloat(), AniMixMotion.selectionSpring())
-        Box(Modifier.offset(x = slot * position)
-            .size(width = slot, height = 48.dp).clip(shape).background(colors.accentSoft))
-        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Tab.entries.forEach { tab ->
+        // Each slot's share of the bar; the chosen one is wider for its name. Read while drawing the pill.
+        val shares = Tab.entries.map { tab ->
+            animateFloatAsState(if (navigator.tab == tab) SelectedShare else 1f, AniMixMotion.selectionSpring())
+        }
+        val total = shares.sumOf { it.value.toDouble() }.toFloat()
+        val unit = maxWidth / total
+        val start = unit * shares.take(navigator.tab.ordinal).sumOf { it.value.toDouble() }.toFloat()
+        Box(Modifier.offset(x = start).size(width = unit * shares[navigator.tab.ordinal].value, height = 48.dp)
+            .clip(shape).background(colors.accentSoft))
+        Row(Modifier.fillMaxWidth().selectableGroup()) {
+            Tab.entries.forEachIndexed { index, tab ->
                 val selected = navigator.tab == tab
                 val interaction = remember { MutableInteractionSource() }
                 val focus by animateFloatAsState(if (selected) 1f else 0f, AniMixMotion.selectionSpring())
                 val tint by animateColorAsState(if (selected) colors.accent else colors.textMuted, tween(AniMixMotion.Standard))
-                Box(
-                    Modifier.weight(1f).height(48.dp)
-                        .pressScale(interaction, pressed = 0.9f)
+                Row(
+                    Modifier.weight(shares[index].value).height(48.dp)
+                        .pressScale(interaction, pressed = 0.94f)
                         .selectable(selected, interaction, indication = null, role = Role.Tab) { navigator.select(tab) }
                         .focusOutline(interaction, shape),
-                    contentAlignment = Alignment.Center,
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(tab.icon, tab.label, Modifier.size(22.dp).graphicsLayer {
-                        scaleX = 1f + 0.08f * focus
-                        scaleY = scaleX
-                        translationY = -1.5.dp.toPx() * focus
-                    }, tint = tint)
+                    Icon(tab.icon, tab.label, Modifier.size(22.dp), tint = tint)
+                    // The name fades in as the slot widens; it never squeezes the icons of the other tabs.
+                    if (focus > 0.02f) Txt(tab.label, AniMixTheme.type.label, color = colors.accentText, maxLines = 1,
+                        modifier = Modifier.padding(start = 6.dp).graphicsLayer { alpha = focus }.clearAndSetSemantics { })
                 }
             }
         }

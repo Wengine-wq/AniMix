@@ -74,7 +74,9 @@ object Snapshot {
                     val label = clicks[clickIndex].second
                     val target = scene.semanticsOwners.asSequence().flatMap { nodes(it.rootSemanticsNode) }.firstOrNull { node ->
                         node.config.getOrNull(SemanticsActions.OnClick)?.action != null &&
-                            nodes(node).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == label } == true }
+                            nodes(node).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == label } == true ||
+                                // Icon buttons have no text: they are found by their accessible name.
+                                it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { name -> name == label } == true }
                     }
                     if (target?.config?.getOrNull(SemanticsActions.OnClick)?.action?.invoke() == true) clickIndex++
                 }

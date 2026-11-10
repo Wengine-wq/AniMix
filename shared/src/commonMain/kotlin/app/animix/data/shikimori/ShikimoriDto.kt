@@ -93,6 +93,9 @@ internal class CommentDto(
 )
 
 @Serializable
+internal class VideoDto(val url: String? = null, val name: String? = null, val kind: String? = null, val imageUrl: String? = null)
+
+@Serializable
 internal class RelatedDto(val relationKind: String? = null, val relationText: String? = null, val anime: AnimeDto? = null)
 
 @Serializable
@@ -119,6 +122,7 @@ internal class AnimeDto(
     val nextEpisodeAt: String? = null,
     val studios: List<StudioDto>? = null,
     val screenshots: List<ScreenshotDto>? = null,
+    val videos: List<VideoDto>? = null,
     val related: List<RelatedDto>? = null,
     val topic: TopicDto? = null,
 )

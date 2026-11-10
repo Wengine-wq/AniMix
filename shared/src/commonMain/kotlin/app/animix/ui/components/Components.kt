@@ -149,6 +149,12 @@ fun LoadingIndicator(modifier: Modifier = Modifier, color: Color = AniMixTheme.c
     else Box(modifier, contentAlignment = Alignment.Center) { Icon(AniMixIcons.Clock, "Загрузка", Modifier.fillMaxSize(), tint = color) }
 }
 
+/** A page that is still loading: the indicator in the middle of the page width, where `MessageState` puts its icon. */
+@Composable
+fun PageLoading(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+}
+
 fun Anime.metaLine(): String = buildList {
     val count = availableEpisodes
     when {
@@ -188,17 +194,39 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
     }
 }
 
-/** Poster card used in shelves and grids. */
+/** What the viewer's own lists say about a title: its list, and how far a title in «Смотрю» is watched. */
+@androidx.compose.runtime.Immutable
+data class ListMark(val label: String, val progress: Float? = null)
+
+/** List marks by [Anime.key] for every poster on screen; the app shell provides them from the library. */
+val LocalListMarks = androidx.compose.runtime.compositionLocalOf<Map<String, ListMark>> { emptyMap() }
+
+/**
+ * Poster card used in shelves and grids. A title from the viewer's lists says so on the poster, in
+ * words («Смотрю», «Просмотрено»), with a thin line of progress while it is being watched; [mark] is
+ * off where the screen already says it (one's own lists).
+ */
 @Composable
-fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, caption: String? = null) {
+fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, caption: String? = null, mark: Boolean = true) {
     val type = AniMixTheme.type
     val interaction = remember { MutableInteractionSource() }
+    val listed = if (mark) LocalListMarks.current[anime.key] else null
     Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)
         .focusOutline(interaction, AniMixTheme.shapes.large)) {
         // The press shows on the poster itself, in its rounded shape, not as a box around the caption.
         Box(Modifier.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
+            if (listed != null) {
+                Txt(listed.label, type.micro, color = Color.White, maxLines = 1,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, end = 6.dp, bottom = if (listed.progress != null) 9.dp else 6.dp)
+                        .clip(AniMixTheme.shapes.pill).background(Color(0x99000000)).padding(horizontal = 7.dp, vertical = 3.dp))
+                listed.progress?.let { progress ->
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x66000000))) {
+                        Box(Modifier.fillMaxWidth(progress.coerceIn(0.03f, 1f)).fillMaxHeight().background(AniMixTheme.colors.accent))
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(10.dp))
         // The year and episodes follow the title directly; rows of cards still line up at the posters.
@@ -227,15 +255,18 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? 
         Txt(title, AniMixTheme.type.heading, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
             val interaction = remember { MutableInteractionSource() }
-            Txt(
-                action,
-                AniMixTheme.type.label,
-                color = AniMixTheme.colors.accent,
-                modifier = Modifier.clip(AniMixTheme.shapes.pill)
+            // A quiet chip with a chevron: it reads as the way to the whole list, not as a second heading.
+            Row(
+                Modifier.clip(AniMixTheme.shapes.pill).background(AniMixTheme.colors.chip)
                     .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onAction)
                     .focusOutline(interaction, AniMixTheme.shapes.pill)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+                    .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Txt(action, AniMixTheme.type.label, color = AniMixTheme.colors.textPrimary, maxLines = 1)
+                Spacer(Modifier.width(2.dp))
+                Icon(AniMixIcons.ChevronRight, null, Modifier.size(14.dp), tint = AniMixTheme.colors.textSecondary)
+            }
         }
     }
 }
@@ -463,6 +494,33 @@ fun MessageState(
     }
 }
 
+/** The icon of a settings-style row: the glyph in a soft accent circle, the same in every list of the app. */
+@Composable
+fun RowIcon(icon: ImageVector, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val colors = AniMixTheme.colors
+    Box(modifier.size(RowIconSize).clip(CircleShape).background(if (enabled) colors.accentSoft else colors.chip), contentAlignment = Alignment.Center) {
+        Icon(icon, null, Modifier.size(17.dp), tint = if (enabled) colors.accent else colors.textMuted)
+    }
+}
+
+/** Size of [RowIcon]; with the 16 dp edge and the 12 dp gap the text of every row starts [RowTextInset] in. */
+val RowIconSize = 32.dp
+val RowTextInset = 60.dp
+
+/** A thin line between rows of one panel, starting where their text starts. */
+@Composable
+fun RowDivider() = Box(Modifier.fillMaxWidth().padding(start = RowTextInset).height(1.dp).background(AniMixTheme.colors.outline))
+
+/** A group of rows under a quiet caption: settings read as a few named groups instead of one long list. */
+@Composable
+fun RowGroup(title: String?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(modifier.fillMaxWidth()) {
+        if (title != null) Txt(title.uppercase(), AniMixTheme.type.micro, color = AniMixTheme.colors.textMuted,
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
+        Panel { content() }
+    }
+}
+
 @Composable
 fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon: ImageVector? = null, subtitle: String? = null, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
@@ -475,8 +533,8 @@ fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, Modifier.size(20.dp), tint = colors.textSecondary)
-            Spacer(Modifier.width(14.dp))
+            RowIcon(icon, enabled = enabled)
+            Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
             Txt(title, AniMixTheme.type.bodyStrong)
@@ -499,11 +557,11 @@ fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: Stri
     val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
-            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 14.dp),
+            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(20.dp), tint = colors.textSecondary)
-        Spacer(Modifier.width(14.dp))
+        RowIcon(icon)
+        Spacer(Modifier.width(12.dp))
         BoxWithConstraints(Modifier.weight(1f)) {
             val type = AniMixTheme.type
             val measurer = rememberTextMeasurer()

@@ -43,11 +43,22 @@ internal fun AnimeDto.toDetail(): AnimeDetail {
     studioLinks = studios.orEmpty().mapNotNull { studio -> studio.id?.toIntOrNull()?.let { app.animix.model.Studio(it, studio.name, studio.imageUrl) } },
     screenshots = screenshots.orEmpty().mapNotNull { it.originalUrl ?: it.x332Url },
     nextEpisodeAt = nextEpisodeAt,
+    trailer = videos.orEmpty().trailer(),
     related = ordered.map { it.anime },
     topicId = topic?.id?.toIntOrNull(),
     commentsCount = topic?.commentsCount ?: 0,
     relatedLabels = ordered.mapNotNull { r -> r.label?.let { r.anime.key to it } }.toMap(),
 )
+}
+
+/**
+ * The trailer of a title: the newest promo video the catalog lists (they come oldest first), never an
+ * episode preview, opening or clip. Its picture and address get a scheme when the catalog omits it.
+ */
+internal fun List<VideoDto>.trailer(): app.animix.model.Trailer? {
+    fun String.withScheme() = if (startsWith("//")) "https:$this" else this
+    val video = lastOrNull { it.kind == "pv" && !it.url.isNullOrBlank() } ?: return null
+    return app.animix.model.Trailer(video.url!!.withScheme(), video.imageUrl?.takeIf { it.isNotBlank() }?.withScheme())
 }
 
 private fun absoluteShikimori(path: String): String =

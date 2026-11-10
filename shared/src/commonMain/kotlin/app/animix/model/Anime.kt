@@ -92,7 +92,12 @@ data class AnimeDetail(
     val relatedLabels: Map<String, String> = emptyMap(),
     /** The studios with their Shikimori ids, for the page of everything a studio made. */
     val studioLinks: List<Studio> = emptyList(),
+    /** The promo video the catalog lists for this title; it opens where the video is hosted. */
+    val trailer: Trailer? = null,
 )
+
+@Serializable
+data class Trailer(val url: String, val imageUrl: String? = null)
 
 @Serializable
 data class Studio(val id: Int, val name: String, val imageUrl: String? = null)

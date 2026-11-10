@@ -54,6 +54,7 @@ import app.animix.model.AnimeDetail
 import app.animix.model.AnimeSource
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.Expandable
+import app.animix.ui.components.focusOutline
 import app.animix.ui.components.RichTextView
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
@@ -161,14 +162,17 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     Spacer(Modifier.height(24.dp))
                     MascotCosplayNote(cosplay)
                 }
-                ready?.screenshots?.takeIf { it.isNotEmpty() }?.let { shots ->
+                // The trailer leads the row of stills: one shelf of what the title looks like, no extra section.
+                val trailer = ready?.trailer
+                val shots = ready?.screenshots.orEmpty()
+                if (trailer != null || shots.isNotEmpty()) {
                     Spacer(Modifier.height(28.dp))
-                    SectionHeader("Кадры")
+                    SectionHeader(when { trailer == null -> "Кадры"; shots.isEmpty() -> "Трейлер"; else -> "Трейлер и кадры" })
                     Spacer(Modifier.height(12.dp))
+                    val frame = Modifier.width(if (wide) 300.dp else 240.dp).aspectRatio(16f / 9f)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(shots) { url ->
-                            RemoteImage(url, Modifier.width(if (wide) 300.dp else 240.dp).aspectRatio(16f / 9f), shape = AniMixTheme.shapes.medium)
-                        }
+                        if (trailer != null) item(key = "trailer") { TrailerTile(trailer, shots.firstOrNull() ?: anime.posterUrl, frame) }
+                        items(shots) { url -> RemoteImage(url, frame, shape = AniMixTheme.shapes.medium) }
                     }
                 }
                 ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
@@ -206,6 +210,42 @@ private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator, 
             AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp),
                 caption = labels[item.key]?.let { label -> listOfNotNull(label, item.year?.toString()).joinToString(" · ") })
         }
+    }
+}
+
+/**
+ * The trailer as the first frame of the stills: its picture under a scrim, a round play button and where
+ * it opens. The video plays where it is hosted (the YouTube app or the browser), and the tile says so.
+ */
+@Composable
+private fun TrailerTile(trailer: app.animix.model.Trailer, fallbackImage: String?, modifier: Modifier) {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val host = trailerHost(trailer.url)
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(modifier.clip(AniMixTheme.shapes.medium)
+        .clickable(interaction, androidx.compose.foundation.LocalIndication.current, role = Role.Button,
+            onClickLabel = "Смотреть трейлер на $host") { runCatching { uri.openUri(trailer.url) } }
+        .focusOutline(interaction, AniMixTheme.shapes.medium)) {
+        RemoteImage(trailer.imageUrl ?: fallbackImage, Modifier.fillMaxSize(), shape = RectangleShape)
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x59000000)))
+        Box(Modifier.align(Alignment.Center).size(48.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Color(0xCC141418)), contentAlignment = Alignment.Center) {
+            Icon(AniMixIcons.Play, null, Modifier.size(20.dp), tint = androidx.compose.ui.graphics.Color.White)
+        }
+        Txt("Трейлер · $host", AniMixTheme.type.micro, color = androidx.compose.ui.graphics.Color.White, maxLines = 1,
+            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).clip(AniMixTheme.shapes.pill)
+                .background(androidx.compose.ui.graphics.Color(0x99000000)).padding(horizontal = 8.dp, vertical = 4.dp))
+    }
+}
+
+/** The name of the place a trailer opens in: «YouTube», «VK Видео», «Rutube», or the site's address. */
+internal fun trailerHost(url: String): String {
+    val host = url.substringAfter("://").substringBefore('/').removePrefix("www.").lowercase()
+    return when {
+        host == "youtu.be" || host.endsWith("youtube.com") -> "YouTube"
+        host.endsWith("vk.com") || host.endsWith("vkvideo.ru") || host.endsWith("vk.ru") -> "VK Видео"
+        host.endsWith("rutube.ru") -> "Rutube"
+        else -> host.ifEmpty { "сайте" }
     }
 }
 
@@ -307,6 +347,16 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = tru
         detail?.durationMinutes?.let { add("$it мин") }
         detail?.rating?.let { add(it) }
     }.joinToString(" · "), type.micro, maxLines = 2)
+    // An airing title says when to come back: the date is known to the catalog, so it is shown, not guessed.
+    detail?.takeIf { anime.status != app.animix.model.AnimeStatus.Released }
+        ?.let { app.animix.core.nextEpisodeLine(anime.episodesAired, it.nextEpisodeAt) }?.let { line ->
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(AniMixIcons.Calendar, null, Modifier.size(14.dp), tint = colors.accent)
+                Spacer(Modifier.width(6.dp))
+                Txt(line, type.label, color = colors.accentText, maxLines = 2)
+            }
+        }
     if (genres) {
         Spacer(Modifier.height(12.dp))
         Genres(anime)

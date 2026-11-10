@@ -168,17 +168,28 @@ private fun Masthead(digest: WeeklyDigest, issue: PulseIssue, loading: Boolean) 
 @Composable
 private fun LeadStory(story: PulseStory, navigator: Navigator) {
     val item = story.item
+    val poster = item.anime?.posterUrl.takeIf { item.imageUrl == null }
     Column(Modifier.fillMaxWidth()) {
         if (item.imageUrl != null) {
             RemoteImage(item.imageUrl, Modifier.fillMaxWidth().aspectRatio(16f / 9f), shape = AniMixTheme.shapes.large)
             Spacer(Modifier.height(14.dp))
         }
-        StoryMeta(story)
-        Spacer(Modifier.height(4.dp))
-        Txt(item.title, AniMixTheme.type.heading)
-        if (story.summary.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Txt(story.summary, AniMixTheme.type.body, color = AniMixTheme.colors.textSecondary)
+        // News without a picture of its own shows the poster of its anime beside the text: a portrait
+        // poster is never stretched into a wide frame, and the story is never a bare block of text.
+        Row(verticalAlignment = Alignment.Top) {
+            if (poster != null) {
+                RemoteImage(poster, Modifier.width(96.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
+                Spacer(Modifier.width(14.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                StoryMeta(story)
+                Spacer(Modifier.height(4.dp))
+                Txt(item.title, AniMixTheme.type.heading)
+                if (story.summary.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Txt(story.summary, AniMixTheme.type.body, color = AniMixTheme.colors.textSecondary, maxLines = if (poster != null) 5 else Int.MAX_VALUE)
+                }
+            }
         }
         NewsActions(item, navigator)
     }
@@ -201,6 +212,9 @@ private fun StoryRow(story: PulseStory, navigator: Navigator) {
             if (item.imageUrl != null) {
                 Spacer(Modifier.width(12.dp))
                 RemoteImage(item.imageUrl, Modifier.size(width = 88.dp, height = 66.dp), shape = AniMixTheme.shapes.small)
+            } else item.anime?.posterUrl?.let { poster ->
+                Spacer(Modifier.width(12.dp))
+                RemoteImage(poster, Modifier.width(56.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
             }
         }
         if (open) NewsActions(item, navigator)
@@ -253,7 +267,7 @@ private fun NewsRow(item: NewsItem, mine: Boolean, open: Boolean, onToggle: () -
     Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onToggle).padding(12.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             // Without a picture the kind of news stands in for it, never an empty grey square.
-            if (item.imageUrl != null) RemoteImage(item.imageUrl, Modifier.size(64.dp), shape = AniMixTheme.shapes.small)
+            if (item.imageUrl ?: item.anime?.posterUrl != null) RemoteImage(item.imageUrl ?: item.anime?.posterUrl, Modifier.size(64.dp), shape = AniMixTheme.shapes.small)
             else Box(Modifier.size(64.dp).clip(AniMixTheme.shapes.small).background(AniMixTheme.colors.accentSoft), contentAlignment = Alignment.Center) {
                 Icon(when (item.kind) { "Анонс" -> AniMixIcons.Sparkle; "Трейлер" -> AniMixIcons.Play; "Премьера" -> AniMixIcons.Calendar; else -> AniMixIcons.Info },
                     null, Modifier.size(24.dp), tint = AniMixTheme.colors.accent)
@@ -341,7 +355,7 @@ private fun Section(title: String, icon: ImageVector) {
 private fun Shelf(titles: List<Pair<Anime, String?>>, navigator: Navigator) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(titles, key = { it.first.key }) { (anime, caption) ->
-            AnimeCard(anime, { navigator.push(Route.Detail(anime)) }, Modifier.width(128.dp), caption = caption)
+            AnimeCard(anime, { navigator.push(Route.Detail(anime)) }, Modifier.width(128.dp), caption = caption, mark = false)
         }
     }
 }

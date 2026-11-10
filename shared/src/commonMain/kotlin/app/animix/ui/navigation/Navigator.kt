@@ -110,6 +110,9 @@ class Navigator {
 
     val current: Route? get() = stacks.getValue(tab).lastOrNull()
 
+    /** How many screens are open above the current tab's root. */
+    val depth: Int get() = stacks.getValue(tab).size
+
     val canGoBack: Boolean get() = stacks.getValue(tab).isNotEmpty() || tab != Tab.Home
 
     fun select(target: Tab) {
