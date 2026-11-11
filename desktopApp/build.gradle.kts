@@ -75,7 +75,7 @@ compose.desktop {
             modules("java.net.http", "jdk.unsupported")
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "AniMix"
-            packageVersion = "1.2.2"
+            packageVersion = "1.3.0"
             description = "AniMix New Horizons"
             vendor = "AniMix"
             windows {

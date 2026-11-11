@@ -17,8 +17,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // versionCode only grows: 3000 + minor * 100 + patch of the "1.minor.patch re" line.
-        versionCode = 3202
-        versionName = "1.2.2"
+        versionCode = 3300
+        versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
