@@ -98,6 +98,8 @@ fun Txt(
 /** Keep long page titles readable on narrow screens and with larger system text. */
 @Composable
 fun PageHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    // The page's scroll column shows the same title in a bar once this header scrolls away.
+    LocalPageBar.current?.let { bar -> androidx.compose.runtime.SideEffect { bar.title = title; bar.onBack = onBack } }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconCircle(AniMixIcons.Back, onClick = onBack, contentDescription = "Назад")
         Spacer(Modifier.width(12.dp))
@@ -108,6 +110,39 @@ fun PageHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier)
             val availableWidth = with(LocalDensity.current) { maxWidth.roundToPx() }
             Txt(title, if (naturalWidth > availableWidth) type.heading else type.title)
         }
+    }
+}
+
+/** What a scrolling page shows in its bar: the [PageHeader] of the page registers itself here. */
+@androidx.compose.runtime.Stable
+class PageBarState {
+    var title by mutableStateOf<String?>(null)
+    var onBack by mutableStateOf<(() -> Unit)?>(null)
+}
+
+val LocalPageBar = androidx.compose.runtime.staticCompositionLocalOf<PageBarState?> { null }
+
+/**
+ * The bar a page grows when its own header scrolls away: «Назад» and the page's name on a frosted strip
+ * under the status bar, with a hairline at its lower edge. It fades in with the scroll ([shown] from 0
+ * to 1), so it reads as the same header following the reader, not as a new element. It never blurs the
+ * page it lies on; battery saving makes it solid.
+ */
+@Composable
+fun CollapsedPageBar(title: String, onBack: () -> Unit, shown: () -> Float, topInset: Dp, modifier: Modifier = Modifier) {
+    val colors = AniMixTheme.colors
+    val visible by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { shown() > 0.01f } }
+    if (!visible) return
+    // Nearly opaque: rows passing under it must not read through the title.
+    val fill = if (LocalUiPerformance.current.batterySaver) colors.background else colors.background.copy(alpha = 0.94f)
+    Column(modifier.fillMaxWidth().graphicsLayer { alpha = shown().coerceIn(0f, 1f) }.background(fill)) {
+        Spacer(Modifier.height(topInset))
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconCircle(AniMixIcons.Back, onBack, size = 40.dp, contentDescription = "Назад")
+            Spacer(Modifier.width(12.dp))
+            Txt(title, AniMixTheme.type.subheading, maxLines = 1, modifier = Modifier.weight(1f))
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outline))
     }
 }
 

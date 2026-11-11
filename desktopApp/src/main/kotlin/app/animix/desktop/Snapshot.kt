@@ -24,7 +24,7 @@ import java.io.File
  * Renders the app off-screen into a PNG, for design reviews and docs:
  * `AniMix.exe --snapshot=out.png --size=1280x820 --wait=8 animix://home`.
  * Add `--font-scale=1.3` to check enlarged system text.
- * `--frames=6000,6100,6200` captures intermediate animation frames; `--scroll=400` checks lower content.
+ * `--frames=6000,6100,6200` captures intermediate animation frames; `--scroll=400` checks lower content (`--scroll-at=3000` delays it).
  * `--hover=200,200 --leave=4000` checks mouse pause and resume without opening a window.
  * `--click=1000:Начать сессию` invokes a visible button by its semantic label after 1 second; repeat for a sequence.
  * `--load-delay-ms=60000` holds network loading states for deterministic skeleton previews.
@@ -44,6 +44,8 @@ object Snapshot {
         val frames = args.firstOrNull { it.startsWith("--frames=") }?.substringAfter('=')?.split(',')
             ?.map { it.toLong() }?.filter { it >= 0 }?.sorted().orEmpty()
         val scroll = args.firstOrNull { it.startsWith("--scroll=") }?.substringAfter('=')?.toFloat() ?: 0f
+        // `--scroll-at=3000` waits for slow pages before scrolling (800 ms by default).
+        val scrollAt = args.firstOrNull { it.startsWith("--scroll-at=") }?.substringAfter('=')?.toLong() ?: 800L
         val hover = args.firstOrNull { it.startsWith("--hover=") }?.substringAfter('=')?.split(',')?.map(String::toFloat)
         val leave = args.firstOrNull { it.startsWith("--leave=") }?.substringAfter('=')?.toLong()
         val clicks = args.filter { it.startsWith("--click=") }.map {
@@ -110,7 +112,7 @@ object Snapshot {
                     scene.sendPointerEvent(PointerEventType.Exit, Offset.Zero)
                     left = true
                 }
-                if (!scrolled && scroll != 0f && elapsed >= 800) {
+                if (!scrolled && scroll != 0f && elapsed >= scrollAt) {
                     val point = Offset(width / 2f, height / 2f)
                     scene.sendPointerEvent(PointerEventType.Move, point)
                     scene.sendPointerEvent(PointerEventType.Scroll, point, scrollDelta = Offset(0f, scroll / 64f))

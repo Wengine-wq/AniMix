@@ -207,12 +207,23 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
 
 @Composable
 internal fun ScreenColumn(contentPadding: PaddingValues, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val scroll = rememberScrollState()
+    val bar = remember { PageBarState() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(contentPadding).padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            content = content,
-        )
+        CompositionLocalProvider(LocalPageBar provides bar) {
+            Column(
+                Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(scroll)
+                    .padding(contentPadding).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                content = content,
+            )
+        }
+        // The page's own header is about 56 dp tall: the bar takes over over the next 32 dp of scroll.
+        val title = bar.title
+        val back = bar.onBack
+        if (title != null && back != null) CollapsedPageBar(title, back,
+            shown = { with(density) { (scroll.value - 48.dp.toPx()) / 32.dp.toPx() } },
+            topInset = contentPadding.calculateTopPadding())
     }
 }
 

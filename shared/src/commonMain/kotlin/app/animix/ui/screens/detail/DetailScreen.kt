@@ -55,6 +55,8 @@ import app.animix.model.AnimeSource
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.Expandable
 import app.animix.ui.components.focusOutline
+import app.animix.ui.components.rim
+import androidx.compose.ui.graphics.graphicsLayer
 import app.animix.ui.components.RichTextView
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Load
@@ -133,19 +135,16 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 900.dp
+        val scroll = rememberScrollState()
+        val density = LocalDensity.current
         Column(
-            Modifier.fillMaxSize().background(AniMixTheme.colors.background).verticalScroll(rememberScrollState())
+            Modifier.fillMaxSize().background(AniMixTheme.colors.background).verticalScroll(scroll)
                 .padding(bottom = contentPadding.calculateBottomPadding() + 32.dp),
         ) {
             if (wide) {
                 WideHeader(anime, ready, contentPadding, actions)
             } else {
-                MobileHero(anime, ready, contentPadding)
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Genres(anime)
-                    Spacer(Modifier.height(20.dp))
-                    actions()
-                }
+                MobileHero(anime, ready, contentPadding, actions)
             }
             Column(
                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 1100.dp)
@@ -190,12 +189,16 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                 }
             }
         }
+        // Past the picture the floating «Назад» hands over to a bar with the title: one way back at a time.
+        val barShown = { with(density) { (scroll.value - 240.dp.toPx()) / 48.dp.toPx() }.coerceIn(0f, 1f) }
         IconCircle(
             AniMixIcons.Back,
             onClick = { navigator.back() },
             glass = true,
-            modifier = Modifier.statusBarsPadding().padding(16.dp),
+            modifier = Modifier.statusBarsPadding().padding(16.dp).graphicsLayer { alpha = 1f - barShown() },
         )
+        if (anime.title.isNotBlank()) app.animix.ui.components.CollapsedPageBar(anime.title, { navigator.back() }, barShown,
+            topInset = contentPadding.calculateTopPadding())
     }
 }
 
@@ -252,23 +255,49 @@ internal fun trailerHost(url: String): String {
 private enum class DetailSheet { Lists, Rate, Collection }
 
 /**
- * The phone hero: a wide still (or the poster) under a soft scrim, with the poster
- * and title laid over its lower part, like the desktop header.
+ * The phone hero: a still of the title across the whole width from the top of the screen, light at the
+ * top and fading into the page colour, with the poster, the title, the genres and the actions over its
+ * lower part. Without a still the blurred poster stands in under a heavier scrim.
  */
 @Composable
-private fun MobileHero(anime: Anime, detail: AnimeDetail?, padding: PaddingValues) {
+private fun MobileHero(anime: Anime, detail: AnimeDetail?, padding: PaddingValues, actions: @Composable () -> Unit) {
+    val colors = AniMixTheme.colors
+    val top = padding.calculateTopPadding()
+    val still = detail?.screenshots?.firstOrNull()
     Box(Modifier.fillMaxWidth()) {
-        HeroBackdrop(anime, detail, Modifier.matchParentSize())
-        // Content determines the height: long titles and larger system fonts cannot escape the scrim.
-        Column(Modifier.fillMaxWidth().padding(top = padding.calculateTopPadding() + 152.dp, bottom = 16.dp)) {
+        Box(Modifier.fillMaxWidth().height(top + MobileStillHeight).clip(RectangleShape)) {
+            RemoteImage(still ?: anime.posterUrl,
+                Modifier.fillMaxSize().then(if (still == null && !LocalUiPerformance.current.batterySaver) Modifier.blur(24.dp) else Modifier),
+                shape = RectangleShape)
+            // The rule of the anime page: a scrim over any picture that ends in the page's own colour.
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                0f to colors.background.copy(alpha = 0.55f),
+                0.16f to colors.background.copy(alpha = if (still != null) 0.06f else 0.4f),
+                0.42f to colors.background.copy(alpha = if (still != null) 0.12f else 0.5f),
+                0.72f to colors.background.copy(alpha = 0.82f),
+                1f to colors.background,
+            )))
+        }
+        // Content determines the height: long titles and larger system fonts stay over the fade.
+        Column(Modifier.fillMaxWidth().padding(top = top + MobileStillHeight - 104.dp)) {
             Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
-                RemoteImage(anime.posterUrl, Modifier.width(108.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
+                RemoteImage(anime.posterUrl, Modifier.width(96.dp).aspectRatio(0.7f).rim(AniMixTheme.shapes.medium, accent = false),
+                    shape = AniMixTheme.shapes.medium)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f).padding(bottom = 2.dp)) { TitleBlock(anime, detail, genres = false, compact = true) }
+            }
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Spacer(Modifier.height(10.dp))
+                Genres(anime)
+                Spacer(Modifier.height(18.dp))
+                actions()
             }
         }
     }
 }
+
+/** Height of the still on a phone below the status bar; the poster and title sit over its last third. */
+private val MobileStillHeight = 300.dp
 
 @Composable
 private fun HeroBackdrop(anime: Anime, detail: AnimeDetail?, modifier: Modifier) {
@@ -316,7 +345,14 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValue
 private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = true, compact: Boolean = false) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
-    Txt(anime.title.ifBlank { "Аниме" }, if (compact) type.title else type.display, maxLines = 3)
+    // A word never breaks in the middle: if the longest word is wider than the column, the title steps down a size.
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val preferred = if (compact) type.title else type.display
+        val longest = anime.title.ifBlank { "Аниме" }.split(' ').maxByOrNull { it.length }.orEmpty()
+        val fits = measurer.measure(longest, preferred, softWrap = false, maxLines = 1).size.width <= constraints.maxWidth
+        Txt(anime.title.ifBlank { "Аниме" }, if (fits) preferred else type.heading, maxLines = 3)
+    }
     if (anime.title.isBlank()) return
     if (anime.originalTitle != anime.title) {
         Spacer(Modifier.height(4.dp))
