@@ -76,6 +76,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import app.animix.ui.components.Txt
+import app.animix.ui.components.liquidSheen
+import app.animix.ui.components.rim
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.unit.dp
@@ -338,7 +340,9 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
 
 /**
  * Floating frosted-glass navigation. The chosen tab is a wider pill with its icon and name, so where
- * one is reads in words; the others are icons. The pill grows and travels with the widths of the slots.
+ * one is reads in words; the others are icons. The pill moves like a drop of liquid glass: the edge in
+ * the direction of travel leads, the other follows on a softer spring, so the pill stretches on the way
+ * and settles to its slot without bouncing. Without animations it simply stands in its slot.
  */
 @Composable
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
@@ -357,11 +361,24 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
         val shares = Tab.entries.map { tab ->
             animateFloatAsState(if (navigator.tab == tab) SelectedShare else 1f, AniMixMotion.selectionSpring())
         }
-        val total = shares.sumOf { it.value.toDouble() }.toFloat()
-        val unit = maxWidth / total
-        val start = unit * shares.take(navigator.tab.ordinal).sumOf { it.value.toDouble() }.toFloat()
-        Box(Modifier.offset(x = start).size(width = unit * shares[navigator.tab.ordinal].value, height = 48.dp)
-            .clip(shape).background(colors.accentSoft))
+        val selectedIndex = navigator.tab.ordinal
+        var previous by remember { mutableStateOf(selectedIndex) }
+        val forward = selectedIndex >= previous
+        SideEffect { previous = selectedIndex }
+        val slots = Tab.entries.size - 1 + SelectedShare
+        val lead = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 900f)
+        val trail = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 260f)
+        val startEdge by animateFloatAsState(selectedIndex / slots, if (forward) trail else lead)
+        val endEdge by animateFloatAsState((selectedIndex + SelectedShare) / slots, if (forward) lead else trail)
+        val width = maxWidth
+        Box(Modifier.graphicsLayer {
+                // Stretched pills get a touch thinner, as a drop does; the slot pill is 48 dp.
+                val stretch = ((endEdge - startEdge) * slots / SelectedShare - 1f).coerceIn(0f, 0.6f)
+                translationX = startEdge * width.toPx()
+                scaleY = 1f - stretch * 0.12f
+            }
+            .width(width * (endEdge - startEdge).coerceAtLeast(0.05f)).height(48.dp)
+            .clip(shape).background(colors.accentSoft).liquidSheen().rim(shape, accent = true))
         Row(Modifier.fillMaxWidth().selectableGroup()) {
             Tab.entries.forEachIndexed { index, tab ->
                 val selected = navigator.tab == tab

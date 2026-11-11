@@ -203,7 +203,8 @@ fun WatchScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPad
                         Column(Modifier.weight(1f)) {
                             Txt(anime.title, AniMixTheme.type.heading, maxLines = 1)
                             Txt(
-                                episodeNumber?.let { number -> listOfNotNull("Серия $number", selectedDubbing?.studio).joinToString(" · ") } ?: "Выберите серию",
+                                episodeNumber?.let { number -> listOfNotNull("Серия $number", selectedDubbing?.studio).joinToString(" · ") }
+                                    ?: suggested?.let { "Дальше серия ${it.number}" } ?: "Выберите серию",
                                 AniMixTheme.type.caption,
                                 maxLines = 1,
                             )

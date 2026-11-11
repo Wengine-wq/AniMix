@@ -210,20 +210,23 @@ internal fun ScreenColumn(contentPadding: PaddingValues, content: @Composable an
     val scroll = rememberScrollState()
     val bar = remember { PageBarState() }
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val pageHaze = rememberPageHaze()
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         CompositionLocalProvider(LocalPageBar provides bar) {
-            Column(
-                Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(scroll)
-                    .padding(contentPadding).padding(horizontal = 20.dp).padding(bottom = 24.dp),
-                content = content,
-            )
+            Box(Modifier.fillMaxSize().pageHazeSource(pageHaze), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(scroll)
+                        .padding(contentPadding).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                    content = content,
+                )
+            }
         }
         // The page's own header is about 56 dp tall: the bar takes over over the next 32 dp of scroll.
         val title = bar.title
         val back = bar.onBack
         if (title != null && back != null) CollapsedPageBar(title, back,
             shown = { with(density) { (scroll.value - 48.dp.toPx()) / 32.dp.toPx() } },
-            topInset = contentPadding.calculateTopPadding())
+            topInset = contentPadding.calculateTopPadding(), source = pageHaze)
     }
 }
 

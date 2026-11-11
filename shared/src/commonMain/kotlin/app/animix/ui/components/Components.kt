@@ -129,13 +129,13 @@ val LocalPageBar = androidx.compose.runtime.staticCompositionLocalOf<PageBarStat
  * page it lies on; battery saving makes it solid.
  */
 @Composable
-fun CollapsedPageBar(title: String, onBack: () -> Unit, shown: () -> Float, topInset: Dp, modifier: Modifier = Modifier) {
+fun CollapsedPageBar(title: String, onBack: () -> Unit, shown: () -> Float, topInset: Dp, modifier: Modifier = Modifier,
+    source: dev.chrisbanes.haze.HazeState? = null) {
     val colors = AniMixTheme.colors
     val visible by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { shown() > 0.01f } }
     if (!visible) return
-    // Nearly opaque: rows passing under it must not read through the title.
-    val fill = if (LocalUiPerformance.current.batterySaver) colors.background else colors.background.copy(alpha = 0.94f)
-    Column(modifier.fillMaxWidth().graphicsLayer { alpha = shown().coerceIn(0f, 1f) }.background(fill)) {
+    // Frosted over the page's own layer: rows passing under it blur instead of reading through the title.
+    Column(modifier.fillMaxWidth().graphicsLayer { alpha = shown().coerceIn(0f, 1f) }.frosted(source).liquidSheen(0.6f)) {
         Spacer(Modifier.height(topInset))
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconCircle(AniMixIcons.Back, onBack, size = 40.dp, contentDescription = "Назад")
@@ -378,6 +378,7 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
             .pressScale(interaction)
             .clip(shape)
             .background(colors.chip)
+            .liquidSheen()
             .rim(shape, accent = false)
             .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
             .focusOutline(interaction, shape)
@@ -427,6 +428,8 @@ fun IconCircle(
     active: Boolean = false,
     contentDescription: String? = null,
     enabled: Boolean = true,
+    /** The layer under a glass button that lies over a page: blurred for real instead of a translucent fill. */
+    glassSource: dev.chrisbanes.haze.HazeState? = null,
 ) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
@@ -438,8 +441,8 @@ fun IconCircle(
             .then(
                 when {
                     active -> Modifier.clip(CircleShape).background(colors.accentSoft).rim(CircleShape, accent = true)
-                    glass -> Modifier.glass(CircleShape, backdrop = false)
-                    else -> Modifier.clip(CircleShape).background(colors.chip).rim(CircleShape, accent = false)
+                    glass -> Modifier.glass(CircleShape, backdrop = glassSource != null, source = glassSource, radius = 18.dp, tint = 0.45f)
+                    else -> Modifier.clip(CircleShape).background(colors.chip).liquidSheen().rim(CircleShape, accent = false)
                 },
             )
             .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
@@ -457,18 +460,35 @@ fun IconCircle(
 }
 
 /**
- * The thin light rim from the concepts: brighter along the top edge, fading downwards.
- * Accent rims are pink; neutral ones are a faint highlight.
+ * The edge of every AniMix surface, cut like glass: light falls from the top left, so that corner is the
+ * brightest, the middle of the edge almost vanishes and the lower right catches a fainter reflection.
+ * Accent rims carry the accent the same way. Battery saving keeps the simple top-lit rim.
  */
 @Composable
 fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
     val colors = AniMixTheme.colors
-    val brush = if (accent) {
-        Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.45f), colors.accent.copy(alpha = 0.12f)))
-    } else {
-        Brush.verticalGradient(listOf(colors.rimHighlight, Color.Transparent))
+    if (LocalUiPerformance.current.batterySaver) {
+        val plain = if (accent) Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.45f), colors.accent.copy(alpha = 0.12f)))
+            else Brush.verticalGradient(listOf(colors.rimHighlight, Color.Transparent))
+        return border(1.dp, plain, shape)
     }
-    return border(1.dp, brush, shape)
+    val (bright, faint) = if (accent) colors.accent.copy(alpha = 0.6f) to colors.accent.copy(alpha = 0.22f)
+        else colors.rimHighlight.copy(alpha = (colors.rimHighlight.alpha * if (colors.isDark) 2.6f else 1f).coerceAtMost(1f)) to
+            colors.rimHighlight.copy(alpha = colors.rimHighlight.alpha * if (colors.isDark) 1.1f else 0.7f)
+    return border(1.dp, SpecularEdge(bright, faint), shape)
+}
+
+/** A diagonal light across a shape's bounds: [bright] at the top left, nothing in the middle, [faint] at the lower right. */
+private class SpecularEdge(private val bright: Color, private val faint: Color) : androidx.compose.ui.graphics.ShaderBrush() {
+    override fun createShader(size: androidx.compose.ui.geometry.Size): androidx.compose.ui.graphics.Shader =
+        androidx.compose.ui.graphics.LinearGradientShader(
+            from = androidx.compose.ui.geometry.Offset.Zero,
+            to = androidx.compose.ui.geometry.Offset(size.width, size.height),
+            colors = listOf(bright, bright.copy(alpha = bright.alpha * 0.35f), Color.Transparent, Color.Transparent, faint),
+            colorStops = listOf(0f, 0.22f, 0.42f, 0.7f, 1f),
+        )
+    override fun equals(other: Any?) = other is SpecularEdge && other.bright == bright && other.faint == faint
+    override fun hashCode() = bright.hashCode() * 31 + faint.hashCode()
 }
 
 /**
@@ -643,6 +663,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
             .softShadow(AniMixTheme.shapes.large)
             .clip(AniMixTheme.shapes.large)
             .background(colors.surface.copy(alpha = if (colors.isDark) 0.72f else 0.82f))
+            .liquidSheen(0.7f)
             .rim(AniMixTheme.shapes.large, accent = false),
     ) { content() }
 }

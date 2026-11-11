@@ -11,6 +11,7 @@ import app.animix.model.AnimeStatus
 import app.animix.model.Episode
 import app.animix.ui.screens.catalog.rememberSearch
 import app.animix.ui.screens.detail.episodeRanges
+import app.animix.ui.screens.detail.resumeTarget
 import app.animix.ui.screens.detail.trailerHost
 import app.animix.ui.screens.profile.lastSeenLabel
 import kotlin.test.Test
@@ -94,5 +95,16 @@ class Release13Test {
         assertEquals("В сети только что", lastSeenLabel(now - 20_000, now))
         assertTrue(lastSeenLabel(now - 40L * 86_400_000, now).startsWith("В сети "))
         assertEquals("Не в сети", lastSeenLabel(0, now))
+    }
+
+    @Test
+    fun watchLeadsToTheEpisodeLeftHalfWayOrTheNextOne() {
+        val title = Anime.placeholder(7).copy(title = "B", episodes = 12)
+        assertNull(resumeTarget(null, 12))
+        assertNull(resumeTarget(LibraryEntry(title), 12))
+        assertEquals("5" to true, resumeTarget(LibraryEntry(title, episodesWatched = 4, episodePositions = mapOf("3" to 0L, "5" to 61_000L)), 12))
+        assertEquals("5" to false, resumeTarget(LibraryEntry(title, episodesWatched = 4), 12))
+        // Watched to the end: nothing to continue.
+        assertNull(resumeTarget(LibraryEntry(title, episodesWatched = 12), 12))
     }
 }

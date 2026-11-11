@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import app.animix.ui.theme.AniMixTheme
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
@@ -38,15 +40,19 @@ import dev.chrisbanes.haze.blur.hazeBlur
 val LocalHaze = staticCompositionLocalOf<HazeState?> { null }
 
 /**
- * Frosted glass: blurs whatever is behind (the app's content), tinted with the theme surface.
- * Falls back to a translucent fill when there is no backdrop to blur.
+ * AniMix glass, the one material of everything that floats: frosted (whatever lies behind is blurred and
+ * tinted with the theme surface) and liquid (a specular edge, bright where the light falls from the top
+ * left and catching it again at the lower right, over a soft sheen in the upper half). [source] is the
+ * layer to blur: the app's content for bars over it, or a page's own layer for controls lying on that
+ * page. With [backdrop] off, or with nothing to blur, the glass is a translucent fill with the same edge.
+ * Battery saving makes it a solid surface with the plain rim.
  */
 @Composable
-fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdrop: Boolean = true): Modifier {
+fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdrop: Boolean = true, source: HazeState? = null): Modifier {
     val colors = AniMixTheme.colors
     if (LocalUiPerformance.current.batterySaver) return clip(shape).background(colors.surface).rim(shape, accent = false)
     // Controls inside the scrolling content can't blur the layer they belong to; they use a translucent fill.
-    val haze = LocalHaze.current.takeIf { backdrop }
+    val haze = (source ?: LocalHaze.current).takeIf { backdrop }
     val base = softShadow(shape).clip(shape)
     val surface = if (haze != null) {
         base.hazeBlur(
@@ -61,7 +67,47 @@ fun Modifier.glass(shape: Shape, tint: Float = 0.62f, radius: Dp = 28.dp, backdr
     } else {
         base.background(colors.surfaceGlass)
     }
-    return surface.rim(shape, accent = false)
+    return surface.liquidSheen().rim(shape, accent = false)
+}
+
+/**
+ * Frosted fill without an edge, for full-width bars: [source] blurred and tinted with the theme surface.
+ * Battery saving and a missing source give the plain page colour.
+ */
+@Composable
+fun Modifier.frosted(source: HazeState?, tint: Float = 0.7f, radius: Dp = 24.dp): Modifier {
+    val colors = AniMixTheme.colors
+    if (LocalUiPerformance.current.batterySaver || source == null) return background(colors.background.copy(alpha = 0.94f))
+    return hazeBlur(
+        input = HazeInput.Sources(source),
+        style = HazeBlurStyle {
+            blurRadius(radius)
+            backgroundColor(colors.background)
+            noiseFactor(0.04f)
+            colorEffects(listOf(HazeColorEffect.tint(colors.background.copy(alpha = tint))))
+        },
+    )
+}
+
+/** A page's own layer for glass that lies on the page (its bar, a floating button): blur it without reading itself. */
+@Composable
+fun rememberPageHaze(): HazeState? = if (LocalUiPerformance.current.batterySaver) null else dev.chrisbanes.haze.rememberHazeState()
+
+/** Marks [state] as the page layer that [frosted] and page-level glass blur. */
+fun Modifier.pageHazeSource(state: HazeState?): Modifier = if (state == null) this else hazeSource(state)
+
+
+/**
+ * The sheen of glass: light gathered in the upper part of the surface, gone by the middle. Drawn over the
+ * fill and under the content; never on solid surfaces in battery saving.
+ */
+@Composable
+fun Modifier.liquidSheen(strength: Float = 1f): Modifier {
+    if (LocalUiPerformance.current.batterySaver) return this
+    val light = Color.White.copy(alpha = (if (AniMixTheme.colors.isDark) 0.06f else 0.22f) * strength)
+    return drawBehind {
+        drawRect(Brush.verticalGradient(0f to light, 0.55f to Color.Transparent, startY = 0f, endY = size.height))
+    }
 }
 
 /** A gentle shrink while pressed, so taps feel physical without shouting. */

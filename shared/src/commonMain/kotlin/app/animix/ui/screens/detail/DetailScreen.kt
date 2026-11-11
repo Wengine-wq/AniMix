@@ -46,6 +46,7 @@ import app.animix.AppGraph
 import app.animix.Ambient
 import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
+import app.animix.data.library.watchedEpisodeCount
 import app.animix.data.mascot.mascotCosplayFor
 import app.animix.ui.components.MascotCosplayNote
 import androidx.compose.runtime.collectAsState
@@ -56,6 +57,7 @@ import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.Expandable
 import app.animix.ui.components.focusOutline
 import app.animix.ui.components.rim
+import app.animix.ui.components.pageHazeSource
 import androidx.compose.ui.graphics.graphicsLayer
 import app.animix.ui.components.RichTextView
 import app.animix.ui.components.IconCircle
@@ -102,12 +104,23 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         if (anime.title.isNotEmpty() && graph.connection.prefetch) graph.scope.launch { runCatching { graph.yummy.watchSource(anime) } }
     }
     var notice by remember { mutableStateOf<String?>(null) }
+    val openStudio: (app.animix.model.Studio) -> Unit = { studio ->
+        navigator.push(Route.Catalog(app.animix.data.shikimori.CatalogQuery(studioId = studio.id), studio.name))
+    }
+    // «Смотреть» says where it leads: the episode left half-way, or the next one after those watched.
+    val resume = remember(entry, anime.availableEpisodes) { resumeTarget(entry, anime.availableEpisodes) }
     val actions: @Composable () -> Unit = {
         if (anime.title.isBlank()) {
             PrimaryButton("Смотреть", {}, icon = AniMixIcons.Play, enabled = false, modifier = Modifier.fillMaxWidth())
         } else WatchActions(
             entry = entry,
-            onWatch = { navigator.push(Route.Watch(anime)) },
+            // The button stays short; the episode and the moment are in the status line right under it.
+            watchLabel = if (resume?.second == true) "Продолжить" else "Смотреть",
+            resumeNote = resume?.let { (episode, started) ->
+                val at = entry?.episodePositions?.get(episode)?.takeIf { started && it > 0 }
+                if (at != null) "серия $episode с ${at / 60_000}:${(at / 1000 % 60).toString().padStart(2, '0')}" else "дальше серия $episode"
+            },
+            onWatch = { navigator.push(Route.Watch(anime, episode = resume?.first)) },
             onLists = { sheet = DetailSheet.Lists },
             onDownload = { navigator.push(Route.Downloads(anime, add = true)) },
             onSaved = { navigator.push(Route.Downloads(anime)) },
@@ -137,14 +150,16 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         val wide = maxWidth >= 900.dp
         val scroll = rememberScrollState()
         val density = LocalDensity.current
+        // The page is its own layer, so «Назад» over the picture and the bar are real frosted glass.
+        val pageHaze = app.animix.ui.components.rememberPageHaze()
         Column(
-            Modifier.fillMaxSize().background(AniMixTheme.colors.background).verticalScroll(scroll)
+            Modifier.fillMaxSize().pageHazeSource(pageHaze).background(AniMixTheme.colors.background).verticalScroll(scroll)
                 .padding(bottom = contentPadding.calculateBottomPadding() + 32.dp),
         ) {
             if (wide) {
-                WideHeader(anime, ready, contentPadding, actions)
+                WideHeader(anime, ready, contentPadding, actions, openStudio)
             } else {
-                MobileHero(anime, ready, contentPadding, actions)
+                MobileHero(anime, ready, contentPadding, actions, openStudio)
             }
             Column(
                 Modifier.align(Alignment.CenterHorizontally).widthIn(max = 1100.dp)
@@ -155,11 +170,15 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     Load.Loading -> DescriptionPlaceholder()
                     is Load.Failed -> MessageState("Не удалось загрузить аниме", message = state.error.userMessage(),
                         icon = AniMixIcons.Refresh, actionLabel = "Повторить", onAction = detail::refresh)
-                    is Load.Ready -> Description(state.value) { studio -> navigator.push(Route.Catalog(app.animix.data.shikimori.CatalogQuery(studioId = studio.id), studio.name)) }
+                    is Load.Ready -> Description(state.value)
                 }
                 mascotCosplayFor(anime)?.takeIf { app.animix.ui.components.MascotShown }?.let { cosplay ->
                     Spacer(Modifier.height(24.dp))
                     MascotCosplayNote(cosplay)
+                }
+                // Other seasons and films come right after the description: where to go next matters more than stills.
+                ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
+                    AnimeShelf("Связанное", related, navigator, labels = ready.relatedLabels)
                 }
                 // The trailer leads the row of stills: one shelf of what the title looks like, no extra section.
                 val trailer = ready?.trailer
@@ -173,9 +192,6 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                         if (trailer != null) item(key = "trailer") { TrailerTile(trailer, shots.firstOrNull() ?: anime.posterUrl, frame) }
                         items(shots) { url -> RemoteImage(url, frame, shape = AniMixTheme.shapes.medium) }
                     }
-                }
-                ready?.related?.takeIf { it.isNotEmpty() }?.let { related ->
-                    AnimeShelf("Связанное", related, navigator, labels = ready.relatedLabels)
                 }
                 if (anime.title.isNotBlank() && similar.value is Load.Loading) {
                     AnimeShelfPlaceholder("Похожее", Modifier.padding(top = 28.dp), cardWidth = 120.dp, horizontalPadding = 0.dp)
@@ -195,10 +211,11 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
             AniMixIcons.Back,
             onClick = { navigator.back() },
             glass = true,
+            glassSource = pageHaze,
             modifier = Modifier.statusBarsPadding().padding(16.dp).graphicsLayer { alpha = 1f - barShown() },
         )
         if (anime.title.isNotBlank()) app.animix.ui.components.CollapsedPageBar(anime.title, { navigator.back() }, barShown,
-            topInset = contentPadding.calculateTopPadding())
+            topInset = contentPadding.calculateTopPadding(), source = pageHaze)
     }
 }
 
@@ -255,12 +272,24 @@ internal fun trailerHost(url: String): String {
 private enum class DetailSheet { Lists, Rate, Collection }
 
 /**
+ * Where «Смотреть» leads: the episode with a saved position (true: it is continued), else the one after
+ * those watched while there are more; null for a title not started or watched to the end.
+ */
+internal fun resumeTarget(entry: LibraryEntry?, available: Int): Pair<String, Boolean>? {
+    entry ?: return null
+    entry.episodePositions.filterValues { it > 0 }.keys.maxByOrNull { it.toDoubleOrNull() ?: 0.0 }?.let { return it to true }
+    val watched = entry.watchedEpisodeCount
+    return if (watched > 0 && watched < available) (watched + 1).toString() to false else null
+}
+
+/**
  * The phone hero: a still of the title across the whole width from the top of the screen, light at the
  * top and fading into the page colour, with the poster, the title, the genres and the actions over its
  * lower part. Without a still the blurred poster stands in under a heavier scrim.
  */
 @Composable
-private fun MobileHero(anime: Anime, detail: AnimeDetail?, padding: PaddingValues, actions: @Composable () -> Unit) {
+private fun MobileHero(anime: Anime, detail: AnimeDetail?, padding: PaddingValues, actions: @Composable () -> Unit,
+    onStudio: (app.animix.model.Studio) -> Unit) {
     val colors = AniMixTheme.colors
     val top = padding.calculateTopPadding()
     val still = detail?.screenshots?.firstOrNull()
@@ -284,7 +313,7 @@ private fun MobileHero(anime: Anime, detail: AnimeDetail?, padding: PaddingValue
                 RemoteImage(anime.posterUrl, Modifier.width(96.dp).aspectRatio(0.7f).rim(AniMixTheme.shapes.medium, accent = false),
                     shape = AniMixTheme.shapes.medium)
                 Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f).padding(bottom = 2.dp)) { TitleBlock(anime, detail, genres = false, compact = true) }
+                Column(Modifier.weight(1f).padding(bottom = 2.dp)) { TitleBlock(anime, detail, genres = false, compact = true, onStudio = onStudio) }
             }
             Column(Modifier.padding(horizontal = 20.dp)) {
                 Spacer(Modifier.height(10.dp))
@@ -322,7 +351,8 @@ private fun HeroBackdrop(anime: Anime, detail: AnimeDetail?, modifier: Modifier)
 }
 
 @Composable
-private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValues, actions: @Composable () -> Unit) {
+private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValues, actions: @Composable () -> Unit,
+    onStudio: (app.animix.model.Studio) -> Unit) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         HeroBackdrop(anime, detail, Modifier.matchParentSize())
         Row(
@@ -333,7 +363,7 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValue
             RemoteImage(anime.posterUrl, Modifier.width(220.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             Spacer(Modifier.width(32.dp))
             Column(Modifier.weight(1f).padding(bottom = 4.dp)) {
-                TitleBlock(anime, detail)
+                TitleBlock(anime, detail, onStudio = onStudio)
                 Spacer(Modifier.height(20.dp))
                 Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) { actions() }
             }
@@ -342,7 +372,8 @@ private fun WideHeader(anime: Anime, detail: AnimeDetail?, padding: PaddingValue
 }
 
 @Composable
-private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = true, compact: Boolean = false) {
+private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = true, compact: Boolean = false,
+    onStudio: (app.animix.model.Studio) -> Unit = {}) {
     val colors = AniMixTheme.colors
     val type = AniMixTheme.type
     // A word never breaks in the middle: if the longest word is wider than the column, the title steps down a size.
@@ -383,6 +414,30 @@ private fun TitleBlock(anime: Anime, detail: AnimeDetail?, genres: Boolean = tru
         detail?.durationMinutes?.let { add("$it мин") }
         detail?.rating?.let { add(it) }
     }.joinToString(" · "), type.micro, maxLines = 2)
+    // Who made it, right with the facts: a studio is a way into everything it made, not a footnote at the bottom.
+    val studios = detail?.studioLinks.orEmpty()
+    if (studios.isNotEmpty()) {
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            studios.take(2).forEachIndexed { index, studio ->
+                if (index > 0) Txt(" · ", type.micro)
+                val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                Row(Modifier.clip(AniMixTheme.shapes.pill)
+                    .clickable(interaction, androidx.compose.foundation.LocalIndication.current, role = Role.Button,
+                        onClickLabel = "Все тайтлы студии ${studio.name}") { onStudio(studio) }
+                    .focusOutline(interaction, AniMixTheme.shapes.pill).padding(vertical = 4.dp, horizontal = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(AniMixIcons.Catalog, null, Modifier.size(12.dp), tint = colors.accent)
+                    Spacer(Modifier.width(5.dp))
+                    Txt(studio.name, type.label, color = colors.accentText, maxLines = 1)
+                    Icon(AniMixIcons.ChevronRight, null, Modifier.size(12.dp), tint = colors.accentText)
+                }
+            }
+        }
+    } else detail?.studios?.takeIf { it.isNotEmpty() }?.let {
+        Spacer(Modifier.height(4.dp))
+        Txt(it.joinToString(), type.micro, maxLines = 1)
+    }
     // An airing title says when to come back: the date is known to the catalog, so it is shown, not guessed.
     detail?.takeIf { anime.status != app.animix.model.AnimeStatus.Released }
         ?.let { app.animix.core.nextEpisodeLine(anime.episodesAired, it.nextEpisodeAt) }?.let { line ->
@@ -420,6 +475,8 @@ private fun Genres(anime: Anime) {
 @Composable
 private fun WatchActions(
     entry: LibraryEntry?,
+    watchLabel: String,
+    resumeNote: String?,
     onWatch: () -> Unit,
     onLists: () -> Unit,
     onDownload: () -> Unit,
@@ -434,17 +491,17 @@ private fun WatchActions(
 ) {
     var more by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        PrimaryButton("Смотреть", onWatch, icon = AniMixIcons.Play, modifier = Modifier.weight(1f))
+        PrimaryButton(watchLabel, onWatch, icon = AniMixIcons.Play, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(8.dp))
         IconCircle(AniMixIcons.Bookmark, onLists, size = 50.dp, active = entry?.status != null || entry?.favorite == true,
             contentDescription = entry?.status?.label ?: "Добавить в список")
         Spacer(Modifier.width(8.dp))
         IconCircle(AniMixIcons.More, { more = true }, size = 50.dp, contentDescription = "Ещё действия")
     }
-    if (entry?.status != null || entry?.score != null || downloaded > 0) {
+    if (entry?.status != null || entry?.score != null || downloaded > 0 || resumeNote != null) {
         Spacer(Modifier.height(10.dp))
-        Txt(listOfNotNull(entry?.status?.label, entry?.score?.let { "Моя оценка $it / 10" },
-            "$downloaded ${episodesWord(downloaded)} скачано".takeIf { downloaded > 0 }).joinToString(" · "), AniMixTheme.type.caption)
+        Txt(listOfNotNull(entry?.status?.label, resumeNote, entry?.score?.let { "Моя оценка $it / 10" },
+            "$downloaded ${episodesWord(downloaded)} скачано".takeIf { downloaded > 0 }).joinToString(" · ").replaceFirstChar { it.uppercase() }, AniMixTheme.type.caption)
     }
     if (more) app.animix.ui.components.AniMixSheet({ more = false }, title = "Действия с тайтлом") {
         app.animix.ui.components.NavRow(entry?.score?.let { "Моя оценка: $it / 10" } ?: "Оценить тайтл", AniMixIcons.StarOutline,
@@ -461,22 +518,9 @@ private fun WatchActions(
 }
 
 @Composable
-private fun Description(detail: AnimeDetail, onStudio: (app.animix.model.Studio) -> Unit) {
-    val type = AniMixTheme.type
+private fun Description(detail: AnimeDetail) {
     if (!detail.description.isBlank) {
         Expandable(collapsedHeight = 112.dp) { RichTextView(detail.description) }
-    }
-    // A studio is a way into everything it made: each one a chip that opens its titles in the catalog.
-    if (detail.studioLinks.isNotEmpty()) {
-        Spacer(Modifier.height(14.dp))
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
-            itemVerticalAlignment = Alignment.CenterVertically) {
-            Txt(if (detail.studioLinks.size == 1) "Студия" else "Студии", type.caption)
-            detail.studioLinks.forEach { studio -> app.animix.ui.components.Chip(studio.name, false, { onStudio(studio) }, icon = AniMixIcons.Catalog) }
-        }
-    } else if (detail.studios.isNotEmpty()) {
-        Spacer(Modifier.height(14.dp))
-        Txt("Студия: ${detail.studios.joinToString()}", type.caption)
     }
 }
 

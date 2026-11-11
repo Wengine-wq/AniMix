@@ -37,23 +37,50 @@ fun SelectionList(
     if (options.isEmpty()) return
     val colors = AniMixTheme.colors
     var open by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("") }
     val selected = options.firstOrNull { it.key == selectedKey } ?: options.first()
-    val shown = if (open) options else listOf(selected)
+    // A long list of dubbings gets a search line: nobody scrolls through sixty studios to find one.
+    val searchable = options.size > 8
+    val shown = when {
+        !open -> listOf(selected)
+        filter.isBlank() -> options
+        else -> options.filter { it.title.contains(filter.trim(), ignoreCase = true) || it.subtitle.contains(filter.trim(), ignoreCase = true) }
+    }
     Column {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt(title, AniMixTheme.type.heading, modifier = Modifier.weight(1f))
             if (options.size > 1) {
-                Txt(if (open) "Свернуть" else "Сменить · ${options.size}", AniMixTheme.type.label,
-                    color = colors.accent, modifier = Modifier.clip(AniMixTheme.shapes.pill)
-                        .clickable(role = Role.Button) { open = !open }.padding(horizontal = 8.dp, vertical = 8.dp))
+                // The same quiet chip as «Все ›» of the sections.
+                Row(Modifier.clip(AniMixTheme.shapes.pill).background(colors.chip)
+                    .clickable(role = Role.Button) { open = !open; filter = "" }.padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Txt(if (open) "Свернуть" else "Сменить · ${options.size}", AniMixTheme.type.label, color = colors.textPrimary, maxLines = 1)
+                    Spacer(Modifier.width(2.dp))
+                    Icon(if (open) AniMixIcons.ChevronUp else AniMixIcons.ChevronDown, null, Modifier.size(14.dp), tint = colors.textSecondary)
+                }
             }
         }
-        Panel(Modifier.animateContentSize(AniMixMotion.selectionSpring()).selectableGroup()) {
+        if (open && searchable) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp).height(44.dp).clip(AniMixTheme.shapes.pill).background(colors.chip)
+                .rim(AniMixTheme.shapes.pill, accent = false).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(AniMixIcons.Search, null, Modifier.size(16.dp), tint = colors.textMuted)
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    if (filter.isEmpty()) Txt("Найти озвучку", AniMixTheme.type.body, color = colors.textMuted, maxLines = 1)
+                    androidx.compose.foundation.text.BasicTextField(filter, { filter = it }, singleLine = true, textStyle = AniMixTheme.type.body,
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent), modifier = Modifier.fillMaxWidth())
+                }
+                if (filter.isNotEmpty()) Icon(AniMixIcons.Close, "Очистить", Modifier.size(20.dp).clip(AniMixTheme.shapes.pill).clickable { filter = "" }.padding(2.dp),
+                    tint = colors.textSecondary)
+            }
+        }
+        if (open && shown.isEmpty()) Txt("Нет озвучки с таким названием", AniMixTheme.type.caption, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+        if (shown.isNotEmpty()) Panel(Modifier.animateContentSize(AniMixMotion.selectionSpring()).selectableGroup()) {
             shown.forEachIndexed { index, option ->
                 val chosen = option.key == selected.key
                 val background by animateColorAsState(if (chosen) colors.accentSoft else Color.Transparent, tween(AniMixMotion.Standard))
                 Row(Modifier.fillMaxWidth().background(background).semantics { this.selected = chosen }
-                    .clickable(role = Role.RadioButton) { onSelect(option.key); open = false }
+                    .clickable(role = Role.RadioButton) { onSelect(option.key); open = false; filter = "" }
                     .padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(icon, null, Modifier.size(18.dp), tint = if (chosen) colors.accent else colors.textMuted)
                     Spacer(Modifier.width(12.dp))
