@@ -45,6 +45,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.draw.innerShadow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
@@ -230,6 +234,30 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * A long press that has to be meant: the finger stays down for [holdMs] and moves less than [tolerance],
+ * and nothing under it (a list, a pager) takes the gesture over. A press that starts a scroll, a fling
+ * stopped by a touch or a resting thumb drifting by a few pixels never opens anything. Observes only:
+ * taps still reach the clickable below.
+ */
+fun Modifier.deliberateHold(holdMs: Long = 650, tolerance: androidx.compose.ui.unit.Dp = 6.dp, onHold: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        val slop = tolerance.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            val fired = withTimeoutOrNull(holdMs) {
+                while (true) {
+                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull false
+                    if (!change.pressed || change.isConsumed || event.changes.size > 1) return@withTimeoutOrNull false
+                    if ((change.position - down.position).getDistance() > slop) return@withTimeoutOrNull false
+                }
+                @Suppress("UNREACHABLE_CODE") false
+            }
+            if (fired == null) onHold()
+        }
+    }
+
 /** What the viewer's own lists say about a title: its list, and how far a title in «Смотрю» is watched. */
 @androidx.compose.runtime.Immutable
 data class ListMark(val label: String, val progress: Float? = null)
@@ -250,12 +278,14 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, 
     val actions = LocalPosterActions.current
     val haptics = rememberHaptics()
     var menu by remember { mutableStateOf(false) }
+    // The release after a hold that opened the menu is not a tap on the poster.
+    var held by remember { mutableStateOf(false) }
     Column(modifier.pressScale(interaction)
-        .then(if (actions != null) Modifier.combinedClickable(interaction, indication = null, onClick = onClick,
-            onLongClickLabel = "Действия с тайтлом", onLongClick = { haptics.longPress(); menu = true })
-            else Modifier.clickable(interaction, indication = null, onClick = onClick))
+        .then(if (actions != null) Modifier.deliberateHold { haptics.longPress(); held = true; menu = true } else Modifier)
+        .clickable(interaction, indication = null, onClick = { if (held) held = false else onClick() })
+        .semantics { if (actions != null) onLongClick("Действия с тайтлом") { menu = true; true } }
         .focusOutline(interaction, AniMixTheme.shapes.large)) {
-        if (menu && actions != null) PosterMenu(anime, actions) { menu = false }
+        if (menu && actions != null) PosterMenu(anime, actions) { menu = false; held = false }
         // The press shows on the poster itself, in its rounded shape, not as a box around the caption.
         Box(Modifier.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
