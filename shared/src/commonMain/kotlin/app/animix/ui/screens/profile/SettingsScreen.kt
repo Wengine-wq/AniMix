@@ -128,6 +128,12 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 }
                 Spacer(Modifier.height(24.dp))
                 Panel {
+                    ToggleRow("Жидкое стекло", settings.liquidGlass && !settings.batterySaver,
+                        { value -> graph.settings.update { it.copy(liquidGlass = value) } }, AniMixIcons.Sparkle,
+                        subtitle = if (settings.batterySaver) "Отключено режимом экономии батареи"
+                            else "Блики на кромках, подложка навбара «каплей» и переходы со сдвигом. Выключите — останется матовое стекло и спокойные переходы",
+                        enabled = !settings.batterySaver)
+                    Divider()
                     ToggleRow("Экономия батареи", settings.batterySaver,
                         { value -> graph.settings.update { it.copy(batterySaver = value) } }, AniMixIcons.Battery,
                         subtitle = "Без анимаций, размытия и автолистания; в плеере — без стекла и свечения рамок, полоса прогресса шагами. Внешний вид и навигация те же")

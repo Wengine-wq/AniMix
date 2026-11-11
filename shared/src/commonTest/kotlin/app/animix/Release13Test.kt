@@ -44,6 +44,8 @@ class Release13Test {
     fun recentSearchesSurviveSavingSettings() {
         val saved = SettingsPreferences.decode(SettingsPreferences.encode(Settings(recentSearches = listOf("Фрирен", "ван пис"))))
         assertEquals(listOf("Фрирен", "ван пис"), saved.recentSearches)
+        assertTrue(saved.liquidGlass)
+        assertFalse(SettingsPreferences.decode(SettingsPreferences.encode(Settings(liquidGlass = false))).liquidGlass)
     }
 
     @Test

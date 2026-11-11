@@ -18,7 +18,7 @@ internal object SettingsPreferences {
     private val searches = stringPreferencesKey("recentSearches")
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
         "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "ambientGlow", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled",
-        "notifyNewEpisodes", "notifyDubbing", "experimentalCollections")
+        "notifyNewEpisodes", "notifyDubbing", "experimentalCollections", "liquidGlass")
     private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate", "playerMode", "appIcon")
     private val floats = listOf("playbackSpeed")
 

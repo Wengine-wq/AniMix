@@ -467,7 +467,8 @@ fun IconCircle(
 @Composable
 fun Modifier.rim(shape: Shape, accent: Boolean): Modifier {
     val colors = AniMixTheme.colors
-    if (LocalUiPerformance.current.batterySaver) {
+    // Frosted glass (liquid glass off) and battery saving: the calm rim, lit evenly along the top.
+    if (!LocalUiPerformance.current.liquid) {
         val plain = if (accent) Brush.verticalGradient(listOf(colors.accent.copy(alpha = 0.45f), colors.accent.copy(alpha = 0.12f)))
             else Brush.verticalGradient(listOf(colors.rimHighlight, Color.Transparent))
         return border(1.dp, plain, shape)

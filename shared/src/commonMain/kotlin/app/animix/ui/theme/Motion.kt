@@ -14,7 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
 
 @Immutable
-data class UiPerformance(val animations: Boolean = true, val batterySaver: Boolean = false)
+data class UiPerformance(val animations: Boolean = true, val batterySaver: Boolean = false,
+    /** Lit glass edges, sheen and liquid motion; off (or battery saving) leaves frosted glass and calm motion. */
+    val liquid: Boolean = true)
 
 val LocalUiPerformance = staticCompositionLocalOf { UiPerformance() }
 

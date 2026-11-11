@@ -48,13 +48,13 @@ fun themeColors(mode: ThemeMode, systemDark: Boolean): AniMixColors = when (mode
 }
 
 @Composable
-fun AniMixTheme(mode: ThemeMode, animationsEnabled: Boolean = true, batterySaver: Boolean = false, content: @Composable () -> Unit) {
+fun AniMixTheme(mode: ThemeMode, animationsEnabled: Boolean = true, batterySaver: Boolean = false, liquidGlass: Boolean = true, content: @Composable () -> Unit) {
     val colors = themeColors(mode, isSystemInDarkTheme())
     val type = rememberAniMixType(colors)
     val ripple = LocalRippleConfiguration.current.takeIf { animationsEnabled && !batterySaver }
     CompositionLocalProvider(LocalColors provides colors, LocalType provides type,
         LocalRippleConfiguration provides ripple,
-        LocalUiPerformance provides UiPerformance(animationsEnabled && !batterySaver, batterySaver)) {
+        LocalUiPerformance provides UiPerformance(animationsEnabled && !batterySaver, batterySaver, liquidGlass && !batterySaver)) {
         MaterialTheme(colorScheme = colors.toMaterial(), typography = type.toMaterial()) {
             // Every press in AniMix shows the same veil, instead of Material's ripple (off without animations).
             CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides

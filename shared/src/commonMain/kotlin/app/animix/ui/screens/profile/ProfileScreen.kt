@@ -203,7 +203,17 @@ internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier, 
             drawPath(horizon, colors.accent.copy(alpha = 0.16f))
             drawRect(Brush.verticalGradient(listOf(Color.Transparent, colors.surface.copy(alpha = 0.4f))))
         }
-        if (model != null) RemoteImage(model, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large, placeholder = false)
+        if (model != null) {
+            RemoteImage(model, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large, placeholder = false)
+            // A banner photo used to hide the design: on a phone only thin strips around it were left. The
+            // design now lies over the photo too, light at the top and full by the edge where the name begins.
+            if (design != null) {
+                // A light veil of the page colour, so petals, stars and lines read over a bright photo.
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to colors.background.copy(alpha = 0.18f),
+                    0.5f to colors.background.copy(alpha = 0.12f), 1f to colors.background.copy(alpha = 0.42f))))
+                ProfileDesignLayer(design, Modifier.fillMaxSize(), animated = true, fade = false, overPhoto = true)
+            }
+        }
     }
 }
 

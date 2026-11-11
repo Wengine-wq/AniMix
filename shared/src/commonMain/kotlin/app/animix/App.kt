@@ -151,7 +151,7 @@ fun App(graph: AppGraph, navigator: Navigator = remember { Navigator() }, startL
     }
 
     val level by graph.level.collectAsState()
-    AniMixTheme(settings.themeMode.at(level.level), settings.animationsEnabled, settings.batterySaver) {
+    AniMixTheme(settings.themeMode.at(level.level), settings.animationsEnabled, settings.batterySaver, settings.liquidGlass) {
         if (initialized) {
             AppShell(graph, navigator, onExit)
             app.animix.ui.screens.profile.HorizonIncoming(graph,navigator)
@@ -272,6 +272,7 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
     depths[screenKey] = navigator.depth
     val ambient = LocalAmbient.current
     val motion = LocalUiPerformance.current.animations
+    val liquid = LocalUiPerformance.current.liquid
     SideEffect { ambient.currentKey = screenKey }
     AnimatedContent(
         targetState = screenKey,
@@ -282,6 +283,8 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
             val step = (depths[targetState] ?: 0) - (depths[initialState] ?: 0)
             when {
                 !motion -> EnterTransition.None togetherWith ExitTransition.None
+                // Calm motion with frosted glass: every page simply fades in place.
+                !liquid -> (fadeIn(enter) + scaleIn(enter, initialScale = 0.985f)) togetherWith fadeOut(tween(AniMixMotion.Fast))
                 // A short travel, not a full-width push: the page settles into place while it fades in.
                 sameTab && step > 0 -> (fadeIn(enter) + slideInHorizontally(slide) { it / 12 }) togetherWith
                     (fadeOut(tween(AniMixMotion.Fast)) + slideOutHorizontally(slide) { -it / 24 })
@@ -366,8 +369,10 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
         val forward = selectedIndex >= previous
         SideEffect { previous = selectedIndex }
         val slots = Tab.entries.size - 1 + SelectedShare
-        val lead = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 900f)
-        val trail = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 260f)
+        // Frosted glass moves calmly: both edges on one spring, the pill glides without stretching.
+        val liquid = LocalUiPerformance.current.liquid
+        val lead = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = if (liquid) 900f else 400f)
+        val trail = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = if (liquid) 260f else 400f)
         val startEdge by animateFloatAsState(selectedIndex / slots, if (forward) trail else lead)
         val endEdge by animateFloatAsState((selectedIndex + SelectedShare) / slots, if (forward) lead else trail)
         val width = maxWidth
@@ -375,7 +380,7 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
                 // Stretched pills get a touch thinner, as a drop does; the slot pill is 48 dp.
                 val stretch = ((endEdge - startEdge) * slots / SelectedShare - 1f).coerceIn(0f, 0.6f)
                 translationX = startEdge * width.toPx()
-                scaleY = 1f - stretch * 0.12f
+                scaleY = if (liquid) 1f - stretch * 0.12f else 1f
             }
             .width(width * (endEdge - startEdge).coerceAtLeast(0.05f)).height(48.dp)
             .clip(shape).background(colors.accentSoft).liquidSheen().rim(shape, accent = true))

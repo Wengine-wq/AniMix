@@ -103,7 +103,7 @@ fun Modifier.pageHazeSource(state: HazeState?): Modifier = if (state == null) th
  */
 @Composable
 fun Modifier.liquidSheen(strength: Float = 1f): Modifier {
-    if (LocalUiPerformance.current.batterySaver) return this
+    if (!LocalUiPerformance.current.liquid) return this
     val light = Color.White.copy(alpha = (if (AniMixTheme.colors.isDark) 0.06f else 0.22f) * strength)
     return drawBehind {
         drawRect(Brush.verticalGradient(0f to light, 0.55f to Color.Transparent, startY = 0f, endY = size.height))

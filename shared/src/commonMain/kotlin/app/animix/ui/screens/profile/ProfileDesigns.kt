@@ -95,13 +95,19 @@ private fun rememberDesignClock(animated: Boolean): State<Float> {
  * without it (the default banner, previews) it fills its box evenly.
  */
 @Composable
-fun ProfileDesignLayer(design: ProfileDesign?, modifier: Modifier, animated: Boolean = false, fade: Boolean = true) {
+fun ProfileDesignLayer(design: ProfileDesign?, modifier: Modifier, animated: Boolean = false, fade: Boolean = true,
+    /** Drawn over one's own banner photo: lighter at the top, where faces usually are, full by the lower edge. */
+    overPhoto: Boolean = false) {
     if (design == null) return
     val ink = designInk()
     val clock = rememberDesignClock(animated)
     Canvas(modifier) {
         val t = clock.value
-        val mask: (Float) -> Float = if (fade) { y -> fadeMask(y) } else { _ -> 1f }
+        val mask: (Float) -> Float = when {
+            overPhoto -> { y -> 0.75f + 0.25f * (y / size.height).coerceIn(0f, 1f) }
+            fade -> { y -> fadeMask(y) }
+            else -> { _ -> 1f }
+        }
         when (design) {
             ProfileDesign.Waves -> waves(ink, t, mask)
             ProfileDesign.Sakura -> sakura(ink, t, mask)

@@ -87,6 +87,8 @@ data class Settings(
     val appIcon: AppIcon = AppIcon.Classic,
     /** Last dubbing chosen per anime (anime key -> dubbing key). */
     val dubbingByAnime: Map<String, String> = emptyMap(),
+    /** «Жидкое стекло»: lit glass edges, the sheen and the liquid motion; off leaves calm frosted glass. */
+    val liquidGlass: Boolean = true,
     /** The last search queries, newest first; kept on this device only. */
     val recentSearches: List<String> = emptyList(),
 ) {
