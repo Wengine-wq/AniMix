@@ -146,6 +146,10 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
     val review = remember(library) { library.reviewAccess(app.animix.data.library.dayToDate(app.animix.core.localDayIndex())) }
     val reviewSeen = review.open && review.year in library.reviewedYears
 
+    // Pull down to load the shelves again; what is on screen stays until the new answer comes.
+    val refreshing = ongoing.refreshing || popular.refreshing || top.refreshing || personal.refreshing
+    app.animix.ui.components.GlassPullToRefresh(refreshing, onRefresh = { ongoing.refresh(); popular.refresh(); top.refresh(); if (picksOn) personal.refresh() },
+        topInset = contentPadding.calculateTopPadding()) {
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(key = "header") { HomeTopBar(onSearch = { navigator.push(Route.Search()) }) }
         item(key = "hero") {
@@ -194,6 +198,7 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(24.dp)) }
+    }
     }
 }
 

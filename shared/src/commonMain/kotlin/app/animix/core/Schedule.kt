@@ -32,6 +32,26 @@ fun airingDayLabel(iso: String?, today: Long = localDayIndex()): String? {
     }
 }
 
+private val WeekdaysShort = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+/** Days from [today] to the catalog's ISO date; null when it cannot be read. */
+fun daysUntil(iso: String?, today: Long = localDayIndex()): Long? {
+    if (iso == null || iso.length < 10) return null
+    val year = iso.substring(0, 4).toIntOrNull() ?: return null
+    val month = iso.substring(5, 7).toIntOrNull()?.takeIf { it in 1..12 } ?: return null
+    val day = iso.substring(8, 10).toIntOrNull()?.takeIf { it in 1..31 } ?: return null
+    return dayIndexOf(year, month, day) - today
+}
+
+/** The day of a coming episode on the week line: «Сегодня», «Завтра», «Чт 13»; null outside the next seven days. */
+fun weekDayLabel(iso: String?, today: Long = localDayIndex()): String? = when (val ahead = daysUntil(iso, today)) {
+    null -> null
+    0L -> "Сегодня"
+    1L -> "Завтра"
+    in 2L..6L -> "${WeekdaysShort[weekdayOf(today + ahead)]} ${iso!!.substring(8, 10).trimStart('0')}"
+    else -> null
+}
+
 /** «Серия 7 выйдет в четверг, 13 ноября» for a title still airing; null when the catalog has no coming date. */
 fun nextEpisodeLine(episodesAired: Int, nextEpisodeAt: String?, today: Long = localDayIndex()): String? =
     airingDayLabel(nextEpisodeAt, today)?.let { "Серия ${episodesAired + 1} выйдет $it" }

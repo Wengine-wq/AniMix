@@ -28,10 +28,14 @@ class LoadState<T> internal constructor() {
         internal set
     internal var generation by mutableIntStateOf(0)
     internal var force = false
+    /** True from [refresh] until that load ends: the data on screen stays while it is fetched again. */
+    var refreshing by mutableStateOf(false)
+        internal set
 
     /** Loads again, skipping caches. */
     fun refresh() {
         force = true
+        refreshing = true
         generation++
     }
 }
@@ -56,6 +60,7 @@ fun <T> rememberLoad(key: Any?, block: suspend (forceRefresh: Boolean) -> T): Lo
                 if (state.value is Load.Ready && force) state.value else Load.Failed(error)
             }
         }
+        state.refreshing = false
     }
     return state
 }

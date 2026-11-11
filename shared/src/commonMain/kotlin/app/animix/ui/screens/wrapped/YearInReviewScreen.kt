@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import app.animix.AppGraph
 import app.animix.core.localDayIndex
 import app.animix.core.nowMillis
+import app.animix.core.encodePng
 import app.animix.core.weekdayOf
 import app.animix.data.library.LocalDay
 import app.animix.data.library.YearInReview
@@ -68,7 +71,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private enum class Slide { Intro, Time, Calendar, Count, Months, Title, Genres, Habits, Ways, Marathon, Awards, Outro }
+private enum class Slide { Intro, Time, Calendar, Count, Months, Title, Top, Genres, Habits, Ways, Marathon, Awards, Outro }
 
 private val monthNames = listOf("январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь")
 private val monthGenitive = listOf("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
@@ -108,6 +111,7 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
                 Slide.Count -> review.episodes > 0
                 Slide.Months -> review.bestMonth != null
                 Slide.Title -> review.topTitles.isNotEmpty()
+                Slide.Top -> review.titlesByTime.size >= 3
                 Slide.Genres -> review.topGenres.isNotEmpty()
                 Slide.Habits -> review.peakWeekday != null
                 Slide.Ways -> review.usage.onlineSeconds + review.usage.offlineSeconds > 0
@@ -156,11 +160,22 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
                     val down = awaitFirstDown()
                     held = true
                     val started = nowMillis()
-                    val up = waitForUpOrCancellation()
+                    // A swipe moves like a page; a short tap moves by its side; a long press only pauses.
+                    var dx = 0f
+                    var up: androidx.compose.ui.input.pointer.PointerInputChange? = null
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        dx = change.position.x - down.position.x
+                        if (!change.pressed) { up = change; break }
+                    }
                     held = false
-                    // A short tap moves; a long press only pauses.
-                    if (up != null && nowMillis() - started < 350) {
-                        if (down.position.x < size.width / 3f) go(-1) else go(1)
+                    val swipe = 56.dp.toPx()
+                    when {
+                        up == null -> Unit
+                        dx <= -swipe -> go(1)
+                        dx >= swipe -> go(-1)
+                        nowMillis() - started < 350 -> if (down.position.x < size.width / 3f) go(-1) else go(1)
                     }
                 }
             },
@@ -220,24 +235,29 @@ fun YearInReviewScreen(graph: AppGraph, navigator: Navigator, year: Int) {
               }
             }
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
-                androidx.compose.material3.TextButton(onClick={go(-1)},enabled=index>0){Txt("Назад",AniMixTheme.type.label)}
+                IconCircle(AniMixIcons.Back,{go(-1)},enabled=index>0,contentDescription="Предыдущий слайд")
                 Txt("${index+1} / ${slides.size}",AniMixTheme.type.micro)
-                androidx.compose.material3.TextButton(onClick={if(index==slides.lastIndex)navigator.back() else go(1)}){Txt(if(index==slides.lastIndex)"Закрыть" else "Далее",AniMixTheme.type.label)}
+                if(index==slides.lastIndex)IconCircle(AniMixIcons.Close,{navigator.back()},contentDescription="Закрыть итоги")
+                else IconCircle(AniMixIcons.ChevronRight,{go(1)},contentDescription="Следующий слайд")
             }
         }
     }
 }
 
+/**
+ * Two large soft drops of the accent light drifting slowly behind the slides, as light moves under
+ * glass. Still without animations; the dots of earlier versions read as decoration and are gone.
+ */
 @Composable private fun ReviewAtmosphere(motion:Boolean){
     val phase=remember{Animatable(0f)}
-    LaunchedEffect(motion){if(!motion){phase.snapTo(0f);return@LaunchedEffect};while(isActive){phase.snapTo(0f);phase.animateTo(1f,tween(24000,easing=LinearEasing))}}
+    LaunchedEffect(motion){if(!motion){phase.snapTo(0f);return@LaunchedEffect};while(isActive){phase.snapTo(0f);phase.animateTo(1f,tween(30000,easing=LinearEasing))}}
     val colors=AniMixTheme.colors
     Canvas(Modifier.fillMaxSize()){
-        repeat(16){i->
-            val x=((i*.173f+phase.value*.05f)%1f)*size.width
-            val y=((i*.293f+sin((phase.value+i)*2*PI).toFloat()*.025f)%1f)*size.height
-            drawCircle(colors.accent.copy(alpha=.06f+(i%3)*.025f),radius=(8+i%4*12).dp.toPx(),center=Offset(x,y))
-        }
+        val a=phase.value*2*PI.toFloat()
+        val first=Offset(size.width*(0.25f+0.12f*cos(a)),size.height*(0.28f+0.06f*sin(a)))
+        val second=Offset(size.width*(0.8f+0.1f*sin(a)),size.height*(0.72f+0.07f*cos(a)))
+        drawCircle(Brush.radialGradient(listOf(colors.gradientStart.copy(alpha=.20f),Color.Transparent),first,size.width*0.6f),size.width*0.6f,first)
+        drawCircle(Brush.radialGradient(listOf(colors.gradientEnd.copy(alpha=.16f),Color.Transparent),second,size.width*0.55f),size.width*0.55f,second)
     }
 }
 
@@ -409,6 +429,33 @@ private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Un
                     }
                 }
             }
+            Slide.Top -> {
+                Kicker("Рейтинг года")
+                Spacer(Modifier.height(10.dp))
+                Txt("Больше всего времени", type.title, modifier = Modifier.appear(1))
+                Spacer(Modifier.height(18.dp))
+                val grow = rememberGrowth()
+                val most = review.titlesByTime.first().second.coerceAtLeast(1)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    review.titlesByTime.take(5).forEachIndexed { i, (anime, seconds) ->
+                        Row(Modifier.fillMaxWidth().appear(2 + i), verticalAlignment = Alignment.CenterVertically) {
+                            Txt("${i + 1}", type.heading, color = if (i == 0) colors.accent else colors.textSecondary, modifier = Modifier.width(28.dp))
+                            RemoteImage(anime.posterUrl, Modifier.width(40.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Txt(anime.title, type.bodyStrong, maxLines = 1)
+                                Spacer(Modifier.height(6.dp))
+                                Box(Modifier.fillMaxWidth().height(6.dp).clip(AniMixTheme.shapes.pill).background(colors.outline)) {
+                                    Box(Modifier.fillMaxHeight().fillMaxWidth((seconds.toFloat() / most * grow).coerceIn(0.04f, 1f))
+                                        .background(if (i == 0) colors.accentGradient else Brush.horizontalGradient(listOf(colors.accent.copy(alpha = 0.55f), colors.accent.copy(alpha = 0.35f)))))
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Txt(hoursLabel(seconds), type.micro, maxLines = 1)
+                        }
+                    }
+                }
+            }
             Slide.Genres -> {
                 Kicker("Любимые жанры")
                 Spacer(Modifier.height(10.dp))
@@ -503,15 +550,29 @@ private fun SlideContent(slide: Slide, review: YearInReview, onRestart: () -> Un
             Slide.Outro -> {
                 Kicker("${review.year}")
                 Spacer(Modifier.height(12.dp))
-                SummaryCard(review, Modifier.fillMaxWidth().appear(1))
+                // The card is drawn into its own layer as well, so it can leave the app as a picture.
+                val card = androidx.compose.ui.graphics.rememberGraphicsLayer()
+                val scope = rememberCoroutineScope()
+                var shareNote by remember { mutableStateOf<String?>(null) }
+                Box(Modifier.fillMaxWidth().appear(1).drawWithContent { card.record { this@drawWithContent.drawContent() }; drawLayer(card) }) {
+                    SummaryCard(review, Modifier.fillMaxWidth(), signed = true)
+                }
                 Spacer(Modifier.height(18.dp))
                 Txt(if (review.empty) "Итоги ждут вас" else "Спасибо, что смотрели вместе с AniMix", type.title, modifier = Modifier.appear(2))
                 Caption("Увидимся в ${review.year + 1}.", 3)
                 Spacer(Modifier.height(22.dp))
                 Row(Modifier.appear(4), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PrimaryButton("Ещё раз", onRestart, Modifier.weight(1f), icon = AniMixIcons.Retry)
-                    SecondaryButton("Закрыть", onClose, Modifier.weight(1f))
+                    if (!review.empty) PrimaryButton(if (app.animix.core.Platform.name == "Android") "Поделиться" else "Сохранить", {
+                        scope.launch {
+                            shareNote = runCatching {
+                                val png = card.toImageBitmap().encodePng()
+                                app.animix.core.sharePicture(png, "AniMix-itogi-${review.year}.png", "Итоги ${review.year}")
+                            }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; "Не получилось сохранить картинку" }
+                        }
+                    }, Modifier.weight(1f), icon = AniMixIcons.Share)
+                    SecondaryButton("Ещё раз", onRestart, Modifier.weight(1f), icon = AniMixIcons.Retry)
                 }
+                shareNote?.let { Txt(it, type.micro, modifier = Modifier.padding(top = 10.dp)) }
             }
         }
     }
@@ -688,9 +749,19 @@ private fun ShareDonut(offline: Float, modifier: Modifier) {
 
 /** The year on one card: the top poster and the main numbers. */
 @Composable
-private fun SummaryCard(review: YearInReview, modifier: Modifier) {
+private fun SummaryCard(review: YearInReview, modifier: Modifier, signed: Boolean = false) {
     val colors = AniMixTheme.colors
-    Row(modifier.clip(AniMixTheme.shapes.large).background(colors.surfaceRaised.copy(alpha = 0.85f)).rim(AniMixTheme.shapes.large, accent = true).padding(16.dp)) {
+    Column(modifier.clip(AniMixTheme.shapes.large).background(colors.surfaceRaised.copy(alpha = if (signed) 1f else 0.85f))
+        .liquidSheen().rim(AniMixTheme.shapes.large, accent = true).padding(16.dp)) {
+    // A shared card says whose and what it is: the year and AniMix, the way a ticket carries its event.
+    if (signed) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Txt("Итоги ${review.year}", AniMixTheme.type.subheading, modifier = Modifier.weight(1f))
+            app.animix.ui.screens.home.AniMixWordmark()
+        }
+        Spacer(Modifier.height(14.dp))
+    }
+    Row {
         review.topTitles.firstOrNull()?.let {
             RemoteImage(it.anime.posterUrl, Modifier.width(96.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.medium)
             Spacer(Modifier.width(16.dp))
@@ -701,6 +772,7 @@ private fun SummaryCard(review: YearInReview, modifier: Modifier) {
             Stat("${review.activeDays}", plural(review.activeDays, "день", "дня", "дней").substringAfter(' ') + " с аниме")
             review.persona?.let { Txt(it, AniMixTheme.type.label, color = colors.accentText) }
         }
+    }
     }
 }
 

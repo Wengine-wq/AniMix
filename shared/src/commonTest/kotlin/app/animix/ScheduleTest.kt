@@ -3,6 +3,7 @@ package app.animix
 import app.animix.core.airingDayLabel
 import app.animix.core.dayIndexOf
 import app.animix.core.nextEpisodeLine
+import app.animix.core.weekDayLabel
 import app.animix.data.library.dayToDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,5 +47,15 @@ class ScheduleTest {
     @Test
     fun theLineNamesTheNextEpisode() {
         assertEquals("Серия 7 выйдет в четверг, 12 ноября", nextEpisodeLine(6, "2026-11-12T18:00:00+03:00", today))
+    }
+
+    @Test
+    fun theWeekLineNamesDaysShortlyAndOnlyThisWeek() {
+        assertEquals("Сегодня", weekDayLabel("2026-11-10T18:00:00+03:00", today))
+        assertEquals("Завтра", weekDayLabel("2026-11-11T18:00:00+03:00", today))
+        assertEquals("Чт 12", weekDayLabel("2026-11-12T18:00:00+03:00", today))
+        assertEquals("Пн 16", weekDayLabel("2026-11-16T18:00:00+03:00", today))
+        assertNull(weekDayLabel("2026-11-17T18:00:00+03:00", today))
+        assertNull(weekDayLabel("2026-11-09T18:00:00+03:00", today))
     }
 }

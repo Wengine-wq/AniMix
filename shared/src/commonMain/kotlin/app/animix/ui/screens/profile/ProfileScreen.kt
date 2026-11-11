@@ -65,7 +65,8 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
         }
         Spacer(Modifier.height(20.dp))
         val self = social.devices.firstOrNull { it.id == graph.social.deviceId }
-        ProfileIdentity(library.profile, badge, onEdit = { navigator.push(Route.EditProfile()) },
+        // Editing is the pencil in the header; a tap on one's own avatar is not a hidden second way in.
+        ProfileIdentity(library.profile, badge,
             onBadge = { navigator.push(Route.Achievements) }, level = level,
             online = if (account.user != null) self?.online() ?: (social.error == null) else null,
             lastSeenAt = self?.seenAt)
@@ -207,12 +208,8 @@ internal fun ProfileBanner(media: ProfileMedia?, modifier: Modifier = Modifier, 
             RemoteImage(model, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large, placeholder = false)
             // A banner photo used to hide the design: on a phone only thin strips around it were left. The
             // design now lies over the photo too, light at the top and full by the edge where the name begins.
-            if (design != null) {
-                // A light veil of the page colour, so petals, stars and lines read over a bright photo.
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to colors.background.copy(alpha = 0.18f),
-                    0.5f to colors.background.copy(alpha = 0.12f), 1f to colors.background.copy(alpha = 0.42f))))
-                ProfileDesignLayer(design, Modifier.fillMaxSize(), animated = true, fade = false, overPhoto = true)
-            }
+            // The photo itself is never veiled or dimmed: the design's lines and petals lie over it, nothing else.
+            if (design != null) ProfileDesignLayer(design, Modifier.fillMaxSize(), animated = true, fade = false, overPhoto = true)
         }
     }
 }

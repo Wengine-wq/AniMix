@@ -104,6 +104,9 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
         if (anime.title.isNotEmpty() && graph.connection.prefetch) graph.scope.launch { runCatching { graph.yummy.watchSource(anime) } }
     }
     var notice by remember { mutableStateOf<String?>(null) }
+    // The still opened in full: an index into the stills, null when none is open.
+    var stillShown by remember { mutableStateOf<Int?>(null) }
+    stillShown?.let { start -> ready?.screenshots?.takeIf { it.isNotEmpty() }?.let { StillViewer(it, start) { stillShown = null } } }
     val openStudio: (app.animix.model.Studio) -> Unit = { studio ->
         navigator.push(Route.Catalog(app.animix.data.shikimori.CatalogQuery(studioId = studio.id), studio.name))
     }
@@ -190,7 +193,13 @@ fun DetailScreen(graph: AppGraph, navigator: Navigator, opened: Anime, contentPa
                     val frame = Modifier.width(if (wide) 300.dp else 240.dp).aspectRatio(16f / 9f)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (trailer != null) item(key = "trailer") { TrailerTile(trailer, shots.firstOrNull() ?: anime.posterUrl, frame) }
-                        items(shots) { url -> RemoteImage(url, frame, shape = AniMixTheme.shapes.medium) }
+                        items(shots.size) { index ->
+                            val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            Box(frame.clip(AniMixTheme.shapes.medium).clickable(interaction, androidx.compose.foundation.LocalIndication.current,
+                                role = Role.Button, onClickLabel = "Открыть кадр") { stillShown = index }.focusOutline(interaction, AniMixTheme.shapes.medium)) {
+                                RemoteImage(shots[index], Modifier.fillMaxSize(), shape = AniMixTheme.shapes.medium)
+                            }
+                        }
                     }
                 }
                 if (anime.title.isNotBlank() && similar.value is Load.Loading) {
@@ -229,6 +238,31 @@ private fun AnimeShelf(title: String, items: List<Anime>, navigator: Navigator, 
             // In «Связанное» the line under the title says how it relates: «Продолжение · 2017».
             AnimeCard(item, onClick = { navigator.push(Route.Detail(item)) }, modifier = Modifier.width(120.dp),
                 caption = labels[item.key]?.let { label -> listOfNotNull(label, item.year?.toString()).joinToString(" · ") })
+        }
+    }
+}
+
+/**
+ * A still in full: the picture fitted to the screen on black, a swipe to the next one, the place in the
+ * row («3 / 12») and «Закрыть». «Назад» and a tap on the dark around the picture close it as well.
+ */
+@Composable
+private fun StillViewer(stills: List<String>, start: Int, onClose: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onClose, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = start.coerceIn(0, stills.lastIndex)) { stills.size }
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xF2000000))
+            .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onClose)) {
+            androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize(), pageSpacing = 16.dp) { page ->
+                Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                    RemoteImage(stills[page], Modifier.fillMaxWidth().aspectRatio(16f / 9f), shape = AniMixTheme.shapes.medium,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit, placeholder = false)
+                }
+            }
+            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Txt("${pager.currentPage + 1} / ${stills.size}", AniMixTheme.type.label, color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.weight(1f))
+                IconCircle(AniMixIcons.Close, onClose, glass = true, contentDescription = "Закрыть")
+            }
         }
     }
 }

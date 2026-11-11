@@ -162,7 +162,7 @@ internal fun PrivacySection(graph: AppGraph, navigator: Navigator) {
 @Composable
 private fun PrivacyRow(icon: ImageVector, title: String, subtitle: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     val colors = AniMixTheme.colors
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.Top) {
         RowIcon(icon)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -456,7 +456,7 @@ internal fun HorizonDevices(graph: AppGraph) {
                 val self = device.id == graph.social.deviceId
                 if (index > 0) AccountDivider()
                 Column {
-                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         RowIcon(deviceIcon(device))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {

@@ -17,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.unit.DpOffset
@@ -208,12 +210,34 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
     val colors = AniMixTheme.colors
     val haze = rememberHazeState()
     val ambient = remember { AmbientState() }
-    BackHandler(enabled = navigator.canGoBack) { if (!navigator.back()) onExit() }
+    // Predictive back (Android 14+): while the finger draws the gesture, the page shrinks a little toward
+    // the far edge with rounded corners; letting go goes back, a cancel lets the page settle again.
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    var backFromRight by remember { mutableStateOf(false) }
+    @Suppress("DEPRECATION")
+    androidx.compose.ui.backhandler.PredictiveBackHandler(enabled = navigator.canGoBack) { events ->
+        try {
+            events.collect { event -> backFromRight = event.swipeEdge == 1; backProgress = event.progress }
+            backProgress = 0f
+            if (!navigator.back()) onExit()
+        } finally { backProgress = 0f }
+    }
 
     // Every poster knows the viewer's lists; equal marks do not recompose the cards when only a position is saved.
     val library by graph.library.state.collectAsState()
     val marks = remember(library.entries) { listMarks(library.entries.values) }
-    CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient, app.animix.ui.components.LocalListMarks provides marks) {
+    val posterActions = remember(graph, navigator) {
+        app.animix.ui.components.PosterActions(
+            entry = { graph.library.state.value.entry(it) },
+            watch = { navigator.push(Route.Watch(it)) },
+            plan = { graph.library.setStatus(it, app.animix.data.library.ListStatus.Planned) },
+            favorite = { graph.library.toggleFavorite(it) },
+            download = { navigator.push(Route.Downloads(it, add = true)) },
+            open = { navigator.push(Route.Detail(it)) },
+        )
+    }
+    CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient, app.animix.ui.components.LocalListMarks provides marks,
+        app.animix.ui.components.LocalPosterActions provides posterActions) {
         BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
             val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -226,7 +250,16 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             val showBar = current !is Route.YearInReview && !playerLandscape && !pip
             Box(Modifier.fillMaxSize().then(if (LocalUiPerformance.current.batterySaver) Modifier else Modifier.hazeSource(haze))) {
                 AmbientBackdrop(ambient.imageUrl)
-                Content(graph, navigator, if (pip) PaddingValues(0.dp) else PaddingValues(top = statusBar, bottom = navBar + if (showBar) BottomBarSpace else 0.dp))
+                val motion = LocalUiPerformance.current.animations
+                val backShape = RoundedCornerShape((28 * backProgress).dp)
+                Box(Modifier.fillMaxSize().then(if (motion && backProgress > 0f) Modifier.graphicsLayer {
+                    val p = backProgress
+                    scaleX = 1f - 0.08f * p; scaleY = scaleX
+                    translationX = (if (backFromRight) -1f else 1f) * 18.dp.toPx() * p
+                    shape = backShape; clip = true
+                } else Modifier)) {
+                    Content(graph, navigator, if (pip) PaddingValues(0.dp) else PaddingValues(top = statusBar, bottom = navBar + if (showBar) BottomBarSpace else 0.dp))
+                }
             }
             // Keeps the status bar readable over scrolled content.
             Box(
@@ -365,6 +398,7 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
             animateFloatAsState(if (navigator.tab == tab) SelectedShare else 1f, AniMixMotion.selectionSpring())
         }
         val selectedIndex = navigator.tab.ordinal
+        val haptics = app.animix.ui.components.rememberHaptics()
         var previous by remember { mutableStateOf(selectedIndex) }
         val forward = selectedIndex >= previous
         SideEffect { previous = selectedIndex }
@@ -393,7 +427,7 @@ private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
                 Row(
                     Modifier.weight(shares[index].value).height(48.dp)
                         .pressScale(interaction, pressed = 0.94f)
-                        .selectable(selected, interaction, indication = null, role = Role.Tab) { navigator.select(tab) }
+                        .selectable(selected, interaction, indication = null, role = Role.Tab) { if (!selected) haptics.tick(); navigator.select(tab) }
                         .focusOutline(interaction, shape),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,

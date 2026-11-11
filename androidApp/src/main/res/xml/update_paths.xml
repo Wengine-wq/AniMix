@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Downloaded update APKs only; nothing else in the cache is shared. -->
+    <!-- Downloaded update APKs and the shared «Итоги года» card; nothing else in the cache is shared. -->
     <cache-path name="updates" path="updates/" />
+    <!-- The «Итоги года» card the person chose to share; only the last one is kept. -->
+    <cache-path name="share" path="share/" />
 </paths>

@@ -198,7 +198,7 @@ private fun Divider() = AccountDivider()
 internal fun AccountRow(icon: ImageVector, title: String, subtitle: String, trailing: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
     val colors = AniMixTheme.colors
     Row(
-        Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RowIcon(icon, enabled = enabled)

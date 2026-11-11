@@ -76,6 +76,7 @@ import app.animix.model.Anime
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.AnimeCardPlaceholder
 import app.animix.ui.components.Chip
+import app.animix.ui.components.GlassPullToRefresh
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.MessageState
 import app.animix.ui.components.Txt
@@ -165,6 +166,7 @@ fun CatalogScreen(
     }
 
     val direction = LocalLayoutDirection.current
+    GlassPullToRefresh(paging.refreshing, onRefresh = { scope.launch { paging.reload() } }, topInset = contentPadding.calculateTopPadding()) {
     LazyVerticalGrid(
         state = grid,
         columns = GridCells.Adaptive(140.dp),
@@ -324,6 +326,7 @@ fun CatalogScreen(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -391,6 +394,28 @@ private class CatalogPaging(val graph: AppGraph, private val query: CatalogQuery
     var error by mutableStateOf<Throwable?>(null)
         private set
     private var page = 1
+    /** A pull to refresh is running: the first page is fetched again while the old results stay. */
+    var refreshing by mutableStateOf(false)
+        private set
+
+    /** Loads the first page again past the caches and puts it in place of everything loaded so far. */
+    suspend fun reload() {
+        if (refreshing) return
+        refreshing = true
+        try {
+            val fresh = graph.anime.catalog(query.copy(page = 1), forceRefresh = true)
+            items.clear(); items += fresh.distinctBy { it.key }
+            page = 2
+            endReached = fresh.size < query.limit
+            error = null
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (e: Throwable) {
+            AppLog.failure("Catalog", "reload", e)
+        } finally {
+            refreshing = false
+        }
+    }
 
     suspend fun loadNext() {
         if (loading || endReached) return

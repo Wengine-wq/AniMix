@@ -120,10 +120,8 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                         }
                     }
                     Txt(when (settings.playerMode) {
-                        app.animix.core.PlayerMode.Plus -> "Стеклянные кнопки и свечение рамок, «картинка в картинке»: серия продолжится в маленьком окне, если выйти из приложения. " +
-                            "Скорость от 0,75× до 2× и на телефоне в полноэкранном режиме яркость и громкость свайпом."
-                        app.animix.core.PlayerMode.Simple -> "Плотные тёмные кнопки без стекла и свечения. Меньше нагрузки на слабых устройствах; скорость, качество, пропуски, " +
-                            "автопереход, Horizon Link и свайпы яркости и громкости на телефоне на месте."
+                        app.animix.core.PlayerMode.Plus -> "Стекло, свечение рамок и «картинка в картинке»."
+                        app.animix.core.PlayerMode.Simple -> "Без стекла и свечения — легче для слабых устройств."
                     }, AniMixTheme.type.caption, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp))
                 }
                 Spacer(Modifier.height(24.dp))
@@ -131,12 +129,12 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                     ToggleRow("Жидкое стекло", settings.liquidGlass && !settings.batterySaver,
                         { value -> graph.settings.update { it.copy(liquidGlass = value) } }, AniMixIcons.Sparkle,
                         subtitle = if (settings.batterySaver) "Отключено режимом экономии батареи"
-                            else "Блики на кромках, подложка навбара «каплей» и переходы со сдвигом. Выключите — останется матовое стекло и спокойные переходы",
+                            else "Блики на стекле и живое движение",
                         enabled = !settings.batterySaver)
                     Divider()
                     ToggleRow("Экономия батареи", settings.batterySaver,
                         { value -> graph.settings.update { it.copy(batterySaver = value) } }, AniMixIcons.Battery,
-                        subtitle = "Без анимаций, размытия и автолистания; в плеере — без стекла и свечения рамок, полоса прогресса шагами. Внешний вид и навигация те же")
+                        subtitle = "Без анимаций, размытия и свечения")
                 }
             }
             SettingsCategory.Notifications -> {
@@ -145,14 +143,14 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                     ToggleRow("Новые серии", settings.notifyNewEpisodes, { v ->
                         graph.settings.update { it.copy(notifyNewEpisodes = v) }
                         if (v) askPermission()
-                    }, AniMixIcons.Bell, subtitle = "Онгоинги из «Смотрю»: когда выходит следующая серия")
+                    }, AniMixIcons.Bell, subtitle = "Онгоинги из «Смотрю»")
                     Divider()
                     ToggleRow("Серия в моей озвучке", settings.notifyDubbing, { v -> graph.settings.update { it.copy(notifyDubbing = v) } }, AniMixIcons.Mic,
-                        subtitle = if (settings.notifyNewEpisodes) "Когда серия выходит в озвучке, выбранной для тайтла на экране «Смотреть»" else "Сначала включите новые серии",
+                        subtitle = if (settings.notifyNewEpisodes) "Когда выйдет в выбранной озвучке" else "Сначала включите новые серии",
                         enabled = settings.notifyNewEpisodes)
                 }
-                Txt(if (app.animix.core.Platform.name == "Android") "Проверяем каждые полчаса, пока AniMix открыт, и раз в несколько часов в фоне. Уведомления копятся в меню профиля, число новых видно на кнопке меню."
-                    else "Проверяем каждые полчаса, пока AniMix открыт; уведомление появляется в углу экрана и остаётся в меню профиля.",
+                Txt(if (app.animix.core.Platform.name == "Android") "Проверка каждые полчаса, в фоне — раз в несколько часов."
+                    else "Проверка каждые полчаса, пока AniMix открыт.",
                     AniMixTheme.type.micro, modifier = Modifier.padding(start = 4.dp, top = 10.dp))
             }
             SettingsCategory.Playback -> Panel {
@@ -162,14 +160,14 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 Divider()
                 ToggleRow("Пропускать эндинги", settings.skipEndings, { v -> graph.settings.update { it.copy(skipEndings = v) }; if (v) graph.achievements.settingEnabled("skipEndings") }, AniMixIcons.Clock)
                 Divider()
-                ToggleRow("Без рамок", settings.fillScreen, { v -> graph.settings.update { it.copy(fillScreen = v) } }, AniMixIcons.Fill, subtitle = "Заполняет плеер, обрезая лишь узкие полосы по краям")
+                ToggleRow("Без рамок", settings.fillScreen, { v -> graph.settings.update { it.copy(fillScreen = v) } }, AniMixIcons.Fill, subtitle = "Кадр на весь плеер")
                 Divider()
                 ToggleRow("Свечение рамок", settings.ambientGlow, { v -> graph.settings.update { it.copy(ambientGlow = v) } }, AniMixIcons.Sun,
-                    subtitle = if (settings.batterySaver) "Отключено режимом экономии батареи" else "Поля вокруг кадра другой формы светятся цветами сцены",
+                    subtitle = if (settings.batterySaver) "Отключено режимом экономии батареи" else "Поля вокруг кадра в его цветах",
                     enabled = !settings.batterySaver)
             }
             SettingsCategory.Lists -> Panel {
-                ToggleRow("Избранное в конце списков", settings.favoritesLast, { v -> graph.settings.update { it.copy(favoritesLast = v) } }, AniMixIcons.Heart, subtitle = "По умолчанию «Избранное» идёт первым")
+                ToggleRow("Избранное в конце списков", settings.favoritesLast, { v -> graph.settings.update { it.copy(favoritesLast = v) } }, AniMixIcons.Heart, subtitle = "Обычно оно первое")
             }
             SettingsCategory.Downloads -> Panel {
                 Column(Modifier.padding(12.dp)) {
@@ -177,7 +175,7 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                         graph.settings.update { it.copy(downloadQuality = quality) }
                     }
                     Txt(
-                        if (settings.downloadQuality == null) "Спросим при первой загрузке" else "Если серии нет в этом качестве, скачаем ближайшее ниже",
+                        if (settings.downloadQuality == null) "Спросим при первой загрузке" else "Нет такого — возьмём ближайшее ниже",
                         AniMixTheme.type.micro,
                         modifier = Modifier.padding(start = 4.dp, top = 10.dp),
                     )
@@ -187,12 +185,12 @@ fun SettingsSectionScreen(graph: AppGraph, navigator: Navigator, contentPadding:
                 Panel {
                     ToggleRow(
                         "Умное соединение", settings.smartConnection, { v -> graph.settings.update { it.copy(smartConnection = v) } }, AniMixIcons.Wifi,
-                        subtitle = "Заранее готовит следующую серию и список серий, качает части видео параллельно",
+                        subtitle = "Следующая серия готова заранее",
                     )
                     Divider()
                     ToggleRow(
                         "Экономия трафика", settings.trafficSaver, { v -> graph.settings.update { it.copy(trafficSaver = v) } }, AniMixIcons.Download,
-                        subtitle = "В мобильной сети видео стартует не выше 720p, загрузки идут в два потока",
+                        subtitle = "В мобильной сети до 720p",
                     )
                 }
                 Spacer(Modifier.height(10.dp))

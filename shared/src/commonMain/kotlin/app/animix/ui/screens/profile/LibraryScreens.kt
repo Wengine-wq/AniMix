@@ -33,6 +33,12 @@ import app.animix.data.library.LibraryEntry
 import app.animix.data.library.ListStatus
 import app.animix.ui.components.AnimeCard
 import app.animix.ui.components.Chip
+import app.animix.ui.components.liquidSheen
+import app.animix.ui.components.rim
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
 import app.animix.ui.components.IconCircle
 import app.animix.ui.components.Txt
 import app.animix.ui.components.MascotMessage
@@ -85,6 +91,7 @@ fun ListsScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVa
                     Chip("Подборки · ${library.collections.size}", false, { navigator.push(Route.Collections) }, icon = AniMixIcons.Layers)
                 }
             }
+            if (status == ListStatus.Watching) WatchingWeek(graph, entries, navigator)
         },
         empty = {
             EmptyLibrary(
@@ -139,6 +146,45 @@ private fun LibraryGrid(
         } else {
             items(entries, key = { it.anime.key }) { entry ->
                 AnimeCard(entry.anime, onClick = { navigator.push(Route.Detail(entry.anime)) }, mark = false)
+            }
+        }
+    }
+}
+
+/**
+ * «На этой неделе» over «Смотрю»: when the next episode of each airing title comes, nearest first, within
+ * seven days. The dates are the catalog's; the line is left out when nothing airs this week.
+ */
+@Composable
+private fun WatchingWeek(graph: AppGraph, entries: List<LibraryEntry>, navigator: Navigator) {
+    val airing = entries.map { it.anime }.filter { it.status == app.animix.model.AnimeStatus.Ongoing }.take(12)
+    val week = app.animix.ui.components.rememberLoad(airing.map { it.key }) {
+        val today = app.animix.core.localDayIndex()
+        airing.mapNotNull { anime ->
+            val detail = runCatching { graph.anime.detail(anime) }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; null }
+            val at = detail?.nextEpisodeAt ?: return@mapNotNull null
+            val label = app.animix.core.weekDayLabel(at, today) ?: return@mapNotNull null
+            Triple(detail.anime, label, app.animix.core.daysUntil(at, today) ?: 0L)
+        }.sortedBy { it.third }
+    }
+    val days = (week.value as? app.animix.ui.components.Load.Ready)?.value.orEmpty()
+    if (days.isEmpty()) return
+    val colors = AniMixTheme.colors
+    Spacer(Modifier.height(20.dp))
+    Txt("На этой неделе", AniMixTheme.type.subheading)
+    Spacer(Modifier.height(10.dp))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(days, key = { it.first.key }) { (anime, day, _) ->
+            Row(Modifier.width(196.dp).clip(AniMixTheme.shapes.medium).background(colors.chip)
+                .liquidSheen().rim(AniMixTheme.shapes.medium, accent = day == "Сегодня")
+                .clickable { navigator.push(Route.Detail(anime)) }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                app.animix.ui.components.RemoteImage(anime.posterUrl, Modifier.width(34.dp).aspectRatio(0.7f), shape = AniMixTheme.shapes.small)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Txt(day, AniMixTheme.type.label, color = if (day == "Сегодня") colors.accentText else colors.textPrimary, maxLines = 1)
+                    Txt(anime.title, AniMixTheme.type.micro, maxLines = 1)
+                    Txt("Серия ${anime.episodesAired + 1}", AniMixTheme.type.micro, color = colors.textMuted, maxLines = 1)
+                }
             }
         }
     }

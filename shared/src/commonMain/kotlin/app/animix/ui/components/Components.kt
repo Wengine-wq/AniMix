@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.innerShadow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
@@ -246,8 +247,15 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, 
     val type = AniMixTheme.type
     val interaction = remember { MutableInteractionSource() }
     val listed = if (mark) LocalListMarks.current[anime.key] else null
-    Column(modifier.pressScale(interaction).clickable(interaction, indication = null, onClick = onClick)
+    val actions = LocalPosterActions.current
+    val haptics = rememberHaptics()
+    var menu by remember { mutableStateOf(false) }
+    Column(modifier.pressScale(interaction)
+        .then(if (actions != null) Modifier.combinedClickable(interaction, indication = null, onClick = onClick,
+            onLongClickLabel = "Действия с тайтлом", onLongClick = { haptics.longPress(); menu = true })
+            else Modifier.clickable(interaction, indication = null, onClick = onClick))
         .focusOutline(interaction, AniMixTheme.shapes.large)) {
+        if (menu && actions != null) PosterMenu(anime, actions) { menu = false }
         // The press shows on the poster itself, in its rounded shape, not as a box around the caption.
         Box(Modifier.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
@@ -555,13 +563,13 @@ fun MessageState(
 fun RowIcon(icon: ImageVector, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
     Box(modifier.size(RowIconSize).clip(CircleShape).background(if (enabled) colors.accentSoft else colors.chip), contentAlignment = Alignment.Center) {
-        Icon(icon, null, Modifier.size(17.dp), tint = if (enabled) colors.accent else colors.textMuted)
+        Icon(icon, null, Modifier.size(15.dp), tint = if (enabled) colors.accent else colors.textMuted)
     }
 }
 
-/** Size of [RowIcon]; with the 16 dp edge and the 12 dp gap the text of every row starts [RowTextInset] in. */
-val RowIconSize = 32.dp
-val RowTextInset = 60.dp
+/** Size of [RowIcon]; with the 14 dp edge and the 12 dp gap the text of every row starts [RowTextInset] in. */
+val RowIconSize = 28.dp
+val RowTextInset = 54.dp
 
 /** A thin line between rows of one panel, starting where their text starts. */
 @Composable
@@ -572,7 +580,7 @@ fun RowDivider() = Box(Modifier.fillMaxWidth().padding(start = RowTextInset).hei
 fun RowGroup(title: String?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(modifier.fillMaxWidth()) {
         if (title != null) Txt(title.uppercase(), AniMixTheme.type.micro, color = AniMixTheme.colors.textMuted,
-            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
+            modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
         Panel { content() }
     }
 }
@@ -581,11 +589,13 @@ fun RowGroup(title: String?, modifier: Modifier = Modifier, content: @Composable
 fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon: ImageVector? = null, subtitle: String? = null, enabled: Boolean = true) {
     val colors = AniMixTheme.colors
     val interaction = remember { MutableInteractionSource() }
+    val haptics = rememberHaptics()
     Row(
         Modifier.fillMaxWidth().toggleable(checked, interactionSource = interaction,
-            indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = Role.Switch,
+            onValueChange = { value -> haptics.toggle(value); onChange(value) })
             .focusOutline(interaction, AniMixTheme.shapes.medium)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -599,9 +609,9 @@ fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, icon
         Spacer(Modifier.width(12.dp))
         val thumb by animateFloatAsState(if (checked) 1f else 0f)
         val track by animateColorAsState(if (checked && enabled) colors.accent else colors.surfaceRaised)
-        Box(Modifier.size(width = 52.dp, height = 32.dp).clip(AniMixTheme.shapes.pill).background(track)
+        Box(Modifier.size(width = 44.dp, height = 26.dp).clip(AniMixTheme.shapes.pill).background(track)
             .border(1.dp, if (checked && enabled) track else colors.outline, AniMixTheme.shapes.pill), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.offset(x = (4 + 20 * thumb).dp).size(24.dp).clip(CircleShape)
+            Box(Modifier.offset(x = (3 + 18 * thumb).dp).size(20.dp).clip(CircleShape)
                 .background(if (checked && enabled) colors.onAccent else colors.textMuted))
         }
     }
@@ -613,7 +623,7 @@ fun NavRow(title: String, icon: ImageVector, onClick: () -> Unit, trailing: Stri
     val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
-            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 11.dp),
+            .focusOutline(interaction, AniMixTheme.shapes.medium).padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RowIcon(icon)
