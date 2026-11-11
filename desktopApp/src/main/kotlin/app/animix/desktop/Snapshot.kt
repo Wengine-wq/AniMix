@@ -73,14 +73,16 @@ object Snapshot {
                 val rendered = scene.render(System.nanoTime())
                 val elapsed = (System.nanoTime() - started) / 1_000_000
                 if (clickIndex < clicks.size && elapsed >= clicks[clickIndex].first) {
-                    val label = clicks[clickIndex].second
+                    // «hold:<label>» long-presses the target through its accessibility action instead of tapping it.
+                    val hold = clicks[clickIndex].second.startsWith("hold:")
+                    val label = clicks[clickIndex].second.removePrefix("hold:")
                     val target = scene.semanticsOwners.asSequence().flatMap { nodes(it.rootSemanticsNode) }.firstOrNull { node ->
-                        node.config.getOrNull(SemanticsActions.OnClick)?.action != null &&
+                        node.config.getOrNull(if (hold) SemanticsActions.OnLongClick else SemanticsActions.OnClick)?.action != null &&
                             nodes(node).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text == label } == true ||
                                 // Icon buttons have no text: they are found by their accessible name.
                                 it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { name -> name == label } == true }
                     }
-                    if (target?.config?.getOrNull(SemanticsActions.OnClick)?.action?.invoke() == true) clickIndex++
+                    if ((if (hold) target?.config?.getOrNull(SemanticsActions.OnLongClick) else target?.config?.getOrNull(SemanticsActions.OnClick))?.action?.invoke() == true) clickIndex++
                 }
                 if (drag != null && !dragEnded && elapsed >= drag[0].toLong()) {
                     if (dragStart == null) {

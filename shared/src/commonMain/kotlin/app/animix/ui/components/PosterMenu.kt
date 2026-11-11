@@ -63,24 +63,16 @@ fun rememberHaptics(): AniMixHaptics {
 }
 
 /**
- * The menu of a long-pressed poster: a small sheet of glass over the poster with «Смотреть», the list,
- * favourites, downloads and the anime page. One tap does it and closes the menu; a tap outside closes it.
+ * The menu of a long-pressed poster: the shared bottom sheet with the title and «Смотреть», the list,
+ * favourites, downloads and the anime page. One tap does it and closes the sheet. A popup over the
+ * poster was tried in 1.3.0: under the finger that was still down it opened and closed at once, so the
+ * sheet, which lives in its own window, is the reliable place for it.
  */
 @Composable
 internal fun PosterMenu(anime: Anime, actions: PosterActions, onDismiss: () -> Unit) {
-    val colors = AniMixTheme.colors
     val entry = actions.entry(anime)
-    val shape = AniMixTheme.shapes.large
-    Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, 0), onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true)) {
-        Column(
-            Modifier.width(232.dp)
-                .dropShadow(shape, Shadow(radius = 28.dp, color = Color.Black.copy(alpha = if (colors.isDark) 0.45f else 0.14f), offset = DpOffset(0.dp, 10.dp)))
-                .clip(shape).background(colors.surfaceRaised.copy(alpha = 0.97f)).liquidSheen().rim(shape, accent = false)
-                .padding(vertical = 6.dp),
-        ) {
-            Txt(anime.title, AniMixTheme.type.label, color = colors.textSecondary, maxLines = 1,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    AniMixSheet(onDismiss, title = anime.title, subtitle = anime.metaLine()) {
+        Column(Modifier.fillMaxWidth().clip(AniMixTheme.shapes.large)) {
             MenuRow(AniMixIcons.Play, if (entry?.episodePositions?.values?.any { it > 0 } == true) "Продолжить" else "Смотреть") { actions.watch(anime); onDismiss() }
             if (entry?.status == null) MenuRow(AniMixIcons.Bookmark, "Запланировать") { actions.plan(anime); onDismiss() }
             MenuRow(AniMixIcons.Heart, if (entry?.favorite == true) "Убрать из избранного" else "В избранное") { actions.favorite(anime); onDismiss() }
@@ -93,9 +85,9 @@ internal fun PosterMenu(anime: Anime, actions: PosterActions, onDismiss: () -> U
 @Composable
 private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     val colors = AniMixTheme.colors
-    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = colors.accent)
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(AniMixTheme.shapes.medium).clickable(role = Role.Button, onClick = onClick)
+        .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        RowIcon(icon)
         Spacer(Modifier.width(12.dp))
         Txt(label, AniMixTheme.type.bodyStrong, maxLines = 1)
     }

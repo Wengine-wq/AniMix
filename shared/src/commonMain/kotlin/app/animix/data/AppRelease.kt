@@ -2,9 +2,9 @@ package app.animix.data
 
 /** Public release identity. [AppVersion] remains the numeric package/protocol version. */
 object AppRelease {
-    const val version = "1.3.0 re"
+    const val version = "1.3.1 re"
     /** The build number compared with GitHub releases tagged `v<build>-re` (see UpdateSource). */
-    const val build = "1.3.0"
+    const val build = "1.3.1"
     const val name = "New Horizons"
     /** The update's own name, shown in «О приложении». */
     const val title = "In Focus"
@@ -12,6 +12,7 @@ object AppRelease {
 
     /** What changed since the previous version, in the words of the release notes on GitHub. */
     val changes = listOf(
+        "Исправлено: долгое нажатие на постер не открывало меню и всё вокруг дёргалось. Теперь меню действий открывается снизу экрана и не закрывается под пальцем.",
         "Жидкое стекло во всём приложении: кромки поверхностей освещены, как у стекла, плавающие панели по-настоящему размыты, а подложка навбара движется каплей. В «Производительности» его можно выключить — останется спокойное матовое стекло.",
         "Новая страница аниме: кадр на всю ширину, студия сразу под названием, другие сезоны сразу после описания, «Продолжить» с серией и моментом остановки.",
         "Долгое нажатие на любой постер — меню «Смотреть», «Запланировать», «В избранное», «Скачать серии».",
