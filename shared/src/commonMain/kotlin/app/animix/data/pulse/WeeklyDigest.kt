@@ -64,9 +64,7 @@ fun digestFrom(library: LibraryData, cards: Map<String, Anime> = emptyMap(), tod
         activeDays = (start until start + 7).count { (days[it] ?: 0) >= 60 })
     val current = weekStart(today)
     val weeks = (7 downTo 0).map { week(current - it * 7) }
-    var streak = 0
-    var day = if ((days[today] ?: 0) >= 60) today else today - 1
-    while ((days[day] ?: 0) >= 60) { streak++; day-- }
+    val streak = app.animix.data.library.streaks(completions.filterTo(HashSet()) { it <= today }, today).first
     // The genre of the week: genres of titles with episodes finished this week, by count.
     val topGenre = library.entries.values.flatMap { entry ->
         val finished = entry.viewing.values.count { v -> v.completedAt?.let { localDayIndex(it) >= current } == true }

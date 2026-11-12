@@ -166,7 +166,7 @@ class HistoricalAchievementsTest {
         library.complete(title)
         testScheduler.runCurrent()
         assertTrue(achievements.progress.value.all { it.earned })
-        assertEquals(360, library.state.value.level(achievements.progress.value.count { it.earned }).xp)
+        assertEquals(480, library.state.value.level(achievements.progress.value.count { it.earned }).xp)
         disk.clear()
     }
 

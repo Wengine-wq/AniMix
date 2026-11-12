@@ -147,6 +147,24 @@ class ViewingTest {
         assertEquals(1f / 3, empty.level(1).fraction)
     }
 
+    @Test fun daysInARowAddExperienceFromTheSecondDay() {
+        assertEquals(0, streakXp(emptySet()))
+        // One day, or days apart, are not a run.
+        assertEquals(0, streakXp(setOf(100L)))
+        assertEquals(0, streakXp(setOf(100L, 102L, 104L)))
+        // The second day brings 20, each next day 5 more, 50 at most.
+        assertEquals(20, streakXp(setOf(100L, 101L)))
+        assertEquals(20 + 25 + 30, streakXp(setOf(100L, 101L, 102L, 103L)))
+        assertEquals(50, streakDayXp(8))
+        assertEquals(50, streakDayXp(40))
+        // A broken run starts over; both runs count.
+        assertEquals(20 + 20 + 25, streakXp(setOf(100L, 101L, 110L, 111L, 112L)))
+        // The run alive today, and the longest one.
+        assertEquals(2 to 3, streaks(setOf(90L, 91L, 92L, 99L, 100L), today = 100L))
+        assertEquals(2 to 2, streaks(setOf(98L, 99L), today = 100L))
+        assertEquals(0 to 2, streaks(setOf(97L, 98L), today = 100L))
+    }
+
     @Test fun powerSavingPersistsAndRestoresTheSeparateAnimationPreference() = runTest {
         val disk = store()
         val settings = AppSettings(disk, backgroundScope)

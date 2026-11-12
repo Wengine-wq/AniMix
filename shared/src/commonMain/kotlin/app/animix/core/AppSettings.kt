@@ -91,6 +91,8 @@ data class Settings(
     val liquidGlass: Boolean = true,
     /** The last search queries, newest first; kept on this device only. */
     val recentSearches: List<String> = emptyList(),
+    /** Monday (day index) of the week whose AniPulse issue was read: the home entry waits for the next week. */
+    val pulseReadWeek: String? = null,
 ) {
     val animationsAllowed: Boolean get() = animationsEnabled && !batterySaver
 }

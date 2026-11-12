@@ -30,10 +30,15 @@ import app.animix.ui.theme.AniMixTheme
 fun PulseEntry(graph: AppGraph, onRead: () -> Unit) {
     val colors = AniMixTheme.colors
     val library by graph.library.state.collectAsState()
+    val settings by graph.settings.state.collectAsState()
     val week = remember(library) { digestFrom(library).week }
-    Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth()
-        .clip(AniMixTheme.shapes.large).background(colors.accentSoft)
-        .clickable(role = Role.Button, onClick = onRead).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Read once, the issue leaves the home screen until Monday; it stays in the profile menu.
+    if (settings.pulseReadWeek == week.start.toString()) return
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth().pressScale(interaction)
+        .clip(AniMixTheme.shapes.large).background(colors.accentSoft).liquidSheen(0.6f).rim(AniMixTheme.shapes.large, accent = true)
+        .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onRead)
+        .focusOutline(interaction, AniMixTheme.shapes.large).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(AniMixIcons.Pulse, null, Modifier.size(24.dp), tint = colors.accentText)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -59,6 +64,10 @@ fun PulseScreen(graph: AppGraph, navigator: Navigator, padding: PaddingValues) {
     // The counting part is ready at once; the catalog and the news fill in the stories when they answer.
     val digest = (loaded.value as? Load.Ready)?.value ?: remember(library) { digestFrom(library) }
     val loading = loaded.value is Load.Loading
+    LaunchedEffect(digest.week.start) {
+        val week = digest.week.start.toString()
+        if (graph.settings.state.value.pulseReadWeek != week) graph.settings.update { it.copy(pulseReadWeek = week) }
+    }
     val mine = library.entries.keys
     val issue = remember(digest, mine) { issueFrom(digest, mine, app.animix.core.TrustedClock.now()) }
     ScreenColumn(padding) {

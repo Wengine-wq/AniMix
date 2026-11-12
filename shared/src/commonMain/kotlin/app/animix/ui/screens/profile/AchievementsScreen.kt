@@ -41,6 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import app.animix.data.library.episodeDays
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.unit.dp
@@ -214,36 +221,76 @@ internal fun progressLabel(progress: app.animix.data.achievements.AchievementPro
     return "${hours(current)} / ${hours(progress.target)} ч"
 }
 
-/** A quiet glass toast at the top when an achievement unlocks. */
+/** What the toast at the top says: an award, or a day added to the run of days. */
+private sealed interface Toast {
+    class Award(val achievement: Achievement) : Toast
+    class Streak(val days: Int) : Toast
+}
+
+/**
+ * A quiet glass toast at the top: an achievement unlocks, or today's first finished episode adds a day
+ * to a run of two or more (that day raises the level, so it is worth a word). One at a time, in order.
+ */
 @Composable
 fun AchievementToastHost(graph: AppGraph, modifier: Modifier = Modifier) {
-    var current by remember { mutableStateOf<Achievement?>(null) }
+    var current by remember { mutableStateOf<Toast?>(null) }
+    val queue = remember { kotlinx.coroutines.channels.Channel<Toast>(kotlinx.coroutines.channels.Channel.UNLIMITED) }
+    LaunchedEffect(Unit) { graph.achievements.unlockedNow.collect { queue.send(Toast.Award(it)) } }
     LaunchedEffect(Unit) {
-        graph.achievements.unlockedNow.collect { achievement ->
-            current = achievement
+        var known: Set<Long>? = null
+        graph.library.state.map { it.episodeDays() }.distinctUntilChanged().flowOn(kotlinx.coroutines.Dispatchers.Default).collect { days ->
+            val today = app.animix.core.localDayIndex()
+            val before = known
+            known = days
+            if (before != null && today !in before && today in days) {
+                val run = app.animix.data.library.streaks(days.filterTo(HashSet()) { it <= today }, today).first
+                if (run >= 2) queue.send(Toast.Streak(run))
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        for (toast in queue) {
+            current = toast
             delay(3_500)
             current = null
             delay(400)
         }
     }
-    val shown = current
+    // The last toast keeps its content while it slides away.
+    var last by remember { mutableStateOf<Toast?>(null) }
+    current?.let { last = it }
     AnimatedVisibility(
-        visible = shown != null,
+        visible = current != null,
         enter = fadeIn() + slideInVertically { -it / 2 },
         exit = fadeOut() + slideOutVertically { -it / 2 },
         modifier = modifier,
     ) {
-        val a = shown ?: return@AnimatedVisibility
+        val toast = last ?: return@AnimatedVisibility
+        val colors = AniMixTheme.colors
         Row(
             Modifier.statusBarsPadding().padding(16.dp).widthIn(max = 420.dp)
-                .glass(AniMixTheme.shapes.large).padding(horizontal = 14.dp, vertical = 10.dp),
+                .glass(AniMixTheme.shapes.large, tint = 1f, lens = true).padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AchievementIcon(a, unlocked = true, size = 44.dp)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Txt("Достижение получено", AniMixTheme.type.micro, color = AniMixTheme.colors.accent)
-                Txt(a.name, AniMixTheme.type.bodyStrong, maxLines = 2)
+            when (toast) {
+                is Toast.Award -> {
+                    AchievementIcon(toast.achievement, unlocked = true, size = 44.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Txt("Достижение получено", AniMixTheme.type.micro, color = colors.accent)
+                        Txt(toast.achievement.name, AniMixTheme.type.bodyStrong, maxLines = 2)
+                    }
+                }
+                is Toast.Streak -> {
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accentSoft), contentAlignment = Alignment.Center) {
+                        Icon(AniMixIcons.Flame, null, Modifier.size(22.dp), tint = colors.accent)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Txt("Серия дней", AniMixTheme.type.micro, color = colors.accent)
+                        Txt("${toast.days} ${profileDaysWord(toast.days)} подряд · уровень растёт", AniMixTheme.type.bodyStrong, maxLines = 2)
+                    }
+                }
             }
         }
     }

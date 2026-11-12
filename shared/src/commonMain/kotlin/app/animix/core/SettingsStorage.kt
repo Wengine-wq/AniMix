@@ -19,7 +19,7 @@ internal object SettingsPreferences {
     private val flags = listOf("skipOpenings", "skipEndings", "autoNextEpisode", "autoNextAsked", "favoritesLast",
         "smartConnection", "trafficSaver", "animationsEnabled", "batterySaver", "fillScreen", "ambientGlow", "experimentalPulse", "experimentalPicks", "reviewMusicEnabled",
         "notifyNewEpisodes", "notifyDubbing", "experimentalCollections", "liquidGlass")
-    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate", "playerMode", "appIcon")
+    private val strings = listOf("preferredDubbing", "preferredQuality", "downloadQuality", "dismissedUpdate", "playerMode", "appIcon", "pulseReadWeek")
     private val floats = listOf("playbackSpeed")
 
     fun decode(preferences: Preferences): Settings {

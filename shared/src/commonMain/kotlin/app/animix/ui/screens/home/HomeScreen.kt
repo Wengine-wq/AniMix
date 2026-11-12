@@ -165,7 +165,8 @@ fun HomeScreen(graph: AppGraph, navigator: Navigator, contentPadding: PaddingVal
                 review = review.year.takeIf { reviewSeen }, onReview = { navigator.push(Route.YearInReview(review.year)) })
         }
         item(key = "continue") {
-            ContinueShelf(continueItems, onOpen = { item ->
+            val frames by graph.lastFrames.state.collectAsState()
+            ContinueShelf(continueItems, frames, onOpen = { item ->
                 val saved = graph.downloads.state.value.firstOrNull { d -> d.anime.key == item.entry.anime.key &&
                     d.episode.number == item.episode && d.status == app.animix.data.downloads.DownloadStatus.Completed }
                 navigator.push(if (saved != null) Route.Offline(saved.id) else Route.Watch(item.entry.anime, episode = item.episode))
@@ -370,7 +371,7 @@ private fun QuickFilters(onOpen: (CatalogQuery, String) -> Unit, review: Int? = 
  * the accent. A tap opens the episode (a downloaded one plays offline).
  */
 @Composable
-private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> Unit, onMore: () -> Unit) {
+private fun ContinueShelf(items: List<ContinueItem>, frames: Map<String, okio.Path>, onOpen: (ContinueItem) -> Unit, onMore: () -> Unit) {
     if (items.isEmpty()) return
     val colors = AniMixTheme.colors
     Column(Modifier.padding(bottom = 32.dp)) {
@@ -384,7 +385,8 @@ private fun ContinueShelf(items: List<ContinueItem>, onOpen: (ContinueItem) -> U
                         .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current,
                             role = androidx.compose.ui.semantics.Role.Button) { onOpen(item) },
                 ) {
-                    RemoteImage(item.entry.anime.posterUrl, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large)
+                    // The moment one stopped at; a title not yet played on this device shows its poster.
+                    RemoteImage(item.entry.anime.posterUrl, Modifier.fillMaxSize(), shape = AniMixTheme.shapes.large, local = frames[item.entry.anime.key])
                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x14000000), 0.45f to Color(0x33000000), 1f to Color(0xD9000000))))
                     Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(40.dp).accentGlow(CircleShape).clip(CircleShape)
                         .background(colors.accentGradient).highlight(CircleShape), contentAlignment = Alignment.Center) {

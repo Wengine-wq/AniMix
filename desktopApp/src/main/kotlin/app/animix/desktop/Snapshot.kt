@@ -23,7 +23,7 @@ import java.io.File
 /**
  * Renders the app off-screen into a PNG, for design reviews and docs:
  * `AniMix.exe --snapshot=out.png --size=1280x820 --wait=8 animix://home`.
- * Add `--font-scale=1.3` to check enlarged system text.
+ * Add `--font-scale=1.3` to check enlarged system text, `--density=2` to render as a phone screen does (the size is in pixels).
  * `--frames=6000,6100,6200` captures intermediate animation frames; `--scroll=400` checks lower content (`--scroll-at=3000` delays it).
  * `--hover=200,200 --leave=4000` checks mouse pause and resume without opening a window.
  * `--click=1000:Начать сессию` invokes a visible button by its semantic label after 1 second; repeat for a sequence.
@@ -39,6 +39,7 @@ object Snapshot {
             .split('x').map { it.toInt() }
         val seconds = args.firstOrNull { it.startsWith("--wait=") }?.substringAfter('=')?.toLong() ?: 8
         val fontScale = args.firstOrNull { it.startsWith("--font-scale=") }?.substringAfter('=')?.toFloat() ?: 1f
+        val density = args.firstOrNull { it.startsWith("--density=") }?.substringAfter('=')?.toFloat() ?: 1f
         val loadDelay = args.firstOrNull { it.startsWith("--load-delay-ms=") }?.substringAfter('=')?.toLong()?.coerceAtLeast(0) ?: 0L
         val link = args.firstOrNull { it.startsWith("animix://") }
         val frames = args.firstOrNull { it.startsWith("--frames=") }?.substringAfter('=')?.split(',')
@@ -56,7 +57,7 @@ object Snapshot {
 
         val drag = args.firstOrNull { it.startsWith("--drag=") }?.substringAfter('=')?.split(':', limit = 4)
         val touch = "--touch" in args
-        val scene = ImageComposeScene(width, height, Density(1f, fontScale)) {
+        val scene = ImageComposeScene(width, height, Density(density, fontScale)) {
             CompositionLocalProvider(LocalLoadPreviewDelay provides loadDelay) { App(graph, startLink = link) }
         }
         try {

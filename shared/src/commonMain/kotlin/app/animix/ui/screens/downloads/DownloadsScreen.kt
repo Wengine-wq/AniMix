@@ -490,6 +490,7 @@ private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, descr
                     initialPositionMs = library.entry(item.anime)?.episodePositions?.get(item.episode.number) ?: 0,
                     // Nothing online here: no Horizon Link, no presence binding, no quality list for one file.
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
+                    onFrame = { graph.lastFrames.save(item.anime.key, it) },
                     onCompleted = {
                         graph.library.saveEpisodePosition(item.anime, item.episode.number, 0)
                     },

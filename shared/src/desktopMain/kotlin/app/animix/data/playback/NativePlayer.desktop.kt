@@ -280,6 +280,30 @@ internal class DesktopNativePlayer : NativePlayer {
         mutable.update { it.copy(speed = rate) }
         commands.launch { if (!released) engine.controls().setRate(rate) }
     }
+    override suspend fun captureFrame(width: Int): ByteArray? {
+        val source = frames.current() ?: return null
+        if (source.width <= 0 || source.height <= 0) return null
+        val height = (width.toLong() * source.height / source.width).toInt().coerceIn(2, width * 2)
+        val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(width, height)
+        return try {
+            surface.canvas.drawImageRect(source, Rect.makeWH(source.width.toFloat(), source.height.toFloat()),
+                Rect.makeWH(width.toFloat(), height.toFloat()), org.jetbrains.skia.SamplingMode.LINEAR, null, true)
+            val small = surface.makeImageSnapshot()
+            try {
+                // A fade to black makes a poor cover: keep the previous frame instead.
+                val pixels = org.jetbrains.skia.Bitmap.makeFromImage(small)
+                var light = 0L; var count = 0
+                for (y in 0 until height step (height / 12).coerceAtLeast(1)) for (x in 0 until width step (width / 16).coerceAtLeast(1)) {
+                    val pixel = pixels.getColor(x, y)
+                    light += (((pixel shr 16) and 0xFF) * 3 + ((pixel shr 8) and 0xFF) * 6 + (pixel and 0xFF)) / 10; count++
+                }
+                pixels.close()
+                if (count == 0 || light / count < 22) null
+                else small.encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 84)?.bytes
+            } finally { small.close() }
+        } finally { surface.close() }
+    }
+
     override fun release() {
         if (released) return
         released = true

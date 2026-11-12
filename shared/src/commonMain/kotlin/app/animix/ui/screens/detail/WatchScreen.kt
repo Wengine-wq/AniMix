@@ -323,6 +323,7 @@ private fun PlayerArea(
                 skips = { duration -> graph.skips.plan(anime, episode, duration) },
                 initialPositionMs = library.entry(anime)?.episodePositions?.get(episode.number) ?: 0L,
                 onProgress = { graph.library.saveEpisodePosition(anime, episode.number, it) },
+                onFrame = { graph.lastFrames.save(anime.key, it) },
                 onPlayerBound = { player -> graph.social.bind(player,anime,episode.number,dubbing.key){graph.settings.state.value.preferredQuality?:"Авто"} },
                 horizon = { app.animix.ui.screens.profile.HorizonButton(graph) },
                 onCompleted = {

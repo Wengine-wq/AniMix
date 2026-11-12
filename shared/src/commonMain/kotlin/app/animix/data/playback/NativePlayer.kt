@@ -31,6 +31,11 @@ interface NativePlayer {
     fun setVolume(volume: Float)
     /** Playback rate within 0.25–2×; kept for the next file loaded into this player. */
     fun setSpeed(speed: Float) {}
+    /**
+     * The picture on screen right now as a small JPEG ([width] pixels wide), for «Продолжить просмотр».
+     * Null when there is no picture yet or it is almost black (a fade between scenes makes a poor cover).
+     */
+    suspend fun captureFrame(width: Int = 640): ByteArray? = null
     fun release()
 }
 

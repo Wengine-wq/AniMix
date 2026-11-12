@@ -12,6 +12,9 @@ expect object Platform {
 
     /** Directory for data that can be thrown away (HTTP and image caches). */
     val cacheDir: String
+
+    /** Whether glass can bend what lies behind it at its edges (shader effects); otherwise it is frosted only. */
+    val refractiveGlass: Boolean
 }
 
 expect fun createHttpEngine(): HttpClientEngine

@@ -49,6 +49,7 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
 
 haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
+haze-glass = { module = "dev.chrisbanes.haze:haze-glass", version.ref = "haze" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }

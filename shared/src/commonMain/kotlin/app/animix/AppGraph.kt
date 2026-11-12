@@ -78,6 +78,9 @@ class AppGraph {
     /** The local profile and lists, stored on this device. */
     val library = Library(DiskStore(Platform.dataDir), scope)
 
+    /** The last frame seen of each title, for the «Продолжить просмотр» cards. */
+    val lastFrames = app.animix.data.library.LastFrames("${Platform.dataDir}/frames", scope)
+
     /** Achievements, earned from the local library, settings and in-app events. */
     val achievements = Achievements(DiskStore(Platform.dataDir), scope, library, settings)
 

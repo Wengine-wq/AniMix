@@ -122,10 +122,51 @@ data class ProfileLevel(val level: Int, val xp: Long, val progressXp: Long, val 
     val fraction: Float get() = (progressXp.toFloat() / nextLevelXp).coerceIn(0f, 1f)
 }
 
-/** Unique minutes + unique episode completions + permanent awards; seeking/replays add no XP. */
+/** XP for one episode confirmed by playback for the first time. */
+const val EpisodeXp = 30L
+/** XP for one award earned in AniMix. */
+const val AchievementXp = 50L
+
+/** Local days with at least one episode confirmed by playback: the days a streak is made of. */
+fun LibraryData.episodeDays(): Set<Long> = buildSet {
+    for (entry in entries.values) for (viewing in entry.viewing.values) viewing.completedAt?.let { add(app.animix.core.localDayIndex(it)) }
+}
+
+/** The run of episode days that is still alive on [today] (yesterday's run lasts until today ends), and the longest one. */
+fun streaks(days: Set<Long>, today: Long): Pair<Int, Int> {
+    var current = 0
+    var day = if (today in days) today else today - 1
+    while (day in days) { current++; day-- }
+    var best = 0; var run = 0; var previous: Long? = null
+    for (d in days.sorted()) { run = if (previous != null && d == previous + 1) run + 1 else 1; best = maxOf(best, run); previous = d }
+    return current to maxOf(best, current)
+}
+
+/** What the [day]-th day in a row brings: nothing for the first, 20 XP for the second, 5 more each day, 50 at most. */
+fun streakDayXp(day: Int): Long = if (day < 2) 0 else (20L + 5L * (day - 2)).coerceAtMost(50)
+
+/** Every day of every run of episode days, from the second day on. Derived from confirmations, so it is never paid twice. */
+fun streakXp(days: Set<Long>): Long {
+    var total = 0L; var run = 0; var previous: Long? = null
+    for (d in days.sorted()) { run = if (previous != null && d == previous + 1) run + 1 else 1; total += streakDayXp(run); previous = d }
+    return total
+}
+
+/** Where the experience came from: minutes watched, episodes finished, days in a row and awards. */
+data class XpSources(val minutes: Long, val episodes: Long, val streak: Long, val awards: Long) {
+    val total: Long get() = minutes + episodes + streak + awards
+}
+
+fun LibraryData.xpSources(earnedAchievements: Int): XpSources = XpSources(
+    minutes = entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs } } / 60_000,
+    episodes = entries.values.sumOf { it.verifiedEpisodes.toLong() } * EpisodeXp,
+    streak = streakXp(episodeDays()),
+    awards = earnedAchievements.coerceAtLeast(0).toLong() * AchievementXp,
+)
+
+/** Unique minutes + unique episode completions + days in a row + permanent awards; seeking/replays add no XP. */
 fun LibraryData.level(earnedAchievements: Int): ProfileLevel {
-    val xp = entries.values.sumOf { entry -> entry.viewing.values.sumOf { it.uniqueMs } } / 60_000 +
-        entries.values.sumOf { it.verifiedEpisodes.toLong() } * 20 + earnedAchievements.coerceAtLeast(0).toLong() * 50
+    val xp = xpSources(earnedAchievements).total
     // 150 XP to level 2, then 250, 350, … (+100 per level). XP is derived, so changing the curve
     // recomputes every earlier level from the same confirmed playback and awards.
     fun threshold(level: Int): Long { val n = level.toLong() - 1; return n * 150 + n * (n - 1) * 50 }

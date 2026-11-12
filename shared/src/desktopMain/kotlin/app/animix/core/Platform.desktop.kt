@@ -7,6 +7,7 @@ import java.io.File
 actual object Platform {
     private val os = System.getProperty("os.name").orEmpty()
 
+    actual val refractiveGlass: Boolean = true
     actual val name: String = when {
         os.startsWith("Windows", ignoreCase = true) -> "Windows"
         os.startsWith("Mac", ignoreCase = true) -> "macOS"

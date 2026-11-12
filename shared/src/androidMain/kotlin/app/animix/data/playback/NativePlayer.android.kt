@@ -137,6 +137,29 @@ internal class AndroidNativePlayer : NativePlayer {
     }
     override fun setVolume(volume: Float) { engine.volume = volume.coerceIn(0f, 1f); publish() }
     override fun setSpeed(speed: Float) { if (!released) { engine.setPlaybackSpeed(speed.coerceIn(0.25f, 2f)); publish() } }
+    override suspend fun captureFrame(width: Int): ByteArray? {
+        val view = surface.value ?: return null
+        val snapshot = state.value
+        if (snapshot.videoWidth <= 0 || snapshot.videoHeight <= 0 || view.width <= 0 || view.holder.surface?.isValid != true) return null
+        val height = (width.toLong() * snapshot.videoHeight / snapshot.videoWidth).toInt().coerceIn(2, width * 2)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val copied = suspendCancellableCoroutine { done ->
+            runCatching { PixelCopy.request(view, bitmap, { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, Handler(Looper.getMainLooper())) }
+                .onFailure { if (done.isActive) done.resume(false) }
+        }
+        if (!copied) return null
+        return kotlinx.coroutines.withContext(Dispatchers.Default) {
+            // A fade to black makes a poor cover: keep the previous frame instead.
+            var light = 0L; var count = 0
+            for (y in 0 until height step (height / 12).coerceAtLeast(1)) for (x in 0 until width step (width / 16).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                light += (android.graphics.Color.red(pixel) * 3 + android.graphics.Color.green(pixel) * 6 + android.graphics.Color.blue(pixel)) / 10; count++
+            }
+            if (count == 0 || light / count < 22) null
+            else java.io.ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 84, it) }.toByteArray()
+        }
+    }
+
     override fun release() { if (!released) { released = true; scope.cancel(); engine.release() } }
 }
 

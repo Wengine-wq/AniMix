@@ -46,6 +46,7 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor)
             implementation(libs.haze.blur)
+            implementation(libs.haze.glass)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

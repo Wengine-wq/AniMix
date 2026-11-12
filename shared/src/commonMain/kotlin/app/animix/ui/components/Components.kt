@@ -46,6 +46,9 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -159,9 +162,12 @@ fun RemoteImage(
     shape: Shape = AniMixTheme.shapes.medium,
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: Boolean = true,
+    colorFilter: androidx.compose.ui.graphics.ColorFilter? = null,
+    /** A picture kept on this device, shown instead of [url] when present. */
+    local: okio.Path? = null,
 ) {
     val colors = AniMixTheme.colors
-    var state by remember(url) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    var state by remember(url, local) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
     // Fade in on every load, including memory-cache hits, so posters never pop in.
     val alpha by animateFloatAsState(
         if (state is AsyncImagePainter.State.Success) 1f else 0f,
@@ -171,11 +177,12 @@ fun RemoteImage(
         if (placeholder && !url.isNullOrBlank() && (state is AsyncImagePainter.State.Empty || state is AsyncImagePainter.State.Loading)) {
             Shimmer(Modifier.fillMaxSize(), RectangleShape)
         }
-        if (url != null) {
+        if (url != null || local != null) {
             AsyncImage(
-                model = url,
+                model = local ?: url,
                 contentDescription = null,
                 contentScale = contentScale,
+                colorFilter = colorFilter,
                 onState = { state = it },
                 modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha },
             )
@@ -240,7 +247,7 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
  * stopped by a touch or a resting thumb drifting by a few pixels never opens anything. Observes only:
  * taps still reach the clickable below.
  */
-fun Modifier.deliberateHold(holdMs: Long = 650, tolerance: androidx.compose.ui.unit.Dp = 6.dp, onHold: () -> Unit): Modifier =
+fun Modifier.deliberateHold(holdMs: Long = 500, tolerance: androidx.compose.ui.unit.Dp = 8.dp, onHold: () -> Unit): Modifier =
     pointerInput(Unit) {
         val slop = tolerance.toPx()
         awaitEachGesture {
@@ -249,7 +256,11 @@ fun Modifier.deliberateHold(holdMs: Long = 650, tolerance: androidx.compose.ui.u
                 while (true) {
                     val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull false
-                    if (!change.pressed || change.isConsumed || event.changes.size > 1) return@withTimeoutOrNull false
+                    if (!change.pressed || event.changes.size > 1) return@withTimeoutOrNull false
+                    // The press itself is always consumed by the card's own clickable: that is not a takeover.
+                    // Only a consumed movement means a list or a pager has taken the gesture. (Until 1.3.1 the
+                    // consumed press was read as a takeover, so the hold never fired on a real touch.)
+                    if (change.previousPressed && change.isConsumed) return@withTimeoutOrNull false
                     if ((change.position - down.position).getDistance() > slop) return@withTimeoutOrNull false
                 }
                 @Suppress("UNREACHABLE_CODE") false
@@ -277,17 +288,31 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier, 
     val listed = if (mark) LocalListMarks.current[anime.key] else null
     val actions = LocalPosterActions.current
     val haptics = rememberHaptics()
-    var menu by remember { mutableStateOf(false) }
+    val menu = LocalPosterMenu.current.takeIf { actions != null }
+    // Where the poster is on screen: its menu drops from it.
+    var poster by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
     // The release after a hold that opened the menu is not a tap on the poster.
     var held by remember { mutableStateOf(false) }
+    val openMenu = {
+        val place = poster?.takeIf { it.isAttached }
+        if (menu != null && place != null) menu.request = PosterMenuRequest(anime, place.boundsInRoot())
+    }
     Column(modifier.pressScale(interaction)
-        .then(if (actions != null) Modifier.deliberateHold { haptics.longPress(); held = true; menu = true } else Modifier)
+        .then(if (menu != null) Modifier.deliberateHold { haptics.longPress(); held = true; openMenu() }
+            // With a mouse the same menu opens on the right button.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press && event.buttons.isSecondaryPressed) openMenu()
+                    }
+                }
+            } else Modifier)
         .clickable(interaction, indication = null, onClick = { if (held) held = false else onClick() })
-        .semantics { if (actions != null) onLongClick("Действия с тайтлом") { menu = true; true } }
+        .semantics { if (menu != null) onLongClick("Действия с тайтлом") { openMenu(); true } }
         .focusOutline(interaction, AniMixTheme.shapes.large)) {
-        if (menu && actions != null) PosterMenu(anime, actions) { menu = false; held = false }
         // The press shows on the poster itself, in its rounded shape, not as a box around the caption.
-        Box(Modifier.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
+        Box(Modifier.onGloballyPositioned { poster = it }.clip(AniMixTheme.shapes.large).indication(interaction, androidx.compose.foundation.LocalIndication.current)) {
             RemoteImage(anime.posterUrl, Modifier.fillMaxWidth().aspectRatio(0.7f), shape = AniMixTheme.shapes.large)
             anime.score?.let { ScoreBadge(it, Modifier.align(Alignment.TopEnd).padding(6.dp)) }
             if (listed != null) {
@@ -326,21 +351,27 @@ fun AnimeCardPlaceholder(modifier: Modifier = Modifier) {
 fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt(title, AniMixTheme.type.heading, modifier = Modifier.weight(1f))
-        if (action != null && onAction != null) {
-            val interaction = remember { MutableInteractionSource() }
-            // A quiet chip with a chevron: it reads as the way to the whole list, not as a second heading.
-            Row(
-                Modifier.clip(AniMixTheme.shapes.pill).background(AniMixTheme.colors.chip)
-                    .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onAction)
-                    .focusOutline(interaction, AniMixTheme.shapes.pill)
-                    .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Txt(action, AniMixTheme.type.label, color = AniMixTheme.colors.textPrimary, maxLines = 1)
-                Spacer(Modifier.width(2.dp))
-                Icon(AniMixIcons.ChevronRight, null, Modifier.size(14.dp), tint = AniMixTheme.colors.textSecondary)
-            }
-        }
+        if (action != null && onAction != null) MoreChip(action, onAction)
+    }
+}
+
+/**
+ * The quiet way onward from a heading: «Все ›», «Открыть ›». A chip with a chevron reads as the way to
+ * the whole list, not as a second heading; the same in every section and on every plate.
+ */
+@Composable
+fun MoreChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        modifier.clip(AniMixTheme.shapes.pill).background(AniMixTheme.colors.chip)
+            .clickable(interaction, indication = androidx.compose.foundation.LocalIndication.current, role = Role.Button, onClick = onClick)
+            .focusOutline(interaction, AniMixTheme.shapes.pill)
+            .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Txt(text, AniMixTheme.type.label, color = AniMixTheme.colors.textPrimary, maxLines = 1)
+        Spacer(Modifier.width(2.dp))
+        Icon(AniMixIcons.ChevronRight, null, Modifier.size(14.dp), tint = AniMixTheme.colors.textSecondary)
     }
 }
 
@@ -479,7 +510,7 @@ fun IconCircle(
             .then(
                 when {
                     active -> Modifier.clip(CircleShape).background(colors.accentSoft).rim(CircleShape, accent = true)
-                    glass -> Modifier.glass(CircleShape, backdrop = glassSource != null, source = glassSource, radius = 18.dp, tint = 0.45f)
+                    glass -> Modifier.glass(CircleShape, backdrop = glassSource != null, source = glassSource, radius = 18.dp, tint = 0.45f, lens = true)
                     else -> Modifier.clip(CircleShape).background(colors.chip).liquidSheen().rim(CircleShape, accent = false)
                 },
             )

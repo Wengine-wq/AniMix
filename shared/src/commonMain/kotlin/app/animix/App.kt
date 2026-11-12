@@ -116,6 +116,10 @@ import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
 import io.ktor.client.HttpClient
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.clipToBounds
+import kotlin.math.roundToInt
 import okio.Path.Companion.toPath
 
 @Composable
@@ -236,8 +240,11 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             open = { navigator.push(Route.Detail(it)) },
         )
     }
+    val posterMenu = remember { app.animix.ui.components.PosterMenuState() }
+    // Leaving the screen closes the menu of a poster that is no longer there.
+    LaunchedEffect(navigator.current, navigator.tab) { posterMenu.request = null }
     CompositionLocalProvider(LocalHaze provides haze, LocalAmbient provides ambient, app.animix.ui.components.LocalListMarks provides marks,
-        app.animix.ui.components.LocalPosterActions provides posterActions) {
+        app.animix.ui.components.LocalPosterActions provides posterActions, app.animix.ui.components.LocalPosterMenu provides posterMenu) {
         BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
             val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -268,6 +275,7 @@ private fun AppShell(graph: AppGraph, navigator: Navigator, onExit: () -> Unit) 
             )
             // «Итоги года» are full screen, like stories.
             if (showBar) BottomBar(navigator, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+            app.animix.ui.components.PosterMenuHost(posterMenu, posterActions, topInset = statusBar, bottomInset = navBar)
             AchievementToastHost(graph, Modifier.align(Alignment.TopCenter))
             SaveErrorBar(graph, Modifier.align(Alignment.TopCenter).padding(top = statusBar + 8.dp))
         }
@@ -375,69 +383,104 @@ private fun Content(graph: AppGraph, navigator: Navigator, padding: PaddingValue
 }
 
 /**
- * Floating frosted-glass navigation. The chosen tab is a wider pill with its icon and name, so where
- * one is reads in words; the others are icons. The pill moves like a drop of liquid glass: the edge in
- * the direction of travel leads, the other follows on a softer spring, so the pill stretches on the way
- * and settles to its slot without bouncing. Without animations it simply stands in its slot.
+ * Floating glass navigation. The chosen tab is a wider slot with its icon and name, so where one is
+ * reads in words; the others are icons. Everything that moves is driven by one value per tab (how
+ * chosen it is, 0..1): the slot widths, the pill and the name are all read from it while laying out
+ * and drawing, so they can never drift apart. The pill is a blend of the slots it is leaving and
+ * entering; with liquid glass its edge in the direction of travel runs ahead and the other lags, so it
+ * stretches like a drop and settles without bouncing. The name unrolls from the icon as its slot
+ * widens instead of appearing at full width.
  */
 @Composable
 private fun BottomBar(navigator: Navigator, modifier: Modifier = Modifier) {
     val colors = AniMixTheme.colors
     val shape = AniMixTheme.shapes.pill
-    BoxWithConstraints(
+    val tabs = Tab.entries
+    val liquid = LocalUiPerformance.current.liquid
+    val haptics = app.animix.ui.components.rememberHaptics()
+    // How chosen each tab is. One spring for all of them: what one tab gives up, the other takes.
+    val chosen = tabs.map { tab -> animateFloatAsState(if (navigator.tab == tab) 1f else 0f, AniMixMotion.selectionSpring()) }
+    fun share(index: Int) = 1f + (SelectedShare - 1f) * chosen[index].value
+    Box(
         modifier
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .widthIn(max = 440.dp)
             .fillMaxWidth()
             .dropShadow(shape, Shadow(radius = 24.dp, color = Color.Black.copy(alpha = if (colors.isDark) 0.35f else 0.08f), offset = DpOffset(0.dp, 8.dp)))
-            .glass(shape)
+            .glass(shape, tint = 0.7f, lens = true)
             .padding(6.dp),
     ) {
-        // Each slot's share of the bar; the chosen one is wider for its name. Read while drawing the pill.
-        val shares = Tab.entries.map { tab ->
-            animateFloatAsState(if (navigator.tab == tab) SelectedShare else 1f, AniMixMotion.selectionSpring())
-        }
-        val selectedIndex = navigator.tab.ordinal
-        val haptics = app.animix.ui.components.rememberHaptics()
-        var previous by remember { mutableStateOf(selectedIndex) }
-        val forward = selectedIndex >= previous
-        SideEffect { previous = selectedIndex }
-        val slots = Tab.entries.size - 1 + SelectedShare
-        // Frosted glass moves calmly: both edges on one spring, the pill glides without stretching.
-        val liquid = LocalUiPerformance.current.liquid
-        val lead = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = if (liquid) 900f else 400f)
-        val trail = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = if (liquid) 260f else 400f)
-        val startEdge by animateFloatAsState(selectedIndex / slots, if (forward) trail else lead)
-        val endEdge by animateFloatAsState((selectedIndex + SelectedShare) / slots, if (forward) lead else trail)
-        val width = maxWidth
-        Box(Modifier.graphicsLayer {
-                // Stretched pills get a touch thinner, as a drop does; the slot pill is 48 dp.
-                val stretch = ((endEdge - startEdge) * slots / SelectedShare - 1f).coerceIn(0f, 0.6f)
-                translationX = startEdge * width.toPx()
-                scaleY = if (liquid) 1f - stretch * 0.12f else 1f
-            }
-            .width(width * (endEdge - startEdge).coerceAtLeast(0.05f)).height(48.dp)
-            .clip(shape).background(colors.accentSoft).liquidSheen().rim(shape, accent = true))
-        Row(Modifier.fillMaxWidth().selectableGroup()) {
-            Tab.entries.forEachIndexed { index, tab ->
-                val selected = navigator.tab == tab
-                val interaction = remember { MutableInteractionSource() }
-                val focus by animateFloatAsState(if (selected) 1f else 0f, AniMixMotion.selectionSpring())
-                val tint by animateColorAsState(if (selected) colors.accent else colors.textMuted, tween(AniMixMotion.Standard))
-                Row(
-                    Modifier.weight(shares[index].value).height(48.dp)
-                        .pressScale(interaction, pressed = 0.94f)
-                        .selectable(selected, interaction, indication = null, role = Role.Tab) { if (!selected) haptics.tick(); navigator.select(tab) }
-                        .focusOutline(interaction, shape),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(tab.icon, tab.label, Modifier.size(22.dp), tint = tint)
-                    // The name fades in as the slot widens; it never squeezes the icons of the other tabs.
-                    if (focus > 0.02f) Txt(tab.label, AniMixTheme.type.label, color = colors.accentText, maxLines = 1,
-                        modifier = Modifier.padding(start = 6.dp).graphicsLayer { alpha = focus }.clearAndSetSemantics { })
+        // The pill: measured and placed from the same values as the slots, in the layout pass.
+        Box(Modifier.layout { measurable, constraints ->
+                val total = tabs.indices.sumOf { share(it).toDouble() }.toFloat()
+                val bar = constraints.maxWidth
+                var left = 0f; var right = 0f; var leftWeight = 0f; var rightWeight = 0f; var plain = 0f
+                var x = 0f
+                // A drop: its left edge keeps to the leftmost tab that is still chosen, its right edge to the rightmost.
+                val pull = if (liquid) 3f else 0f
+                val before = FloatArray(tabs.size); val after = FloatArray(tabs.size)
+                for (i in tabs.indices) before[i] = (if (i > 0) before[i - 1] + chosen[i - 1].value else 0f)
+                for (i in tabs.indices.reversed()) after[i] = (if (i < tabs.lastIndex) after[i + 1] + chosen[i + 1].value else 0f)
+                for (i in tabs.indices) {
+                    val width = bar * share(i) / total
+                    val f = chosen[i].value.coerceAtLeast(0f)
+                    val l = f * (1f + pull * after[i].coerceAtLeast(0f)); val r = f * (1f + pull * before[i].coerceAtLeast(0f))
+                    left += l * x; leftWeight += l
+                    right += r * (x + width); rightWeight += r
+                    plain += f * width
+                    x += width
+                }
+                val start = if (leftWeight > 0f) left / leftWeight else 0f
+                val end = if (rightWeight > 0f) right / rightWeight else bar.toFloat()
+                val width = (end - start).coerceAtLeast(1f)
+                val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width.roundToInt(), 48.dp.roundToPx()))
+                layout(bar, placeable.height) {
+                    placeable.placeWithLayer(0, 0) {
+                        translationX = start
+                        // A stretched drop gets a touch thinner.
+                        scaleY = 1f - ((width / plain.coerceAtLeast(1f)) - 1f).coerceIn(0f, 0.6f) * 0.14f
+                    }
                 }
             }
+            .clip(shape).background(colors.accentSoft).liquidSheen().rim(shape, accent = true))
+        Layout(
+            content = {
+                tabs.forEachIndexed { index, tab ->
+                    val selected = navigator.tab == tab
+                    val interaction = remember { MutableInteractionSource() }
+                    val tint by animateColorAsState(if (selected) colors.accent else colors.textSecondary, tween(AniMixMotion.Standard))
+                    Row(
+                        Modifier.selectable(selected, interaction, indication = null, role = Role.Tab) { if (!selected) haptics.tick(); navigator.select(tab) }
+                            .focusOutline(interaction, shape),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(tab.icon, tab.label, Modifier.pressScale(interaction, pressed = 0.86f).size(22.dp), tint = tint)
+                        // The name unrolls with the slot: its width and opacity follow how chosen the tab is, so the
+                        // icon glides aside instead of jumping, and nothing ever overflows a narrow slot.
+                        Txt(tab.label, AniMixTheme.type.label, color = colors.accentText, maxLines = 1,
+                            modifier = Modifier.clearAndSetSemantics { }.clipToBounds().layout { measurable, _ ->
+                                val text = measurable.measure(androidx.compose.ui.unit.Constraints())
+                                val shown = ((chosen[index].value - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                                val gap = 6.dp.roundToPx()
+                                layout(((text.width + gap) * shown).roundToInt(), text.height) {
+                                    text.placeWithLayer(gap, 0) { alpha = shown * shown }
+                                }
+                            })
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().selectableGroup(),
+        ) { measurables, constraints ->
+            val total = tabs.indices.sumOf { share(it).toDouble() }.toFloat()
+            val height = 48.dp.roundToPx()
+            var x = 0f
+            val placed = measurables.mapIndexed { index, measurable ->
+                val left = x.roundToInt()
+                x += constraints.maxWidth * share(index) / total
+                measurable.measure(androidx.compose.ui.unit.Constraints.fixed((x.roundToInt() - left).coerceAtLeast(0), height)) to left
+            }
+            layout(constraints.maxWidth, height) { placed.forEach { (placeable, left) -> placeable.place(left, 0) } }
         }
     }
 }

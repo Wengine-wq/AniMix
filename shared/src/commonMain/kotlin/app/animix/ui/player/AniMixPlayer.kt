@@ -125,6 +125,8 @@ fun AniMixPlayer(
     skips: suspend (durationSeconds: Double?) -> SkipPlan = { SkipPlan(episode.opening, episode.ending) },
     initialPositionMs: Long = 0,
     onProgress: (Long) -> Unit = {},
+    /** A small picture of where one is in the episode, now and then: the cover of «Продолжить просмотр». */
+    onFrame: ((ByteArray) -> Unit)? = null,
     onCompleted: () -> Unit = {},
     nextLabel: String? = null,
     onNext: (() -> Unit)? = null,
@@ -298,6 +300,19 @@ fun AniMixPlayer(
     }
     LaunchedEffect(state.positionMs / 5000, state.ready) {
         if (state.ready && !state.ended && state.positionMs > 0) progressCallback(savedPosition(state.positionMs))
+    }
+    // The last frame: taken on every pause and every half a minute of playback, so leaving the player at
+    // any moment leaves a recent picture behind. The first seconds are skipped (logos, black).
+    val frameCallback by rememberUpdatedState(onFrame)
+    LaunchedEffect(player, state.playing, state.ready) {
+        if (!state.ready || frameCallback == null) return@LaunchedEffect
+        suspend fun take() {
+            val now = player.state.value
+            if (now.positionMs < 5_000 || now.ended || now.buffering) return
+            runCatching { player.captureFrame() }.getOrNull()?.let { frameCallback?.invoke(it) }
+        }
+        if (!state.playing) { delay(350); take() }
+        else while (true) { delay(if (player.state.value.positionMs < 30_000) 8_000 else 30_000); take() }
     }
     LaunchedEffect(state.ended, state.ready && watchedFrom != null && state.positionMs >= watchedFrom) {
         val reached = state.ended || (state.ready && watchedFrom != null && state.positionMs >= watchedFrom)

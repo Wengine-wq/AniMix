@@ -96,7 +96,7 @@ fun ProfileScreen(graph: AppGraph, navigator: Navigator, contentPadding: Padding
             }
             Spacer(Modifier.height(12.dp))
             if (stats.lastDays.all { it == 0 }) {
-                Txt("Здесь появятся ваши просмотры. Минута сегодня начнёт серию дней.", AniMixTheme.type.caption)
+                Txt("Здесь появятся ваши просмотры. Досмотренная серия сегодня начнёт серию дней.", AniMixTheme.type.caption)
             } else {
                 ActivityChart(stats.lastDays)
                 if (stats.bestStreak > 1) Txt("Рекорд: ${stats.bestStreak} ${profileDaysWord(stats.bestStreak)} подряд",
@@ -312,27 +312,43 @@ internal fun CollectionDistribution(byStatus: Map<ListStatus, Int>, onOpen: (() 
     val statuses = listOf(ListStatus.Watching, ListStatus.Completed, ListStatus.Planned, ListStatus.OnHold, ListStatus.Dropped)
     val counts = statuses.map { byStatus[it] ?: 0 }
     val total = counts.sum()
-    val palette = listOf(colors.accent, colors.accentStrong, colors.textSecondary, colors.star, colors.textMuted)
+    // One family with the activity bars: the accent and its lighter steps for what is watched and planned,
+    // quiet neutrals for what is put aside. The legend names every colour; the numbers carry the meaning.
+    val palette = listOf(colors.accent, colors.accent.copy(alpha = 0.68f), colors.accent.copy(alpha = 0.36f),
+        colors.textSecondary.copy(alpha = 0.6f), colors.textMuted.copy(alpha = 0.45f))
+    var filled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { filled = true }
+    val grow by app.animix.ui.theme.animateMotionFloatAsState(if (filled && total > 0) 1f else 0f, androidx.compose.animation.core.tween(AniMixMotion.Page * 2))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Txt("Коллекция", AniMixTheme.type.heading, modifier = Modifier.weight(1f))
         // Lists are edited where they live: the «Списки» tab, one tap from here.
         // The total is in the ring; the corner only offers to open the lists.
-        if (onOpen != null) Txt("Открыть", AniMixTheme.type.label, color = colors.accent,
-            modifier = Modifier.clip(AniMixTheme.shapes.pill).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 8.dp))
+        if (onOpen != null) MoreChip("Открыть", onOpen)
     }
     Spacer(Modifier.height(20.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Box(Modifier.size(112.dp).semantics { contentDescription = "Всего в списках: $total" }, contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize().padding(5.dp)) {
-                val stroke = 13.dp.toPx()
+            Canvas(Modifier.fillMaxSize().padding(4.dp)) {
+                val stroke = 12.dp.toPx()
                 val diameter = size.minDimension - stroke
                 val origin = Offset(stroke / 2, stroke / 2)
+                // The quiet track under the segments; alone it is the empty collection.
+                drawArc(colors.outline.copy(alpha = if (total == 0) 1f else 0.5f), 0f, 360f, false, origin, Size(diameter, diameter), style = Stroke(stroke))
+                // Rounded ends reach half a stroke past the arc, so every segment is drawn that much shorter
+                // on both sides, plus a small gap: neighbours end as round bars and never touch.
+                val cap = Math.toDegrees((stroke / 2 / (diameter / 2)).toDouble()).toFloat()
+                val gap = Math.toDegrees((2.5.dp.toPx() / (diameter / 2)).toDouble()).toFloat()
+                val shown = counts.count { it > 0 }
+                // Tiny statuses keep a visible dot; the rest share what is left of the circle.
+                val least = if (shown > 1) cap * 2 + gap else 0f
+                val spare = 360f - least * shown
                 var start = -90f
-                if (total == 0) drawArc(colors.outline, 0f, 360f, false, origin, Size(diameter, diameter), style = Stroke(stroke))
-                else counts.forEachIndexed { index, count ->
-                    val angle = count.toFloat() / total * 360f
-                    if (count > 0) drawArc(palette[index], start + 2f, (angle - 4f).coerceAtLeast(1f), false,
-                        origin, Size(diameter, diameter), style = Stroke(stroke))
+                if (total > 0) counts.forEachIndexed { index, count ->
+                    if (count == 0) return@forEachIndexed
+                    val angle = if (shown == 1) 360f else least + count.toFloat() / total * spare
+                    val sweep = if (shown == 1) 360f else (angle - gap - cap * 2).coerceAtLeast(0.1f)
+                    drawArc(palette[index], start + (if (shown == 1) 0f else gap / 2 + cap), sweep * grow, false,
+                        origin, Size(diameter, diameter), style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
                     start += angle
                 }
             }
@@ -344,7 +360,7 @@ internal fun CollectionDistribution(byStatus: Map<ListStatus, Int>, onOpen: (() 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             statuses.forEachIndexed { index, status ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(palette[index]))
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(palette[index]))
                     Spacer(Modifier.width(8.dp))
                     Txt(status.label, AniMixTheme.type.caption, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(8.dp))
@@ -359,9 +375,13 @@ internal fun CollectionDistribution(byStatus: Map<ListStatus, Int>, onOpen: (() 
 internal fun ActivityChart(minutes: List<Int>) {
     val colors = AniMixTheme.colors
     val max = (minutes.maxOrNull() ?: 0).coerceAtLeast(1)
+    // The bars rise once when the plate appears, as the collection ring fills.
+    var risen by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { risen = true }
+    val rise by app.animix.ui.theme.animateMotionFloatAsState(if (risen) 1f else 0f, androidx.compose.animation.core.tween(AniMixMotion.Page * 2))
     Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
         minutes.forEachIndexed { index, value ->
-            Box(Modifier.weight(1f).fillMaxHeight((value.toFloat() / max).coerceAtLeast(0.04f))
+            Box(Modifier.weight(1f).fillMaxHeight((value.toFloat() / max * rise).coerceAtLeast(0.04f))
                 .clip(AniMixTheme.shapes.small).background(when {
                     index == minutes.lastIndex && value > 0 -> colors.accent
                     value > 0 -> colors.accent.copy(alpha = 0.35f)

@@ -39,25 +39,14 @@ data class WatchStats(
 
 fun LibraryData.stats(dayCount: Int = 14, today: Long = localDayIndex()): WatchStats {
     val days = plausibleWatchDays(today)
-    val active = days.filterValues { it >= 60 }.keys
-    var streak = 0
-    // A streak survives until the end of today: yesterday's run still counts before today's first episode.
-    var day = if (today in active) today else today - 1
-    while (day in active) { streak++; day-- }
-    var best = 0
-    var run = 0
-    var previous: Long? = null
-    for (d in active.sorted()) {
-        run = if (previous != null && d == previous + 1) run + 1 else 1
-        best = maxOf(best, run)
-        previous = d
-    }
+    // A day of the streak is a day with an episode watched to the end; the run survives until today ends.
+    val (streak, best) = streaks(episodeDays().filterTo(HashSet()) { it <= today }, today)
     return WatchStats(
         totalMinutes = (totalWatchSeconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
         episodes = entries.values.sumOf { it.watchedEpisodeCount },
         completed = entries.values.count { it.status == ListStatus.Completed },
         streak = streak,
-        bestStreak = maxOf(best, streak),
+        bestStreak = best,
         lastDays = (dayCount - 1 downTo 0).map { (days[today - it] ?: 0) / 60 },
         topGenres = tasteGenres().take(5),
     )

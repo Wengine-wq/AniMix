@@ -389,6 +389,7 @@ private fun FlowSessionScreen(graph: AppGraph, navigator: Navigator, padding: Pa
                     },
                     initialPositionMs = state.positionMs,
                     onProgress = { graph.library.saveEpisodePosition(item.anime, item.episode.number, it) },
+                    onFrame = { graph.lastFrames.save(item.anime.key, it) },
                     onCompleted = { graph.library.saveEpisodePosition(item.anime, item.episode.number, 0) },
                     nextLabel = state.queue.getOrNull(state.index + 1)?.let { "Далее" },
                     onNext = state.queue.getOrNull(state.index + 1)?.let { { graph.watchFlow.next() } },

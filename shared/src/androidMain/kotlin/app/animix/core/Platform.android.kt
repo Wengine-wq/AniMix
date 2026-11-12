@@ -16,6 +16,8 @@ object AndroidPlatform {
 
 actual object Platform {
     actual val name: String = "Android"
+    // Runtime shaders arrived with Android 13; older systems keep the frosted glass.
+    actual val refractiveGlass: Boolean = android.os.Build.VERSION.SDK_INT >= 33
 
     actual val dataDir: String get() = AndroidPlatform.context.filesDir.absolutePath
 
